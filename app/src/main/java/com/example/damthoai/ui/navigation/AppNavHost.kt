@@ -3,7 +3,8 @@
  *
  * Khối KDoc tiếng Việt:
  * Quản lý Sơ đồ Điều hướng (Navigation Host) chính cho ứng dụng Đàm Thoại.
- * Khởi tạo toàn bộ các điểm đến (Destinations) từ AppRoute và kết nối các luồng chuyển màn hình.
+ * Tích hợp các Màn hình thật của Tuần 2: Onboarding, GrantPermission, MicrophonePermission,
+ * JoinChannelScreen (Quét QR / Nhập PIN), UserInfoScreen, và ChannelListScreen.
  */
 package com.example.damthoai.ui.navigation
 
@@ -26,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.example.damthoai.ui.channels.ChannelListScreen
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.GlassCard
@@ -33,6 +35,11 @@ import com.example.damthoai.ui.components.PrimaryButton
 import com.example.damthoai.ui.components.SecondaryButton
 import com.example.damthoai.ui.components.SectionLabel
 import com.example.damthoai.ui.components.StatusPill
+import com.example.damthoai.ui.join.JoinChannelScreen
+import com.example.damthoai.ui.join.UserInfoScreen
+import com.example.damthoai.ui.onboarding.OnboardingScreen
+import com.example.damthoai.ui.permission.GrantPermissionScreen
+import com.example.damthoai.ui.permission.MicrophonePermissionScreen
 import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.AccentMint
 import com.example.damthoai.ui.theme.TextPrimary
@@ -49,51 +56,38 @@ fun AppNavHost(
         startDestination = startDestination,
         modifier = modifier
     ) {
-        // === NHÓM A: ONBOARDING & QUYỀN ===
+        // === NHÓM A: ONBOARDING & QUYỀN (TUẦN 2 MÀN THẬT) ===
         composable(AppRoute.Onboarding.route) {
-            PlaceholderScreen(
-                title = "ONBOARDING",
-                description = "Màn hình 3 slide giới thiệu ứng dụng Đàm Thoại",
-                onNext = { navController.navigate(AppRoute.GrantPermission.route) },
-                nextButtonText = "Bắt đầu -> Cấp quyền"
+            OnboardingScreen(
+                onFinishOnboarding = { navController.navigate(AppRoute.GrantPermission.route) }
             )
         }
         composable(AppRoute.GrantPermission.route) {
-            PlaceholderScreen(
-                title = "BƯỚC CUỐI CÙNG: CẤP QUYỀN",
-                description = "Yêu cầu quyền Micro, Thông báo, Vị trí",
-                onBack = { navController.popBackStack() },
-                onNext = { navController.navigate(AppRoute.ScanQr.route) },
-                nextButtonText = "Tiếp tục -> Vào Kênh"
-            )
-        }
-        composable(AppRoute.MicrophonePermission.route) {
-            PlaceholderScreen(
-                title = "CẦN QUYỀN MICRO",
-                description = "Cảnh báo khi chưa được cấp quyền micro để đàm thoại PTT",
+            GrantPermissionScreen(
+                onContinue = { navController.navigate(AppRoute.ScanQr.route) },
                 onBack = { navController.popBackStack() }
             )
         }
+        composable(AppRoute.MicrophonePermission.route) {
+            MicrophonePermissionScreen(
+                onOpenSettings = { /* mở cài đặt hệ thống */ },
+                onRetry = { navController.popBackStack() }
+            )
+        }
 
-        // === NHÓM B: VÀO KÊNH ===
+        // === NHÓM B: VÀO KÊNH (TUẦN 2 MÀN THẬT) ===
         composable(AppRoute.ScanQr.route) {
-            PlaceholderScreen(
-                title = "QUÉT MÃ QR",
-                description = "Quét mã QR để vào kênh nhanh chóng",
+            JoinChannelScreen(
                 onBack = { navController.popBackStack() },
-                onNext = { navController.navigate(AppRoute.UserInfo.route) },
-                nextButtonText = "Đã quét QR -> Nhập Thông tin",
-                secondaryAction = { navController.navigate(AppRoute.EnterPin.route) },
-                secondaryButtonText = "Chuyển sang Nhập PIN"
+                onSuccessJoin = { navController.navigate(AppRoute.UserInfo.route) },
+                onNavigateToCreateEvent = { navController.navigate(AppRoute.CreateEvent.route) }
             )
         }
         composable(AppRoute.EnterPin.route) {
-            PlaceholderScreen(
-                title = "NHẬP TẦN SỐ (PIN 6 SỐ)",
-                description = "Màn hình nhập mã PIN 6 số với bàn phím số riêng",
+            JoinChannelScreen(
                 onBack = { navController.popBackStack() },
-                onNext = { navController.navigate(AppRoute.UserInfo.route) },
-                nextButtonText = "Đã nhập PIN -> Nhập Thông tin"
+                onSuccessJoin = { navController.navigate(AppRoute.UserInfo.route) },
+                onNavigateToCreateEvent = { navController.navigate(AppRoute.CreateEvent.route) }
             )
         }
         composable(AppRoute.JoinError.route) {
@@ -104,28 +98,21 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.UserInfo.route) {
-            PlaceholderScreen(
-                title = "THÔNG TIN CỦA BẠN",
-                description = "Nhập Tên và Chức vụ trong ban tổ chức",
+            UserInfoScreen(
                 onBack = { navController.popBackStack() },
-                onNext = {
+                onEnterChannel = {
                     navController.navigate(AppRoute.ChannelList.route) {
                         popUpTo(AppRoute.Onboarding.route) { inclusive = true }
                     }
-                },
-                nextButtonText = "Hoàn tất -> Danh sách Kênh"
+                }
             )
         }
 
-        // === NHÓM C: DANH SÁCH KÊNH ===
+        // === NHÓM C: DANH SÁCH KÊNH (TUẦN 2 MÀN THẬT) ===
         composable(AppRoute.ChannelList.route) {
-            PlaceholderScreen(
-                title = "DANH SÁCH KÊNH",
-                description = "Hiển thị Live Cue, các thẻ Kênh: Sân khấu, Hậu cần, An ninh...",
-                onNext = { navController.navigate(AppRoute.ActiveCall.route) },
-                nextButtonText = "Mở màn Đàm Thoại",
-                secondaryAction = { navController.navigate(AppRoute.CreateEvent.route) },
-                secondaryButtonText = "Tạo Sự Kiện Mới (Cấp 1)"
+            ChannelListScreen(
+                onNavigateToActiveCall = { navController.navigate(AppRoute.ActiveCall.route) },
+                onNavigateToAddChannel = { navController.navigate(AppRoute.ScanQr.route) }
             )
         }
         composable(AppRoute.ChannelMenuSheet.route) {
@@ -136,7 +123,7 @@ fun AppNavHost(
             )
         }
 
-        // === NHÓM D: MÀN ĐÀM THOẠI & BỎ TÚI ===
+        // === NHÓM D: MÀN ĐÀM THOẠI & BỎ TÚI (PLACEHOLDERS CHO TUẦN SAU) ===
         composable(AppRoute.ActiveCall.route) {
             PlaceholderScreen(
                 title = "ĐÀM THOẠI ACTIVE CALL",
@@ -303,7 +290,7 @@ fun AppNavHost(
 }
 
 /**
- * Composable giao diện Màn hình Mẫu (Placeholder) dùng cho giai đoạn dựng Navigation
+ * Composable giao diện Màn hình Mẫu (Placeholder) dùng cho các nhóm chưa code
  */
 @Composable
 private fun PlaceholderScreen(
