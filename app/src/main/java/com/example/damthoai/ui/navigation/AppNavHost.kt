@@ -3,7 +3,7 @@
  *
  * Khối KDoc tiếng Việt:
  * Quản lý Sơ đồ Điều hướng (Navigation Host) chính cho ứng dụng Đàm Thoại.
- * Tích hợp các Màn hình thật của Tuần 2: Onboarding, GrantPermission, MicrophonePermission,
+ * Tích hợp các Màn hình thật: Onboarding, GrantPermission (PermissionScreen),
  * JoinChannelScreen (Quét QR / Nhập PIN), UserInfoScreen, và ChannelListScreen.
  */
 package com.example.damthoai.ui.navigation
@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.example.damthoai.permission.PermissionScreen
 import com.example.damthoai.ui.channels.ChannelListScreen
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.DamThoaiBackground
@@ -38,8 +39,6 @@ import com.example.damthoai.ui.components.StatusPill
 import com.example.damthoai.ui.join.JoinChannelScreen
 import com.example.damthoai.ui.join.UserInfoScreen
 import com.example.damthoai.ui.onboarding.OnboardingScreen
-import com.example.damthoai.ui.permission.GrantPermissionScreen
-import com.example.damthoai.ui.permission.MicrophonePermissionScreen
 import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.AccentMint
 import com.example.damthoai.ui.theme.TextPrimary
@@ -56,26 +55,28 @@ fun AppNavHost(
         startDestination = startDestination,
         modifier = modifier
     ) {
-        // === NHÓM A: ONBOARDING & QUYỀN (TUẦN 2 MÀN THẬT) ===
+        // === NHÓM A: ONBOARDING & QUYỀN ===
         composable(AppRoute.Onboarding.route) {
             OnboardingScreen(
                 onFinishOnboarding = { navController.navigate(AppRoute.GrantPermission.route) }
             )
         }
         composable(AppRoute.GrantPermission.route) {
-            GrantPermissionScreen(
-                onContinue = { navController.navigate(AppRoute.ScanQr.route) },
-                onBack = { navController.popBackStack() }
+            PermissionScreen(
+                onAllPermissionsGranted = {
+                    navController.navigate(AppRoute.ScanQr.route)
+                }
             )
         }
         composable(AppRoute.MicrophonePermission.route) {
-            MicrophonePermissionScreen(
-                onOpenSettings = { /* mở cài đặt hệ thống */ },
-                onRetry = { navController.popBackStack() }
+            PermissionScreen(
+                onAllPermissionsGranted = {
+                    navController.popBackStack()
+                }
             )
         }
 
-        // === NHÓM B: VÀO KÊNH (TUẦN 2 MÀN THẬT) ===
+        // === NHÓM B: VÀO KÊNH ===
         composable(AppRoute.ScanQr.route) {
             JoinChannelScreen(
                 onBack = { navController.popBackStack() },
@@ -108,7 +109,7 @@ fun AppNavHost(
             )
         }
 
-        // === NHÓM C: DANH SÁCH KÊNH (TUẦN 2 MÀN THẬT) ===
+        // === NHÓM C: DANH SÁCH KÊNH ===
         composable(AppRoute.ChannelList.route) {
             ChannelListScreen(
                 onNavigateToActiveCall = { navController.navigate(AppRoute.ActiveCall.route) },
@@ -123,7 +124,7 @@ fun AppNavHost(
             )
         }
 
-        // === NHÓM D: MÀN ĐÀM THOẠI & BỎ TÚI (PLACEHOLDERS CHO TUẦN SAU) ===
+        // === NHÓM D: MÀN ĐÀM THOẠI & BỎ TÚI ===
         composable(AppRoute.ActiveCall.route) {
             PlaceholderScreen(
                 title = "ĐÀM THOẠI ACTIVE CALL",
