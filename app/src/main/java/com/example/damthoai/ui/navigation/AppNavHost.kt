@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.example.damthoai.permission.PermissionScreen
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.GlassCard
@@ -59,12 +60,10 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.GrantPermission.route) {
-            PlaceholderScreen(
-                title = "BƯỚC CUỐI CÙNG: CẤP QUYỀN",
-                description = "Yêu cầu quyền Micro, Thông báo, Vị trí",
-                onBack = { navController.popBackStack() },
-                onNext = { navController.navigate(AppRoute.ScanQr.route) },
-                nextButtonText = "Tiếp tục -> Vào Kênh"
+            PermissionScreen(
+                onAllPermissionsGranted = {
+                    navController.navigate(AppRoute.ScanQr.route)
+                }
             )
         }
         composable(AppRoute.MicrophonePermission.route) {
