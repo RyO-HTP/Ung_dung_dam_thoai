@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.example.damthoai.hardware.PttKeyDemoScreen
 import com.example.damthoai.permission.PermissionScreen
 import com.example.damthoai.ui.channels.ChannelListScreen
 import com.example.damthoai.ui.components.BackButton
@@ -210,9 +211,7 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.HandsFreeAudio.route) {
-            PlaceholderScreen(
-                title = "RẢNH TAY VÀ ÂM THANH",
-                description = "Cấu hình Tai nghe Bluetooth & Vox Rảnh tay",
+            PttKeyDemoScreen(
                 onBack = { navController.popBackStack() }
             )
         }
