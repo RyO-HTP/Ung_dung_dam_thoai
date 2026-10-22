@@ -1,3 +1,24 @@
 <resources>
-    <string name="app_name">Ứng dụng Đàm thoại</string>
+    <string name="app_name">Đàm Thoại</string>
+    <string name="app_tagline">Hệ thống bộ đàm sự kiện chuyên nghiệp</string>
+
+    <!-- Navigation & Bottom Bar -->
+    <string name="tab_channels">Kênh</string>
+    <string name="tab_settings">Cài đặt</string>
+    <string name="btn_ptt_mic">PTT Mic</string>
+    <string name="btn_back">Quay lại</string>
+    <string name="btn_continue">Tiếp tục</string>
+    <string name="btn_cancel">Hủy</string>
+
+    <!-- Trạng thái -->
+    <string name="status_network_good">Internet · 42 ms</string>
+    <string name="status_priority">ƯU TIÊN</string>
+    <string name="status_attenuation">HẠ ÂM 80%</string>
+    <string name="status_level_1">CẤP 1</string>
+    <string name="status_pocket_locked">ĐÃ KHÓA MÀN HÌNH CHỐNG CHẠM</string>
+
+    <!-- Section Labels -->
+    <string name="section_frequency_pin">TẦN SỐ ẢO · PIN 6 SỐ</string>
+    <string name="section_channel_volume">ÂM LƯỢNG TỪNG KÊNH</string>
+    <string name="section_quick_join">KÊNH VÀ MÃ VÀO NHANH</string>
 </resources>

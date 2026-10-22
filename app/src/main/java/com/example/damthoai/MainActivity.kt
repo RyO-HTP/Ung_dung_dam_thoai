@@ -1,28 +1,35 @@
+/**
+ * Path: app/src/main/java/com/example/damthoai/MainActivity.kt
+ *
+ * Khối KDoc tiếng Việt:
+ * Activity chính của ứng dụng Đàm Thoại.
+ * Khởi tạo chế độ Edge-to-Edge, xin các quyền cần thiết và thiết lập DamThoaiTheme + AdaptiveAppLayout.
+ */
 package com.example.damthoai
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.ui.Modifier
 import com.example.damthoai.permission.PermissionManager
 import com.example.damthoai.ui.navigation.AdaptiveAppLayout
-import com.example.damthoai.ui.theme.Ung_dung_dam_thoaiTheme
+import com.example.damthoai.ui.theme.BgGradientTop
+import com.example.damthoai.ui.theme.DamThoaiTheme
 
 class MainActivity : ComponentActivity() {
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        // Handle permission results if needed
         val allGranted = permissions.entries.all { it.value }
         if (!allGranted) {
-            // Some permissions denied; can prompt user or guide to settings
+            // Xử lý khi người dùng từ chối bớt quyền
         }
     }
 
@@ -30,14 +37,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Request necessary permissions on startup (Tasks 1-4)
+        // Bật edge-to-edge tràn viền màn hình
+        enableEdgeToEdge()
+
+        // Kiểm tra và xin các quyền ban đầu
         checkAndRequestPermissions()
 
         setContent {
-            Ung_dung_dam_thoaiTheme {
+            DamThoaiTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = BgGradientTop
                 ) {
                     val windowSizeClass = calculateWindowSizeClass(this)
                     AdaptiveAppLayout(windowSizeClass = windowSizeClass)
@@ -47,12 +57,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun checkAndRequestPermissions() {
-        // Check background execution battery optimization exemption (Task 4)
         if (!PermissionManager.isIgnoringBatteryOptimizations(this)) {
             PermissionManager.requestIgnoreBatteryOptimizations(this)
         }
 
-        // Request all required permissions (Micro, Camera, Network, Bluetooth, Background execution)
         if (!PermissionManager.hasAllPermissions(this)) {
             permissionLauncher.launch(PermissionManager.ALL_REQUIRED_PERMISSIONS)
         }
