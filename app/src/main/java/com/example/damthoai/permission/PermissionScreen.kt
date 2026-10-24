@@ -1,4 +1,17 @@
 package com.example.damthoai.permission
+import com.example.damthoai.ui.theme.PermissionAmber
+import com.example.damthoai.ui.theme.PermissionBlue
+import com.example.damthoai.ui.theme.PermissionDarkGreen
+import com.example.damthoai.ui.theme.PermissionDeepOrange
+import com.example.damthoai.ui.theme.PermissionGreen
+import com.example.damthoai.ui.theme.PermissionLightAmber
+import com.example.damthoai.ui.theme.PermissionLightBlue
+import com.example.damthoai.ui.theme.PermissionLightGreen
+import com.example.damthoai.ui.theme.PermissionLightOrange
+import com.example.damthoai.ui.theme.PermissionLightRed
+import com.example.damthoai.ui.theme.PermissionOrange
+import com.example.damthoai.ui.theme.PermissionRed
+
 
 import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -17,11 +30,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -48,6 +56,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -192,12 +201,6 @@ fun PermissionScreen(
                             modifier = Modifier.padding(12.dp),
                             verticalAlignment = Alignment.Top
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(top = 2.dp)
-                            )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = stringResource(id = R.string.perm_battery_note_xiaomi_oppo),
@@ -231,7 +234,7 @@ fun PermissionScreen(
                     .height(52.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isAllRequiredGranted) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary
+                    containerColor = if (isAllRequiredGranted) PermissionGreen else MaterialTheme.colorScheme.primary
                 )
             ) {
                 Text(
@@ -249,7 +252,7 @@ fun PermissionScreen(
             onDismissRequest = { showSettingsDialogForPermission = null },
             icon = {
                 Icon(
-                    imageVector = Icons.Default.Warning,
+                    painter = painterResource(com.example.damthoai.R.drawable.ic_alert),
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.error
                 )
@@ -294,7 +297,7 @@ private fun StatusBannerCard(isAllRequiredGranted: Boolean) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = if (isAllRequiredGranted) Color(0xFFE8F5E9) else Color(0xFFFFF3E0)
+            containerColor = if (isAllRequiredGranted) PermissionLightGreen else PermissionLightOrange
         ),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -303,16 +306,16 @@ private fun StatusBannerCard(isAllRequiredGranted: Boolean) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = if (isAllRequiredGranted) Icons.Default.CheckCircle else Icons.Default.Warning,
+                painter = painterResource(if (isAllRequiredGranted) com.example.damthoai.R.drawable.ic_check else com.example.damthoai.R.drawable.ic_alert),
                 contentDescription = null,
-                tint = if (isAllRequiredGranted) Color(0xFF2E7D32) else Color(0xFFE65100)
+                tint = if (isAllRequiredGranted) PermissionGreen else PermissionOrange
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column {
                 Text(
                     text = if (isAllRequiredGranted) "Sẵn sàng hoạt động" else "Cần cấp thêm quyền",
                     fontWeight = FontWeight.Bold,
-                    color = if (isAllRequiredGranted) Color(0xFF1B5E20) else Color(0xFFBF360C),
+                    color = if (isAllRequiredGranted) PermissionDarkGreen else PermissionDeepOrange,
                     fontSize = 16.sp
                 )
                 Text(
@@ -359,21 +362,21 @@ private fun PermissionItemCard(
                     // Badge Bắt buộc / Tùy chọn
                     BadgeText(
                         text = if (appPermission.isRequired) "Bắt buộc" else "Tùy chọn",
-                        backgroundColor = if (appPermission.isRequired) Color(0xFFFFEBEE) else Color(0xFFE1F5FE),
-                        textColor = if (appPermission.isRequired) Color(0xFFC62828) else Color(0xFF0277BD)
+                        backgroundColor = if (appPermission.isRequired) PermissionLightRed else PermissionLightBlue,
+                        textColor = if (appPermission.isRequired) PermissionRed else PermissionBlue
                     )
                 }
 
                 // Badge trạng thái hiện tại (Đã cấp / Chưa cấp / Bị chặn)
                 val statusBgColor = when (permissionState) {
-                    PermissionState.GRANTED -> Color(0xFFE8F5E9)
-                    PermissionState.DENIED -> Color(0xFFFFF8E1)
-                    PermissionState.PERMANENTLY_DENIED -> Color(0xFFFFEBEE)
+                    PermissionState.GRANTED -> PermissionLightGreen
+                    PermissionState.DENIED -> PermissionLightAmber
+                    PermissionState.PERMANENTLY_DENIED -> PermissionLightRed
                 }
                 val statusTextColor = when (permissionState) {
-                    PermissionState.GRANTED -> Color(0xFF2E7D32)
-                    PermissionState.DENIED -> Color(0xFFF57F17)
-                    PermissionState.PERMANENTLY_DENIED -> Color(0xFFC62828)
+                    PermissionState.GRANTED -> PermissionGreen
+                    PermissionState.DENIED -> PermissionAmber
+                    PermissionState.PERMANENTLY_DENIED -> PermissionRed
                 }
 
                 BadgeText(
@@ -399,7 +402,7 @@ private fun PermissionItemCard(
                         onClick = onRequestPermission,
                         modifier = Modifier.align(Alignment.End)
                     ) {
-                        Icon(imageVector = Icons.Default.Settings, contentDescription = null)
+                        Icon(painter = painterResource(com.example.damthoai.R.drawable.ic_sliders), contentDescription = null)
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(text = stringResource(id = R.string.perm_btn_ignore_battery))
                     }

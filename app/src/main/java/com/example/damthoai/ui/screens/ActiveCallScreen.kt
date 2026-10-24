@@ -12,11 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.ScreenLockPortrait
-import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -28,10 +23,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.damthoai.R
 
 @Composable
 fun ActiveCallScreen(
@@ -85,7 +82,7 @@ fun ActiveCallScreen(
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(
-                    imageVector = Icons.Default.Mic,
+                    painter = painterResource(R.drawable.ic_mic),
                     contentDescription = "Push to Talk",
                     tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(48.dp)
@@ -106,13 +103,13 @@ fun ActiveCallScreen(
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             OutlinedButton(onClick = { }) {
-                Icon(imageVector = Icons.Default.VolumeUp, contentDescription = null)
+                Icon(painter = painterResource(R.drawable.ic_vol), contentDescription = null)
                 Spacer(modifier = Modifier.size(4.dp))
                 Text("Loa ngoài")
             }
 
             OutlinedButton(onClick = onNavigateToPocketMode) {
-                Icon(imageVector = Icons.Default.ScreenLockPortrait, contentDescription = null)
+                Icon(painter = painterResource(R.drawable.ic_phone), contentDescription = null)
                 Spacer(modifier = Modifier.size(4.dp))
                 Text("Bỏ túi")
             }
@@ -121,7 +118,7 @@ fun ActiveCallScreen(
                 onClick = { },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
             ) {
-                Icon(imageVector = Icons.Default.Warning, contentDescription = null)
+                Icon(painter = painterResource(R.drawable.ic_alert), contentDescription = null)
                 Spacer(modifier = Modifier.size(4.dp))
                 Text("Khẩn cấp")
             }

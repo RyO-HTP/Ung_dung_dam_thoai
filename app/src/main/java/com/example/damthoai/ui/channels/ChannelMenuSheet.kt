@@ -1,16 +1,8 @@
-/**
- * Path: app/src/main/java/com/example/damthoai/ui/channels/ChannelMenuSheet.kt
- *
- * Khối KDoc tiếng Việt:
- * Bottom Sheet menu tùy chỉnh kênh khi bấm nút "•••".
- * Bao gồm: Tắt nghe kênh này (công tắc switch) & Rời kênh (icon X màu hồng).
- */
 package com.example.damthoai.ui.channels
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,29 +15,30 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.VolumeOff
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.damthoai.ui.components.GlassCard
+import com.example.damthoai.R
+import com.example.damthoai.data.fake.FakeRepositories
+import com.example.damthoai.ui.components.DamThoaiBackground
+import com.example.damthoai.ui.components.KitSwitch
+import com.example.damthoai.ui.theme.AccentAmber
 import com.example.damthoai.ui.theme.AccentCyan
-import com.example.damthoai.ui.theme.AccentRed
+import com.example.damthoai.ui.theme.DamThoaiTheme
+import com.example.damthoai.ui.theme.DamType
 import com.example.damthoai.ui.theme.DangerText
-import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.GlassBorder
 import com.example.damthoai.ui.theme.GlassSheetShape
+import com.example.damthoai.ui.theme.IconBoxBg
+import com.example.damthoai.ui.theme.Scrim
+import com.example.damthoai.ui.theme.SheetBg
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
 
@@ -57,171 +50,142 @@ fun ChannelMenuSheet(
     onLeaveChannel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Semi-transparent dark dimmed background overlay
+    val channelIcon = when (channelItem.channel.id) {
+        "ch_01" -> R.drawable.ic_crown
+        "ch_02" -> R.drawable.ic_stage
+        else -> R.drawable.ic_shield
+    }
+    val channelIconTint = if (channelItem.channel.id == "ch_01") AccentAmber else TextPrimary
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.75f))
-            .clickable { onDismiss() },
+            .background(Scrim)
+            .clickable(onClick = onDismiss),
         contentAlignment = Alignment.BottomCenter
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(GlassSheetShape)
-                .background(Color(0xFF0C122C))
+                .background(SheetBg)
                 .border(1.dp, GlassBorder, GlassSheetShape)
-                .clickable(enabled = false) {}
-                .padding(20.dp)
+                .clickable {}
+                .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 30.dp)
         ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Thanh kéo nhỏ (Handle Bar)
+            Box(
+                Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .size(width = 44.dp, height = 5.dp)
+                    .clip(CircleShape)
+                    .background(TextSecondary.copy(alpha = 0.5f))
+            )
+            Spacer(Modifier.height(18.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    modifier = Modifier
-                        .size(36.dp, 4.dp)
-                        .clip(CircleShape)
-                        .background(GlassBorder)
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Đầu sheet: Icon vuông + Tên kênh + Mô tả
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                    Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(IconBoxBg),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(GlassBg)
-                            .border(1.dp, GlassBorder, RoundedCornerShape(12.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Home,
-                            contentDescription = null,
-                            tint = AccentCyan,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = channelItem.channel.name,
-                            color = TextPrimary,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "MC · kênh chuyên trách",
-                            color = TextSecondary,
-                            fontSize = 13.sp
-                        )
-                    }
+                    Icon(
+                        painter = painterResource(channelIcon),
+                        contentDescription = null,
+                        tint = channelIconTint,
+                        modifier = Modifier.size(22.dp)
+                    )
                 }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                // Dòng 1: Tắt nghe kênh này (Công tắc switch)
-                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.VolumeOff,
-                                contentDescription = null,
-                                tint = TextSecondary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = "Tắt nghe kênh này",
-                                    color = TextPrimary,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "Vẫn ở trong kênh nhưng không nghe âm thanh",
-                                    color = TextSecondary,
-                                    fontSize = 12.sp
-                                )
-                            }
-                        }
-
-                        Switch(
-                            checked = channelItem.isMuted,
-                            onCheckedChange = onToggleMute,
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = TextPrimary,
-                                checkedTrackColor = AccentCyan,
-                                uncheckedThumbColor = TextSecondary,
-                                uncheckedTrackColor = GlassBg
-                            )
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Dòng 2: Rời kênh (Hồng/Đỏ nguy hiểm)
-                GlassCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onLeaveChannel() }
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(AccentRed.copy(alpha = 0.2f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = null,
-                                tint = DangerText,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        Column {
-                            Text(
-                                text = "Rời kênh",
-                                color = DangerText,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Muốn vào lại phải quét QR hoặc nhập PIN",
-                                color = TextSecondary,
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text(
+                        channelItem.channel.name,
+                        color = TextPrimary,
+                        style = DamType.Heading.copy(fontSize = 18.sp)
+                    )
+                    Text(
+                        "MC · kênh chuyên trách",
+                        color = TextSecondary,
+                        style = DamType.Body
+                    )
                 }
             }
+
+            Spacer(Modifier.height(24.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_vol),
+                    contentDescription = null,
+                    tint = AccentCyan,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Tắt nghe kênh này",
+                        color = TextPrimary,
+                        style = DamType.Heading.copy(fontSize = 16.sp)
+                    )
+                    Text(
+                        "Vẫn ở trong kênh nhưng không nghe âm thanh",
+                        color = TextSecondary,
+                        style = DamType.Body
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                KitSwitch(
+                    checked = channelItem.isMuted,
+                    onCheckedChange = onToggleMute
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onLeaveChannel),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_x),
+                    contentDescription = null,
+                    tint = DangerText,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(
+                        "Rời kênh",
+                        color = DangerText,
+                        style = DamType.Heading.copy(fontSize = 16.sp)
+                    )
+                    Text(
+                        "Muốn vào lại phải quét QR hoặc nhập PIN",
+                        color = TextSecondary,
+                        style = DamType.Body
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Preview(widthDp = 390, heightDp = 844)
+@Composable
+private fun ChannelMenuSheetPreview() {
+    val channel = FakeRepositories.sampleChannels[1]
+    DamThoaiTheme {
+        DamThoaiBackground {
+            ChannelMenuSheet(
+                channelItem = ChannelItemUiState(channel = channel),
+                onDismiss = {},
+                onToggleMute = {},
+                onLeaveChannel = {}
+            )
         }
     }
 }

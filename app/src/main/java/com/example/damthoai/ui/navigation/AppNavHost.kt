@@ -38,8 +38,12 @@ import com.example.damthoai.ui.components.SecondaryButton
 import com.example.damthoai.ui.components.SectionLabel
 import com.example.damthoai.ui.components.StatusPill
 import com.example.damthoai.ui.join.JoinChannelScreen
+import com.example.damthoai.ui.join.JoinErrorScreen
 import com.example.damthoai.ui.join.UserInfoScreen
+import com.example.damthoai.ui.event.CreateEventScreen
+import com.example.damthoai.ui.event.RestoreEventScreen
 import com.example.damthoai.ui.onboarding.OnboardingScreen
+import com.example.damthoai.ui.components.BgVariant
 import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.AccentMint
 import com.example.damthoai.ui.theme.TextPrimary
@@ -82,21 +86,36 @@ fun AppNavHost(
             JoinChannelScreen(
                 onBack = { navController.popBackStack() },
                 onSuccessJoin = { navController.navigate(AppRoute.UserInfo.route) },
-                onNavigateToCreateEvent = { navController.navigate(AppRoute.CreateEvent.route) }
+                onNavigateToCreateEvent = { navController.navigate(AppRoute.CreateEvent.route) },
+                onJoinError = { navController.navigate(AppRoute.JoinError.route) }
             )
         }
         composable(AppRoute.EnterPin.route) {
             JoinChannelScreen(
                 onBack = { navController.popBackStack() },
                 onSuccessJoin = { navController.navigate(AppRoute.UserInfo.route) },
-                onNavigateToCreateEvent = { navController.navigate(AppRoute.CreateEvent.route) }
+                onNavigateToCreateEvent = { navController.navigate(AppRoute.CreateEvent.route) },
+                onJoinError = { navController.navigate(AppRoute.JoinError.route) },
+                initialTab = 1
             )
         }
         composable(AppRoute.JoinError.route) {
-            PlaceholderScreen(
-                title = "KHÔNG VÀO ĐƯỢC KÊNH",
-                description = "Thông báo sai mã PIN hoặc sự kiện đã đóng",
-                onBack = { navController.popBackStack() }
+            JoinErrorScreen(
+                onRetryQr = {
+                    navController.navigate(AppRoute.ScanQr.route) {
+                        popUpTo(AppRoute.JoinError.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+                onSwitchPin = {
+                    navController.navigate(AppRoute.EnterPin.route) {
+                        popUpTo(AppRoute.JoinError.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+                onNavigateToCreateEvent = {
+                    navController.navigate(AppRoute.CreateEvent.route)
+                }
             )
         }
         composable(AppRoute.UserInfo.route) {
@@ -136,7 +155,7 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.PocketMode.route) {
-            DamThoaiBackground(isPocketMode = true) {
+            DamThoaiBackground(variant = BgVariant.Pocket) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -225,12 +244,14 @@ fun AppNavHost(
 
         // === NHÓM G: QUẢN TRỊ SỰ KIỆN (CẤP 1) ===
         composable(AppRoute.CreateEvent.route) {
-            PlaceholderScreen(
-                title = "TẠO SỰ KIỆN MỚI (CẤP 1)",
-                description = "Nhập tên sự kiện, khởi tạo mã PIN và mã Quản trị",
+            CreateEventScreen(
                 onBack = { navController.popBackStack() },
-                onNext = { navController.navigate(AppRoute.ManageEvent.route) },
-                nextButtonText = "Tạo xong -> Quản lý Sự kiện"
+                onEventCreated = {
+                    navController.navigate(AppRoute.ManageEvent.route)
+                },
+                onNavigateToRestore = {
+                    navController.navigate(AppRoute.RestoreEvent.route)
+                }
             )
         }
         composable(AppRoute.ManageEvent.route) {
@@ -245,10 +266,11 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.RestoreEvent.route) {
-            PlaceholderScreen(
-                title = "KHÔI PHỦC SỰ KIỆN",
-                description = "Nhập mã Quản trị để lấy lại quyền Cấp 1",
-                onBack = { navController.popBackStack() }
+            RestoreEventScreen(
+                onBack = { navController.popBackStack() },
+                onRestore = {
+                    navController.navigate(AppRoute.ManageEvent.route)
+                }
             )
         }
         composable(AppRoute.MyQrCode.route) {

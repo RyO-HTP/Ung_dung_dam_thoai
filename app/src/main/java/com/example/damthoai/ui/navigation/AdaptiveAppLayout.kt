@@ -32,10 +32,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Radio
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
@@ -51,12 +47,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.damthoai.R
 import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.GlassBorder
@@ -138,7 +136,7 @@ fun AdaptiveAppLayout(
                             restoreState = true
                         }
                     },
-                    icon = { Icon(Icons.Default.Radio, contentDescription = "Kênh") },
+                    icon = { Icon(painterResource(R.drawable.ic_radio), contentDescription = "Kênh") },
                     label = { Text("Kênh") }
                 )
                 NavigationRailItem(
@@ -150,7 +148,7 @@ fun AdaptiveAppLayout(
                             restoreState = true
                         }
                     },
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "Cài đặt") },
+                    icon = { Icon(painterResource(R.drawable.ic_sliders), contentDescription = "Cài đặt") },
                     label = { Text("Cài đặt") }
                 )
             }
@@ -212,7 +210,7 @@ private fun FloatingPillBottomBar(
                         .padding(8.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Radio,
+                        painter = painterResource(R.drawable.ic_radio),
                         contentDescription = "Kênh",
                         tint = if (isChannelSelected) AccentCyan else TextSecondary,
                         modifier = Modifier.size(22.dp)
@@ -238,7 +236,7 @@ private fun FloatingPillBottomBar(
                         .padding(8.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Settings,
+                        painter = painterResource(R.drawable.ic_sliders),
                         contentDescription = "Cài đặt",
                         tint = if (isSettingsSelected) AccentCyan else TextSecondary,
                         modifier = Modifier.size(22.dp)
@@ -274,7 +272,7 @@ private fun FloatingPillBottomBar(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Default.Mic,
+                painter = painterResource(R.drawable.ic_mic),
                 contentDescription = "PTT Mic",
                 tint = TextPrimary,
                 modifier = Modifier.size(32.dp)

@@ -21,23 +21,22 @@ object FakeRepositories {
     val sampleChannels = listOf(
         Channel(
             id = "ch_01",
-            name = "SÂN KHẤU CHÍNH",
+            name = "Toàn sự kiện",
             isPriority = true,
             activeMembers = 12,
-            currentSpeaker = "Lâm Phong",
+            currentSpeaker = "Lan Phương",
             liveCueMessage = "LIVE CUE: Chuẩn bị trao giải Ca sĩ của năm sau 30 giây!"
         ),
         Channel(
             id = "ch_02",
-            name = "HẬU CẦN & AN NINH",
+            name = "Sân khấu",
             isEmergency = false,
             activeMembers = 8,
             currentSpeaker = null
         ),
         Channel(
             id = "ch_03",
-            name = "KÊNH KHẨN CẤP",
-            isEmergency = true,
+            name = "Hậu cần – An ninh",
             activeMembers = 24,
             currentSpeaker = null
         )

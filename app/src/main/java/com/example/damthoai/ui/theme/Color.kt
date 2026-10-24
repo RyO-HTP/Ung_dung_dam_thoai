@@ -1,45 +1,121 @@
-/**
- * Path: app/src/main/java/com/example/damthoai/ui/theme/Color.kt
- *
- * Khối KDoc tiếng Việt:
- * Bảng màu Design System cho ứng dụng bộ đàm "Đàm Thoại".
- * Phong cách: Dark mode "bầu trời đêm / không gian", kính mờ (glassmorphism),
- * điểm xuyết gradient xanh-tím, cyan, amber, mint và đỏ khẩn cấp.
- */
 package com.example.damthoai.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// --- NỀN (BACKGROUND & GLOWS) ---
-// Gradient dọc nền chính
-val BgGradientTop = Color(0xFF060A1F)      // Xanh navy rất đậm phía trên
-val BgGradientBottom = Color(0xFF0B1240)   // Xanh navy sâu phía dưới
-val GlowPurple = Color(0xFF3B2A8C)         // Vệt sáng tím góc phải trên
-val GlowBlue = Color(0xFF14308A)           // Vệt xanh dương góc trái giữa
-val PocketBg = Color(0xFF030511)           // Nền màn hình Bỏ túi (Pocket) tối gần đen
+val BgTop = Color(0xFF070B24)
+val BgMid = Color(0xFF0B1245)
+val BgBottom = Color(0xFF120C45)
+val GlowPurple = Color(0x8C6C3BFF)
+val GlowBlue = Color(0x592F6BFF)
+val PocketBase = Color(0xFF040618)
+val PocketGlow = Color(0x612F6BFF)
+val EmergGlow = Color(0x80FF3D6B)
+val EmergTop = Color(0xFF1A0820)
 
-// --- NÚT CHÍNH & GRADIENT (PRIMARY BUTTONS) ---
-val PrimaryStart = Color(0xFF3366FF)       // Xanh dương bứt phá
-val PrimaryEnd = Color(0xFF6B3BFF)         // Tím hiện đại
-val PrimaryGlow = Color(0x663366FF)        // Đổ bóng hào quang nút chính
+val PrimaryStart = Color(0xFF2F6BFF)
+val PrimaryEnd = Color(0xFF6C3BFF)
+val PrimaryShadow = Color(0x664F64FF)
+val DangerStart = Color(0xFFFF3D6B)
+val DangerEnd = Color(0xFFB0123A)
+val DangerText = Color(0xFFFF9DB0)
 
-// --- NÚT KHẨN CẤP / NGUY HIỂM (DANGER BUTTONS) ---
-val DangerStart = Color(0xFFFF3D6E)        // Hồng đỏ khẩn cấp
-val DangerEnd = Color(0xFFB3153C)          // Đỏ sẫm
-val DangerText = Color(0xFFFF9AAE)         // Chữ hồng nhạt cho link nguy hiểm (Rời sự kiện, Xóa...)
+val GlassBg = Color(0x12FFFFFF)
+val GlassBorder = Color(0x21FFFFFF)
+val IconBoxBg = Color(0x17FFFFFF)
+val IconBoxBorder = Color(0x1FFFFFFF)
+val GhostBtnBg = Color(0x17FFFFFF)
+val GhostBtnBorder = Color(0x24FFFFFF)
+val TrackBg = Color(0x26FFFFFF)
+val SwitchOff = Color(0x2EFFFFFF)
+val NavBg = Color(0xD90E1446)
+val NavBorder = Color(0x24FFFFFF)
+val SheetBg = Color(0xFA121A56)
+val RoleToastBg = Color(0xF7121A56)
+val Scrim = Color(0xA6040618)
+val LcdBg = Color(0xFF050A24)
+val LcdBorder = Color(0x595EE1FF)
 
-// --- THẺ KÍNH MỜ (GLASSMORPHISM) ---
-val GlassBg = Color(0x14FFFFFF)            // Trắng alpha 8% cho nền thẻ
-val GlassBorder = Color(0x1FFFFFFF)        // Trắng alpha 12% cho viền thẻ
-val GlassBgHover = Color(0x24FFFFFF)       // Trắng alpha 14% khi nhấn
+val AccentCyan = Color(0xFF5EE1FF)
+val AccentAmber = Color(0xFFFFC857)
+val AccentMint = Color(0xFF7CF0C5)
+val AccentRed = Color(0xFFFF5C7A)
+val TagCyanBg = Color(0x265EE1FF)
+val TagAmberBg = Color(0x2EFFC857)
+val CueFill = Color(0x22FFC857)
+val TagRedBg = Color(0x33FF5C7A)
+val TagRedText = Color(0xFFFF9DB0)
+val CueBorder = Color(0x66FFC857)
+val CueGradientStart = Color(0x38FFC857)
+val CueGradientEnd = Color(0x1AFF8A3D)
+val SelectedChannelBg = Color(0x145EE1FF)
+val ChannelAddBorder = Color(0x40FFFFFF)
 
-// --- MÀU NHẤN & TRẠNG THÁI (ACCENT COLORS) ---
-val AccentCyan = Color(0xFF4DDCFF)         // Cyan: tab active, icon kênh, sóng âm đang nói, mã PIN
-val AccentAmber = Color(0xFFFFC857)        // Vàng amber: nhãn ƯU TIÊN, LIVE CUE, HẠ ÂM 80%, CẤP 1, cảnh báo
-val AccentMint = Color(0xFF6EE7B7)         // Xanh mint: trạng thái mạng tốt (Internet · 42 ms)
-val AccentRed = Color(0xFFFF4D6D)          // Đỏ: offline, khẩn cấp, bị ngắt mic
+val TextPrimary = Color(0xFFF4F7FF)
+val TextSecondary = Color(0xFF9FB0E6)
+val TextPlaceholder = Color(0xFF8F9FD6)
+val StarTint = Color(0xFFCFE0FF)
 
-// --- MÀU CHỮ (TYPOGRAPHY COLORS) ---
-val TextPrimary = Color(0xFFF4F6FF)        // Trắng ngà cho tiêu đề và chữ chính
-val TextSecondary = Color(0xFFA9B4E8)      // Tím xanh nhạt cho thông tin phụ/mô tả
-val TextMuted = Color(0xFF6A75A0)          // Tím xám mờ cho thông tin bổ sung
+val AvatarInk = Color(0xFF0B1240)
+val ChipInk = Color(0xFF0B1245)
+val IntroPill = Color(0xFF2A3A9A)
+val IntroPillBorder = Color(0xFF8FA6FF)
+val AmberInk = Color(0xFF3E2200)
+val DeepSheet = Color(0xFF0C122C)
+val CameraBadgeBg = Color(0x174FA3FF)
+val QrBlock = Color(0xFF26435D)
+val QrFrame = Color(0xFF28506A)
+val BlueGlowIntro = Color(0x995EA3FF)
+val CyanGlowIntro = Color(0x995EE1FF)
+val AmberGlowIntro = Color(0x99FFC857)
+val BlueLineIntro = Color(0x804FA3FF)
+val AmberRingIntro = Color(0x59FFC857)
+val CyanNodeBgIntro = Color(0x334FA3FF)
+val AmberChipBgIntro = Color(0x33FFC857)
+val AmberNodeFillIntro = Color(0x2EFFC857)
+val BlueAvatarA = Color(0xFF4FA3FF)
+val BlueAvatarB = Color(0xFF6C5CFF)
+val BlueAvatarC = Color(0xFF6FB6FF)
+val PinkAvatarA = Color(0xFFFF8FB1)
+val OrangeAvatarB = Color(0xFFFF8A3D)
+val CyanAvatarB = Color(0xFF2F6BFF)
+val TealAvatarA = Color(0xFF2BA3A3)
+val PurpleAvatarA = Color(0xFFC9A8FF)
+val PurpleAvatarB = Color(0xFF7A4DFF)
+val MintAvatar = Color(0xFF7CF0C5)
+val SpeakerTint = Color(0xFF9FD0FF)
+val CrownStart = Color(0xFFFFE08A)
+val AmberIconInk = Color(0xFF3A2000)
+val PermissionBlue = Color(0xFF0277BD)
+val PermissionDarkGreen = Color(0xFF1B5E20)
+val PermissionGreen = Color(0xFF2E7D32)
+val PermissionDeepOrange = Color(0xFFBF360C)
+val PermissionRed = Color(0xFFC62828)
+val PermissionLightBlue = Color(0xFFE1F5FE)
+val PermissionOrange = Color(0xFFE65100)
+val PermissionLightGreen = Color(0xFFE8F5E9)
+val PermissionAmber = Color(0xFFF57F17)
+val PermissionLightRed = Color(0xFFFFEBEE)
+val PermissionLightOrange = Color(0xFFFFF3E0)
+val PermissionLightAmber = Color(0xFFFFF8E1)
+val PttActiveBg = Color(0xFFD32F2F)
+val PttInactiveBg = Color(0xFF2E7D32)
+val PttErrorBg = Color(0xFFE53935)
+val RoleBannerBg = Color(0xFF1E1608)
+val RoleBannerInk = Color(0xFF3A2000)
+val RoleCloseBg = Color(0x22FFFFFF)
+
+val AvatarGradients = listOf(
+    Color(0xFF4FA3FF) to Color(0xFF6C5CFF),
+    Color(0xFFFF8FB1) to Color(0xFFFF5C7A),
+    Color(0xFF5EE1FF) to Color(0xFF2F6BFF),
+    Color(0xFFFFC857) to Color(0xFFFF8A3D),
+    Color(0xFF7CF0C5) to Color(0xFF2BA3A3),
+    Color(0xFFC9A8FF) to Color(0xFF7A4DFF),
+)
+
+val PrimaryGlow = PrimaryShadow
+val GlassBgHover = Color(0x24FFFFFF)
+val BgGradientTop = BgTop
+val BgGradientBottom = BgBottom
+val PocketBg = PocketBase
+val TextMuted = TextSecondary

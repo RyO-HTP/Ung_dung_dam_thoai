@@ -24,42 +24,46 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.example.damthoai.R
 import com.example.damthoai.ui.theme.AccentAmber
 import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.AccentMint
 import com.example.damthoai.ui.theme.AccentRed
 import com.example.damthoai.ui.theme.BackButtonShape
+import com.example.damthoai.ui.theme.ButtonShape
 import com.example.damthoai.ui.theme.CardShape
+import com.example.damthoai.ui.theme.DamType
 import com.example.damthoai.ui.theme.DamThoaiTheme
-import com.example.damthoai.ui.theme.DangerEnd
-import com.example.damthoai.ui.theme.DangerStart
+import com.example.damthoai.ui.theme.DangerBrush
 import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.GlassBorder
 import com.example.damthoai.ui.theme.PillShape
-import com.example.damthoai.ui.theme.PrimaryEnd
 import com.example.damthoai.ui.theme.PrimaryGlow
-import com.example.damthoai.ui.theme.PrimaryStart
+import com.example.damthoai.ui.theme.PrimaryBrush
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
+import com.example.damthoai.ui.theme.TagShape
+import com.example.damthoai.ui.theme.SwitchOnBrush
+import com.example.damthoai.ui.theme.SwitchOff
 
 /**
  * Thẻ kính mờ Glassmorphism (Card)
@@ -71,6 +75,7 @@ fun GlassCard(
     backgroundColor: Color = GlassBg,
     borderColor: Color = GlassBorder,
     borderWidth: Dp = 1.dp,
+    contentPadding: PaddingValues = PaddingValues(14.dp),
     content: @Composable () -> Unit
 ) {
     Box(
@@ -78,7 +83,7 @@ fun GlassCard(
             .clip(shape)
             .background(backgroundColor)
             .border(borderWidth, borderColor, shape)
-            .padding(16.dp)
+            .padding(contentPadding)
     ) {
         content()
     }
@@ -93,17 +98,15 @@ fun PrimaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    height: Dp = 56.dp
+    height: Dp = 54.dp
 ) {
-    val gradient = Brush.horizontalGradient(
-        colors = if (enabled) listOf(PrimaryStart, PrimaryEnd) else listOf(Color.Gray, Color.DarkGray)
-    )
+    val gradient = if (enabled) PrimaryBrush else Brush.horizontalGradient(listOf(Color.Gray, Color.DarkGray))
 
     Box(
         modifier = modifier
             .height(height)
-            .shadow(elevation = 8.dp, shape = PillShape, spotColor = PrimaryGlow)
-            .clip(PillShape)
+            .shadow(elevation = 10.dp, shape = ButtonShape, spotColor = PrimaryGlow)
+            .clip(ButtonShape)
             .background(gradient)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 24.dp),
@@ -112,8 +115,7 @@ fun PrimaryButton(
         Text(
             text = text,
             color = TextPrimary,
-            fontWeight = FontWeight.Bold,
-            fontSize = 16.sp
+            style = DamType.Button
         )
     }
 }
@@ -127,14 +129,14 @@ fun SecondaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    height: Dp = 56.dp
+    height: Dp = 54.dp
 ) {
     Box(
         modifier = modifier
             .height(height)
-            .clip(PillShape)
+            .clip(ButtonShape)
             .background(GlassBg)
-            .border(1.dp, GlassBorder, PillShape)
+            .border(1.dp, GlassBorder, ButtonShape)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 24.dp),
         contentAlignment = Alignment.Center
@@ -142,8 +144,7 @@ fun SecondaryButton(
         Text(
             text = text,
             color = TextPrimary,
-            fontWeight = FontWeight.Bold,
-            fontSize = 16.sp
+            style = DamType.Button
         )
     }
 }
@@ -157,17 +158,13 @@ fun DangerButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    height: Dp = 56.dp
+    height: Dp = 54.dp
 ) {
-    val gradient = Brush.horizontalGradient(
-        colors = listOf(DangerStart, DangerEnd)
-    )
-
     Box(
         modifier = modifier
             .height(height)
-            .clip(PillShape)
-            .background(gradient)
+            .clip(ButtonShape)
+            .background(DangerBrush)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 24.dp),
         contentAlignment = Alignment.Center
@@ -175,8 +172,7 @@ fun DangerButton(
         Text(
             text = text,
             color = TextPrimary,
-            fontWeight = FontWeight.Bold,
-            fontSize = 16.sp
+            style = DamType.Button
         )
     }
 }
@@ -194,9 +190,7 @@ fun SectionLabel(
         text = text.uppercase(),
         modifier = modifier,
         color = color,
-        fontWeight = FontWeight.ExtraBold,
-        fontSize = 11.sp,
-        letterSpacing = 1.25.sp
+        style = DamType.Label
     )
 }
 
@@ -218,7 +212,7 @@ fun BackButton(
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+            painter = painterResource(R.drawable.ic_back),
             contentDescription = "Quay lại",
             tint = TextPrimary,
             modifier = Modifier.size(20.dp)
@@ -239,7 +233,7 @@ fun StatusPill(
 ) {
     Row(
         modifier = modifier
-            .clip(CircleShape)
+            .clip(PillShape)
             .background(backgroundColor)
             .border(1.dp, GlassBorder, CircleShape)
             .padding(horizontal = 10.dp, vertical = 4.dp),
@@ -255,10 +249,75 @@ fun StatusPill(
         Text(
             text = text,
             color = TextPrimary,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold
+            style = DamType.Small.copy(fontWeight = FontWeight.SemiBold)
         )
     }
+}
+
+@Composable
+fun TagLabel(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = AccentAmber,
+    backgroundColor: Color = color.copy(alpha = 0.16f)
+) {
+    Text(
+        text = text,
+        modifier = modifier
+            .clip(TagShape)
+            .background(backgroundColor)
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+        color = color,
+        style = DamType.Tag
+    )
+}
+
+@Composable
+fun KitSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val trackBrush = if (checked) {
+        SwitchOnBrush
+    } else {
+        Brush.horizontalGradient(listOf(SwitchOff, SwitchOff))
+    }
+    Box(
+        modifier = modifier
+            .size(width = 46.dp, height = 28.dp)
+            .clip(CircleShape)
+            .background(trackBrush)
+            .toggleable(value = checked, onValueChange = onCheckedChange, role = Role.Switch),
+        contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart
+    ) {
+        Box(
+            Modifier
+                .padding(3.dp)
+                .size(22.dp)
+                .clip(CircleShape)
+                .background(Color.White)
+        )
+    }
+}
+
+fun Modifier.dashedBorder(
+    color: Color,
+    width: Dp = 1.dp,
+    cornerRadius: Dp = 0.dp
+): Modifier = drawWithContent {
+    drawContent()
+    val strokeWidth = width.toPx()
+    drawRoundRect(
+        color = color,
+        topLeft = androidx.compose.ui.geometry.Offset(strokeWidth / 2, strokeWidth / 2),
+        size = androidx.compose.ui.geometry.Size(size.width - strokeWidth, size.height - strokeWidth),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerRadius.toPx()),
+        style = Stroke(
+            width = strokeWidth,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))
+        )
+    )
 }
 
 // ================= PREVIEWS =================
