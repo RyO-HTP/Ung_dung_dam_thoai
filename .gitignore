@@ -7,3 +7,5 @@ local.properties
 captures/
 design/
 .vscode/
+__pycache__/
+*.pyc
