@@ -45,6 +45,8 @@ import com.example.damthoai.ui.join.UserInfoScreen
 import com.example.damthoai.ui.event.CreateEventScreen
 import com.example.damthoai.ui.event.RestoreEventScreen
 import com.example.damthoai.ui.onboarding.OnboardingScreen
+import com.example.damthoai.ui.screens.ActiveCallScreen
+import com.example.damthoai.ui.screens.PocketModeScreen
 import com.example.damthoai.ui.components.BgVariant
 import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.AccentMint
@@ -144,44 +146,18 @@ fun AppNavHost(
 
         // === NHÓM D: MÀN ĐÀM THOẠI & BỎ TÚI ===
         composable(AppRoute.ActiveCall.route) {
-            PlaceholderScreen(
-                title = "ĐÀM THOẠI ACTIVE CALL",
-                description = "Hiển thị trạng thái PTT, danh sách người nói, sóng âm Cyan",
+            ActiveCallScreen(
                 onBack = { navController.popBackStack() },
-                onNext = { navController.navigate(AppRoute.PocketMode.route) },
-                nextButtonText = "Bật Chế độ Bỏ túi (Pocket)"
+                onNavigateToPocketMode = {
+                    navController.navigate(AppRoute.PocketMode.route)
+                },
+                onNavigateToEmergency = {}
             )
         }
         composable(AppRoute.PocketMode.route) {
-            DamThoaiBackground(variant = BgVariant.Pocket) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    StatusPill(text = "ĐÃ KHÓA MÀN HÌNH CHỐNG CHẠM", statusColor = AccentCyan)
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Text(
-                        text = "CHẾ ĐỘ BỎ TÚI",
-                        color = TextPrimary,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "Vuốt hoặc giữ nút để mở khóa",
-                        color = TextSecondary,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(32.dp))
-                    PrimaryButton(
-                        text = "Mở khóa màn hình",
-                        onClick = { navController.popBackStack() }
-                    )
-                }
-            }
+            PocketModeScreen(
+                onUnlock = { navController.popBackStack() }
+            )
         }
 
         // === NHÓM E: KHẨN CẤP ===
