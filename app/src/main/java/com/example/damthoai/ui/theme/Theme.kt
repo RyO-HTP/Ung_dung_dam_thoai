@@ -8,16 +8,18 @@
 package com.example.damthoai.ui.theme
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.text.TextStyle
 
 private val DarkColorScheme = darkColorScheme(
     primary = PrimaryStart,
     onPrimary = TextPrimary,
-    primaryContainer = PrimaryGlow,
+    primaryContainer = PrimaryShadow,
     secondary = AccentCyan,
-    onSecondary = BgGradientTop,
-    background = BgGradientTop,
+    onSecondary = BgTop,
+    background = BgTop,
     onBackground = TextPrimary,
     surface = GlassBg,
     onSurface = TextPrimary,
@@ -33,6 +35,8 @@ fun DamThoaiTheme(
         colorScheme = DarkColorScheme,
         typography = DamThoaiTypography,
         shapes = DamThoaiShapes,
-        content = content
+        content = {
+            ProvideTextStyle(TextStyle(fontFamily = BeVietnamPro), content = content)
+        }
     )
 }

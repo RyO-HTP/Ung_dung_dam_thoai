@@ -24,12 +24,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.example.damthoai.hardware.PttKeyDemoScreen
 import com.example.damthoai.permission.PermissionScreen
 import com.example.damthoai.ui.channels.ChannelListScreen
+import com.example.damthoai.permission.MicDeniedScreen
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.GlassCard
@@ -74,11 +76,7 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.MicrophonePermission.route) {
-            PermissionScreen(
-                onAllPermissionsGranted = {
-                    navController.popBackStack()
-                }
-            )
+            MicDeniedScreen(onRetry = { navController.popBackStack() })
         }
 
         // === NHÓM B: VÀO KÊNH ===

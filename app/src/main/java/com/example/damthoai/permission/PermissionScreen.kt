@@ -1,22 +1,9 @@
 package com.example.damthoai.permission
-import com.example.damthoai.ui.theme.PermissionAmber
-import com.example.damthoai.ui.theme.PermissionBlue
-import com.example.damthoai.ui.theme.PermissionDarkGreen
-import com.example.damthoai.ui.theme.PermissionDeepOrange
-import com.example.damthoai.ui.theme.PermissionGreen
-import com.example.damthoai.ui.theme.PermissionLightAmber
-import com.example.damthoai.ui.theme.PermissionLightBlue
-import com.example.damthoai.ui.theme.PermissionLightGreen
-import com.example.damthoai.ui.theme.PermissionLightOrange
-import com.example.damthoai.ui.theme.PermissionLightRed
-import com.example.damthoai.ui.theme.PermissionOrange
-import com.example.damthoai.ui.theme.PermissionRed
-
-
 import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,24 +13,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -53,32 +30,33 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.damthoai.R
+import com.example.damthoai.ui.components.DamThoaiBackground
+import com.example.damthoai.ui.components.GlassCard
+import com.example.damthoai.ui.components.KitSwitch
+import com.example.damthoai.ui.components.PrimaryButton
+import com.example.damthoai.ui.components.TagLabel
+import com.example.damthoai.ui.theme.AccentRed
+import com.example.damthoai.ui.theme.MicDeniedBg
+import com.example.damthoai.ui.theme.MicDeniedBorder
+import com.example.damthoai.ui.theme.DamThoaiTheme
+import com.example.damthoai.ui.theme.DamType
+import com.example.damthoai.ui.theme.TextPrimary
+import com.example.damthoai.ui.theme.TextSecondary
 
-/**
- * =================================================================================
- * PHẦN GIAO DIỆN DEMO: Màn hình kiểm tra & cấp quyền (Permission Management Screen)
- * VAI TRÒ: Thành viên 4 (Hardware / Event Integration) - Tuần 1
- * =================================================================================
- *
- * Màn hình Compose DEMO cho phép Thành viên 4 (và nhóm) test trực tiếp toàn bộ luồng cấp quyền:
- * 1. Liệt kê danh sách nhóm quyền kèm trạng thái (Đã cấp / Chưa cấp / Bị từ chối vĩnh viễn).
- * 2. Cho phép bấm xin quyền lẻ từng nhóm hoặc bấm "CẤP TẤT CẢ QUYỀN CẦN THIẾT".
- * 3. Tự động xử lý mở Dialog hướng dẫn nếu bị từ chối vĩnh viễn (chuyển sang Cài đặt ứng dụng).
- * 4. Tích hợp nút kiểm tra & yêu cầu Tắt tối ưu hóa pin cho ứng dụng chạy nền.
- */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PermissionScreen(
     modifier: Modifier = Modifier,
@@ -87,358 +65,387 @@ fun PermissionScreen(
     val context = LocalContext.current
     val activity = context as? Activity
     val lifecycleOwner = LocalLifecycleOwner.current
-
-    // Thu thập trạng thái quyền thời gian thực từ StateFlow của PermissionManager
     val permissionStates by PermissionManager.permissionStates.collectAsStateWithLifecycle()
-
-    // Lưu trữ nhóm quyền đang được chọn để xin cấp
     var currentRequestingPermission by remember { mutableStateOf<AppPermission?>(null) }
-
-    // Dialog thông báo khi quyền bị từ chối vĩnh viễn hoặc cần giải thích (Rationale)
     var showSettingsDialogForPermission by remember { mutableStateOf<AppPermission?>(null) }
 
-    // Cập nhật lại trạng thái quyền mỗi khi ứng dụng Resume (người dùng quay lại từ Cài đặt)
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.EVENT_ON_RESUME) {
+            if (event == Lifecycle.Event.ON_RESUME) {
                 PermissionManager.refreshPermissionStates(context, activity)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(Unit) {
         PermissionManager.refreshPermissionStates(context, activity)
     }
 
-    // Launcher cấp quyền từ Activity Result API trong Jetpack Compose
-    val multiplePermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { _ ->
-        // Cập nhật lại trạng thái ngay sau khi người dùng bấm Chấp nhận/Từ chối trên Dialog hệ thống
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
         PermissionManager.refreshPermissionStates(context, activity)
-
-        // Kiểm tra xem nhóm vừa xin có bị từ chối vĩnh viễn không
-        currentRequestingPermission?.let { requestedPerm ->
-            val newState = PermissionManager.checkPermissionState(context, requestedPerm, activity)
+        currentRequestingPermission?.let { requested ->
+            val newState = PermissionManager.checkPermissionState(context, requested, activity)
             if (newState == PermissionState.PERMANENTLY_DENIED || newState == PermissionState.DENIED) {
-                showSettingsDialogForPermission = requestedPerm
+                showSettingsDialogForPermission = requested
             }
         }
         currentRequestingPermission = null
     }
 
-    val isAllRequiredGranted = PermissionManager.allRequiredGranted(context)
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "Quản Lý Quyền Hệ Thống",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            )
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(16.dp)
-        ) {
-            // Card tổng quan trạng thái ứng dụng
-            StatusBannerCard(isAllRequiredGranted = isAllRequiredGranted)
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Danh sách các nhóm quyền
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(AppPermission.entries) { appPerm ->
-                    val state = permissionStates[appPerm] ?: PermissionState.DENIED
-                    PermissionItemCard(
-                        appPermission = appPerm,
-                        permissionState = state,
-                        onRequestPermission = {
-                            if (appPerm == AppPermission.BACKGROUND) {
-                                // Với nhóm Background, mở Cài đặt Tắt tối ưu pin
-                                PermissionManager.requestIgnoreBatteryOptimizations(context)
-                            } else if (appPerm == AppPermission.NETWORK) {
-                                // Nhóm Network là Normal Permission, không cần xin
-                                PermissionManager.refreshPermissionStates(context, activity)
-                            } else {
-                                val manifestPerms = appPerm.getManifestPermissions()
-                                if (manifestPerms.isNotEmpty()) {
-                                    currentRequestingPermission = appPerm
-                                    multiplePermissionLauncher.launch(manifestPerms)
-                                }
-                            }
-                        }
-                    )
-                }
-
-                // Ghi chú dành cho dòng máy Xiaomi/OPPO/Samsung...
-                item {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.Top
-                        ) {
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = stringResource(id = R.string.perm_battery_note_xiaomi_oppo),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Nút "CẤP TẤT CẢ QUYỀN CẦN THIẾT"
-            Button(
-                onClick = {
-                    val allManifestPerms = AppPermission.entries
-                        .flatMap { it.getManifestPermissions().toList() }
-                        .distinct()
-                        .toTypedArray()
-
-                    if (allManifestPerms.isNotEmpty()) {
-                        multiplePermissionLauncher.launch(allManifestPerms)
-                    }
-                    if (!PermissionManager.isIgnoringBatteryOptimizations(context)) {
-                        PermissionManager.requestIgnoreBatteryOptimizations(context)
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isAllRequiredGranted) PermissionGreen else MaterialTheme.colorScheme.primary
-                )
-            ) {
-                Text(
-                    text = if (isAllRequiredGranted) "ĐÃ ĐỦ QUYỀN BẮT BUỘC - VÀO BỘ ĐÀM" else stringResource(id = R.string.perm_btn_grant_all),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
-                )
+    fun requestPermission(permission: AppPermission) {
+        if (permission == AppPermission.BACKGROUND) {
+            PermissionManager.requestIgnoreBatteryOptimizations(context)
+        } else {
+            val manifestPermissions = permission.getManifestPermissions()
+            if (manifestPermissions.isNotEmpty()) {
+                currentRequestingPermission = permission
+                permissionLauncher.launch(manifestPermissions)
             }
         }
     }
 
-    // Dialog thông báo hướng dẫn mở Cài đặt khi bị từ chối vĩnh viễn
-    showSettingsDialogForPermission?.let { perm ->
+    val allGranted = PermissionManager.allRequiredGranted(context)
+    PermissionScreenContent(
+        modifier = modifier,
+        states = permissionStates,
+        onRequest = ::requestPermission,
+        onContinue = {
+            if (allGranted) {
+                onAllPermissionsGranted()
+            } else {
+                val allManifestPermissions = AppPermission.entries
+                    .flatMap { it.getManifestPermissions().toList() }
+                    .distinct()
+                    .toTypedArray()
+                if (allManifestPermissions.isNotEmpty()) {
+                    permissionLauncher.launch(allManifestPermissions)
+                }
+                if (!PermissionManager.isIgnoringBatteryOptimizations(context)) {
+                    PermissionManager.requestIgnoreBatteryOptimizations(context)
+                }
+            }
+        }
+    )
+
+    showSettingsDialogForPermission?.let { permission ->
         AlertDialog(
             onDismissRequest = { showSettingsDialogForPermission = null },
             icon = {
                 Icon(
-                    painter = painterResource(com.example.damthoai.R.drawable.ic_alert),
+                    painter = painterResource(R.drawable.ic_alert),
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
+                    tint = AccentRed
                 )
             },
-            title = {
-                Text(text = stringResource(id = R.string.perm_permanently_denied_title))
-            },
+            title = { Text(text = androidx.compose.ui.res.stringResource(permission.titleRes)) },
             text = {
                 Text(
-                    text = stringResource(
-                        id = R.string.perm_permanently_denied_message,
-                        stringResource(id = perm.titleRes)
+                    text = androidx.compose.ui.res.stringResource(
+                        R.string.perm_permanently_denied_message,
+                        androidx.compose.ui.res.stringResource(permission.titleRes)
                     )
                 )
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        showSettingsDialogForPermission = null
-                        PermissionManager.openAppSettings(context)
-                    }
-                ) {
-                    Text(text = stringResource(id = R.string.perm_btn_open_settings))
+                TextButton(onClick = {
+                    showSettingsDialogForPermission = null
+                    PermissionManager.openAppSettings(context)
+                }) {
+                    Text(androidx.compose.ui.res.stringResource(R.string.perm_btn_open_settings))
                 }
             },
             dismissButton = {
-                TextButton(
-                    onClick = { showSettingsDialogForPermission = null }
-                ) {
-                    Text(text = stringResource(id = R.string.btn_cancel))
+                TextButton(onClick = { showSettingsDialogForPermission = null }) {
+                    Text(androidx.compose.ui.res.stringResource(R.string.btn_cancel))
                 }
             }
         )
     }
 }
 
-/**
- * Card hiển thị tổng quan trạng thái sẵn sàng của ứng dụng.
- */
 @Composable
-private fun StatusBannerCard(isAllRequiredGranted: Boolean) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isAllRequiredGranted) PermissionLightGreen else PermissionLightOrange
-        ),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                painter = painterResource(if (isAllRequiredGranted) com.example.damthoai.R.drawable.ic_check else com.example.damthoai.R.drawable.ic_alert),
-                contentDescription = null,
-                tint = if (isAllRequiredGranted) PermissionGreen else PermissionOrange
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text(
-                    text = if (isAllRequiredGranted) "Sẵn sàng hoạt động" else "Cần cấp thêm quyền",
-                    fontWeight = FontWeight.Bold,
-                    color = if (isAllRequiredGranted) PermissionDarkGreen else PermissionDeepOrange,
-                    fontSize = 16.sp
-                )
-                Text(
-                    text = if (isAllRequiredGranted)
-                        "Ứng dụng đã có đầy đủ quyền bắt buộc để truyền nhận tín hiệu bộ đàm."
-                    else
-                        "Bộ đàm cần quyền Micro và Chạy nền để không bị ngắt kết nối.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.DarkGray
-                )
-            }
-        }
-    }
-}
-
-/**
- * Card hiển thị thông tin và nút điều khiển của từng nhóm [AppPermission].
- */
-@Composable
-private fun PermissionItemCard(
-    appPermission: AppPermission,
-    permissionState: PermissionState,
-    onRequestPermission: () -> Unit
+private fun PermissionScreenContent(
+    modifier: Modifier = Modifier,
+    states: Map<AppPermission, PermissionState>,
+    onRequest: (AppPermission) -> Unit,
+    onContinue: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+    DamThoaiBackground(modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 20.dp, end = 20.dp, top = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(22.dp)
+                    .padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Text("9:41", style = DamType.Small.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold), color = TextPrimary)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = stringResource(id = appPermission.titleRes),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
+                    Icon(
+                        painter = painterResource(R.drawable.ic_wifi),
+                        contentDescription = "Wi-Fi",
+                        tint = TextPrimary,
+                        modifier = Modifier.size(14.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    // Badge Bắt buộc / Tùy chọn
-                    BadgeText(
-                        text = if (appPermission.isRequired) "Bắt buộc" else "Tùy chọn",
-                        backgroundColor = if (appPermission.isRequired) PermissionLightRed else PermissionLightBlue,
-                        textColor = if (appPermission.isRequired) PermissionRed else PermissionBlue
-                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("92%", style = DamType.Small.copy(fontSize = 12.sp), color = TextPrimary)
                 }
+            }
 
-                // Badge trạng thái hiện tại (Đã cấp / Chưa cấp / Bị chặn)
-                val statusBgColor = when (permissionState) {
-                    PermissionState.GRANTED -> PermissionLightGreen
-                    PermissionState.DENIED -> PermissionLightAmber
-                    PermissionState.PERMANENTLY_DENIED -> PermissionLightRed
-                }
-                val statusTextColor = when (permissionState) {
-                    PermissionState.GRANTED -> PermissionGreen
-                    PermissionState.DENIED -> PermissionAmber
-                    PermissionState.PERMANENTLY_DENIED -> PermissionRed
-                }
-
-                BadgeText(
-                    text = stringResource(id = permissionState.statusTextRes),
-                    backgroundColor = statusBgColor,
-                    textColor = statusTextColor
+            Column(modifier = Modifier.padding(top = 10.dp)) {
+                Text("Bước cuối cùng", style = DamType.Title, color = TextPrimary)
+                Text(
+                    "Cấp quyền để bộ đàm hoạt động trơn tru.",
+                    modifier = Modifier.padding(top = 8.dp),
+                    style = DamType.Body,
+                    color = TextSecondary
                 )
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            PermissionRow(
+                icon = R.drawable.ic_mic,
+                title = "Micro",
+                description = "Để mọi người nghe bạn nói",
+                required = true,
+                granted = states[AppPermission.AUDIO] == PermissionState.GRANTED
+            ) { onRequest(AppPermission.AUDIO) }
+
+            PermissionRow(
+                icon = R.drawable.ic_bell,
+                title = "Thông báo",
+                description = "Nhận cảnh báo khẩn cấp",
+                granted = states[AppPermission.NOTIFICATION] == PermissionState.GRANTED
+            ) { onRequest(AppPermission.NOTIFICATION) }
+
+            PermissionRow(
+                icon = R.drawable.ic_bt,
+                title = "Bluetooth và thiết bị ở gần",
+                description = "Tai nghe, kết nối ngang hàng",
+                granted = states[AppPermission.BLUETOOTH] == PermissionState.GRANTED
+            ) { onRequest(AppPermission.BLUETOOTH) }
+
+            PermissionRow(
+                icon = R.drawable.ic_zap,
+                title = "Chạy nền",
+                description = "Giữ app hoạt động khi tắt màn hình",
+                granted = states[AppPermission.BACKGROUND] == PermissionState.GRANTED
+            ) { onRequest(AppPermission.BACKGROUND) }
 
             Text(
-                text = stringResource(id = appPermission.descriptionRes),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = "Camera sẽ được hỏi khi bạn quét mã QR lần đầu.",
+                style = DamType.Small,
+                color = TextSecondary
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            if (permissionState != PermissionState.GRANTED && appPermission != AppPermission.NETWORK) {
-                if (appPermission == AppPermission.BACKGROUND) {
-                    OutlinedButton(
-                        onClick = onRequestPermission,
-                        modifier = Modifier.align(Alignment.End)
-                    ) {
-                        Icon(painter = painterResource(com.example.damthoai.R.drawable.ic_sliders), contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = stringResource(id = R.string.perm_btn_ignore_battery))
-                    }
-                } else {
-                    Button(
-                        onClick = onRequestPermission,
-                        modifier = Modifier.align(Alignment.End),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                    ) {
-                        Text(text = stringResource(id = R.string.perm_btn_grant))
-                    }
-                }
-            }
+            Spacer(Modifier.weight(1f))
+            PrimaryButton(
+                text = "Tiếp tục",
+                onClick = onContinue,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 26.dp)
+            )
         }
     }
 }
 
-/**
- * Composable vẽ nhãn Badge màu sắc nhỏ gọn.
- */
 @Composable
-private fun BadgeText(
-    text: String,
-    backgroundColor: Color,
-    textColor: Color
+private fun PermissionRow(
+    icon: Int,
+    title: String,
+    description: String,
+    granted: Boolean,
+    required: Boolean = false,
+    onRequest: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .background(color = backgroundColor, shape = RoundedCornerShape(6.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp)
     ) {
-        Text(
-            text = text,
-            color = textColor,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.White.copy(alpha = 0.09f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(icon),
+                    contentDescription = null,
+                    tint = TextPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 10.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, style = DamType.Heading, color = TextPrimary)
+                    if (required) {
+                        Spacer(Modifier.width(6.dp))
+                        TagLabel("BẮT BUỘC", AccentRed)
+                    }
+                }
+                Text(
+                    description,
+                    modifier = Modifier.padding(top = 2.dp),
+                    style = DamType.Muted,
+                    color = TextSecondary
+                )
+            }
+            KitSwitch(
+                checked = granted,
+                onCheckedChange = { if (it) onRequest() },
+                enabled = !granted
+            )
+        }
+    }
+}
+
+@Preview(widthDp = 390, heightDp = 844, showBackground = true)
+@Composable
+private fun PermissionScreenPreview() {
+    DamThoaiTheme {
+        PermissionScreenContent(
+            states = mapOf(
+                AppPermission.AUDIO to PermissionState.GRANTED,
+                AppPermission.NOTIFICATION to PermissionState.DENIED,
+                AppPermission.BLUETOOTH to PermissionState.DENIED,
+                AppPermission.BACKGROUND to PermissionState.DENIED
+            ),
+            onRequest = {},
+            onContinue = {}
         )
+    }
+}
+
+@Composable
+fun MicDeniedScreen(onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val activity = context as? Activity
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                PermissionManager.refreshPermissionStates(context, activity)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(Unit) { PermissionManager.refreshPermissionStates(context, activity) }
+
+    MicDeniedContent(
+        modifier = modifier,
+        onOpenSettings = { PermissionManager.openAppSettings(context) },
+        onRetry = {
+            PermissionManager.refreshPermissionStates(context, activity)
+            if (PermissionManager.checkPermissionState(context, AppPermission.AUDIO, activity) == PermissionState.GRANTED) {
+                onRetry()
+            }
+        }
+    )
+}
+
+@Composable
+private fun MicDeniedContent(
+    modifier: Modifier = Modifier,
+    onOpenSettings: () -> Unit,
+    onRetry: () -> Unit
+) {
+    DamThoaiBackground(modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 20.dp, end = 20.dp, top = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(22.dp)
+                    .padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("9:41", style = DamType.Small.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold), color = TextPrimary)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_wifi),
+                        contentDescription = "Wi-Fi",
+                        tint = TextPrimary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("92%", style = DamType.Small.copy(fontSize = 12.sp), color = TextPrimary)
+                }
+            }
+            Spacer(Modifier.weight(0.9f))
+            Box(
+                modifier = Modifier
+                    .size(110.dp)
+                    .clip(CircleShape)
+                    .background(MicDeniedBg)
+                    .border(1.5.dp, MicDeniedBorder, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_mic),
+                    contentDescription = null,
+                    tint = com.example.damthoai.ui.theme.TagRedText,
+                    modifier = Modifier.size(54.dp)
+                )
+            }
+            Column(
+                modifier = Modifier.padding(top = 30.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("Cần quyền Micro", style = DamType.Title, color = TextPrimary, textAlign = TextAlign.Center)
+                Text(
+                    "Không có micro thì bạn không nói được. Hãy bật quyền Micro cho Đàm Thoại trong cài đặt điện thoại.",
+                    modifier = Modifier.padding(top = 10.dp, start = 12.dp, end = 12.dp),
+                    style = DamType.Body,
+                    color = TextSecondary,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 21.sp
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            PrimaryButton(
+                text = "Mở cài đặt điện thoại",
+                onClick = onOpenSettings,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(12.dp))
+            com.example.damthoai.ui.components.SecondaryButton(
+                text = "Tôi đã bật, thử lại",
+                onClick = onRetry,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 26.dp)
+            )
+        }
+    }
+}
+
+@Preview(widthDp = 390, heightDp = 844, showBackground = true)
+@Composable
+private fun MicDeniedScreenPreview() {
+    DamThoaiTheme {
+        MicDeniedContent(onOpenSettings = {}, onRetry = {})
     }
 }

@@ -11,7 +11,7 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
-fun cssGradient(angleDeg: Float, startColor: Color, endColor: Color): Brush = object : ShaderBrush() {
+fun cssGradient(angleDeg: Float, colors: List<Color>): Brush = object : ShaderBrush() {
     override fun createShader(size: Size): Shader {
         val angle = Math.toRadians(angleDeg.toDouble())
         val direction = Offset(sin(angle).toFloat(), -cos(angle).toFloat())
@@ -20,11 +20,14 @@ fun cssGradient(angleDeg: Float, startColor: Color, endColor: Color): Brush = ob
         return LinearGradientShader(
             center - direction * halfLength,
             center + direction * halfLength,
-            listOf(startColor, endColor)
+            colors
         )
     }
 }
 
-val PrimaryBrush: Brush get() = cssGradient(135f, PrimaryStart, PrimaryEnd)
-val DangerBrush: Brush get() = cssGradient(135f, DangerStart, DangerEnd)
-val SwitchOnBrush: Brush get() = cssGradient(135f, PrimaryStart, AccentCyan)
+fun cssGradient(angleDeg: Float, startColor: Color, endColor: Color): Brush =
+    cssGradient(angleDeg, listOf(startColor, endColor))
+
+val PrimaryBrush: Brush get() = cssGradient(135f, listOf(PrimaryStart, PrimaryEnd))
+val DangerBrush: Brush get() = cssGradient(135f, listOf(DangerStart, DangerEnd))
+val SwitchOnBrush: Brush get() = cssGradient(135f, listOf(PrimaryStart, AccentCyan))

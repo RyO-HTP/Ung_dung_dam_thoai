@@ -11,12 +11,12 @@ val PocketBase = Color(0xFF040618)
 val PocketGlow = Color(0x612F6BFF)
 val EmergGlow = Color(0x80FF3D6B)
 val EmergTop = Color(0xFF1A0820)
-
 val PrimaryStart = Color(0xFF2F6BFF)
 val PrimaryEnd = Color(0xFF6C3BFF)
 val PrimaryShadow = Color(0x664F64FF)
 val DangerStart = Color(0xFFFF3D6B)
 val DangerEnd = Color(0xFFB0123A)
+val DangerShadow = Color(0x73FF3D6B)
 val DangerText = Color(0xFFFF9DB0)
 
 val GlassBg = Color(0x12FFFFFF)
@@ -29,6 +29,11 @@ val TrackBg = Color(0x26FFFFFF)
 val SwitchOff = Color(0x2EFFFFFF)
 val NavBg = Color(0xD90E1446)
 val NavBorder = Color(0x24FFFFFF)
+val NavGlow = Color(0x2E4FA3FF)
+val NavShadow = Color(0x73000000)
+val StarBlue = Color(0xFFCFE0FF)
+val MicDeniedBg = Color(0x24FF5C7A)
+val MicDeniedBorder = Color(0x80FF5C7A)
 val SheetBg = Color(0xFA121A56)
 val RoleToastBg = Color(0xF7121A56)
 val Scrim = Color(0xA6040618)
@@ -112,7 +117,6 @@ val AvatarGradients = listOf(
     Color(0xFF7CF0C5) to Color(0xFF2BA3A3),
     Color(0xFFC9A8FF) to Color(0xFF7A4DFF),
 )
-
 val PrimaryGlow = PrimaryShadow
 val GlassBgHover = Color(0x24FFFFFF)
 val BgGradientTop = BgTop
