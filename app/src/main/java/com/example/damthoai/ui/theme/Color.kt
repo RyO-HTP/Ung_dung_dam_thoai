@@ -1,45 +1,77 @@
-/**
- * Path: app/src/main/java/com/example/damthoai/ui/theme/Color.kt
- *
- * Khối KDoc tiếng Việt:
- * Bảng màu Design System cho ứng dụng bộ đàm "Đàm Thoại".
- * Phong cách: Dark mode "bầu trời đêm / không gian", kính mờ (glassmorphism),
- * điểm xuyết gradient xanh-tím, cyan, amber, mint và đỏ khẩn cấp.
- */
 package com.example.damthoai.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// --- NỀN (BACKGROUND & GLOWS) ---
-// Gradient dọc nền chính
-val BgGradientTop = Color(0xFF060A1F)      // Xanh navy rất đậm phía trên
-val BgGradientBottom = Color(0xFF0B1240)   // Xanh navy sâu phía dưới
-val GlowPurple = Color(0xFF3B2A8C)         // Vệt sáng tím góc phải trên
-val GlowBlue = Color(0xFF14308A)           // Vệt xanh dương góc trái giữa
-val PocketBg = Color(0xFF030511)           // Nền màn hình Bỏ túi (Pocket) tối gần đen
+/**
+ * Color.kt (BẢN CHUẨN) - màu lấy TRỰC TIẾP từ CSS trong file HTML thiết kế, KHÔNG phải ước lượng từ ảnh PDF.
+ * Thay toàn bộ file Color.kt cũ bằng file này. Giữ tên cũ ở cuối file để code cũ không bị lỗi.
+ */
+// ---- NỀN ----
+val BgTop = Color(0xFF070B24)  // gradient dọc: 0%
+val BgMid = Color(0xFF0B1245)  // gradient dọc: 70%
+val BgBottom = Color(0xFF120C45)  // gradient dọc: 100%
+val GlowPurple = Color(0x8C6C3BFF)  // vệt tím góc phải trên
+val GlowBlue = Color(0x592F6BFF)  // vệt xanh trái giữa
+val PocketBase = Color(0xFF040618)
+val PocketGlow = Color(0x612F6BFF)
+val EmergGlow = Color(0x80FF3D6B)
+val EmergTop = Color(0xFF1A0820)
+// ---- NÚT CHÍNH ----
+val PrimaryStart = Color(0xFF2F6BFF)
+val PrimaryEnd = Color(0xFF6C3BFF)
+val PrimaryShadow = Color(0x664F64FF)
+val DangerStart = Color(0xFFFF3D6B)
+val DangerEnd = Color(0xFFB0123A)
+val DangerShadow = Color(0x73FF3D6B)
+val DangerText = Color(0xFFFF9DB0)  // chữ link nguy hiểm
+// ---- KÍNH MỜ ----
+val GlassBg = Color(0x12FFFFFF)
+val GlassBorder = Color(0x21FFFFFF)
+val IconBoxBg = Color(0x17FFFFFF)
+val IconBoxBorder = Color(0x1FFFFFFF)
+val GhostBtnBg = Color(0x17FFFFFF)
+val GhostBtnBorder = Color(0x24FFFFFF)
+val TrackBg = Color(0x26FFFFFF)  // rãnh slider
+val SwitchOff = Color(0x2EFFFFFF)
+val NavBg = Color(0xD90E1446)
+val NavBorder = Color(0x24FFFFFF)
+val NavGlow = Color(0x2E4FA3FF)
+val NavShadow = Color(0x73000000)
+val StarBlue = Color(0xFFCFE0FF)
+val MicDeniedBg = Color(0x24FF5C7A)
+val MicDeniedBorder = Color(0x80FF5C7A)
+val SheetBg = Color(0xFA121A56)
+val Scrim = Color(0xA6040618)
+val LcdBg = Color(0xFF050A24)
+val LcdBorder = Color(0x595EE1FF)
+// ---- NHẤN ----
+val AccentCyan = Color(0xFF5EE1FF)
+val AccentAmber = Color(0xFFFFC857)
+val AccentMint = Color(0xFF7CF0C5)
+val AccentRed = Color(0xFFFF5C7A)
+val TagCyanBg = Color(0x265EE1FF)
+val TagAmberBg = Color(0x2EFFC857)
+val TagRedBg = Color(0x33FF5C7A)
+val TagRedText = Color(0xFFFF9DB0)
+val CueBorder = Color(0x66FFC857)
+// ---- CHỮ ----
+val TextPrimary = Color(0xFFF4F7FF)
+val TextSecondary = Color(0xFF9FB0E6)  // chữ phụ, nhãn
+val TextPlaceholder = Color(0xFF8F9FD6)
+// ---- AVATAR (gradient chéo 135 độ) ----
+val AvatarGradients = listOf(
+    Color(0xFF4FA3FF) to Color(0xFF6C5CFF),
+    Color(0xFFFF8FB1) to Color(0xFFFF5C7A),
+    Color(0xFF5EE1FF) to Color(0xFF2F6BFF),
+    Color(0xFFFFC857) to Color(0xFFFF8A3D),
+    Color(0xFF7CF0C5) to Color(0xFF2BA3A3),
+    Color(0xFFC9A8FF) to Color(0xFF7A4DFF),
+)
 
-// --- NÚT CHÍNH & GRADIENT (PRIMARY BUTTONS) ---
-val PrimaryStart = Color(0xFF3366FF)       // Xanh dương bứt phá
-val PrimaryEnd = Color(0xFF6B3BFF)         // Tím hiện đại
-val PrimaryGlow = Color(0x663366FF)        // Đổ bóng hào quang nút chính
-
-// --- NÚT KHẨN CẤP / NGUY HIỂM (DANGER BUTTONS) ---
-val DangerStart = Color(0xFFFF3D6E)        // Hồng đỏ khẩn cấp
-val DangerEnd = Color(0xFFB3153C)          // Đỏ sẫm
-val DangerText = Color(0xFFFF9AAE)         // Chữ hồng nhạt cho link nguy hiểm (Rời sự kiện, Xóa...)
-
-// --- THẺ KÍNH MỜ (GLASSMORPHISM) ---
-val GlassBg = Color(0x14FFFFFF)            // Trắng alpha 8% cho nền thẻ
-val GlassBorder = Color(0x1FFFFFFF)        // Trắng alpha 12% cho viền thẻ
-val GlassBgHover = Color(0x24FFFFFF)       // Trắng alpha 14% khi nhấn
-
-// --- MÀU NHẤN & TRẠNG THÁI (ACCENT COLORS) ---
-val AccentCyan = Color(0xFF4DDCFF)         // Cyan: tab active, icon kênh, sóng âm đang nói, mã PIN
-val AccentAmber = Color(0xFFFFC857)        // Vàng amber: nhãn ƯU TIÊN, LIVE CUE, HẠ ÂM 80%, CẤP 1, cảnh báo
-val AccentMint = Color(0xFF6EE7B7)         // Xanh mint: trạng thái mạng tốt (Internet · 42 ms)
-val AccentRed = Color(0xFFFF4D6D)          // Đỏ: offline, khẩn cấp, bị ngắt mic
-
-// --- MÀU CHỮ (TYPOGRAPHY COLORS) ---
-val TextPrimary = Color(0xFFF4F6FF)        // Trắng ngà cho tiêu đề và chữ chính
-val TextSecondary = Color(0xFFA9B4E8)      // Tím xanh nhạt cho thông tin phụ/mô tả
-val TextMuted = Color(0xFF6A75A0)          // Tím xám mờ cho thông tin bổ sung
+// ---- TÊN CŨ (alias) để code tuần 1-2 vẫn build ----
+val PrimaryGlow = PrimaryShadow
+val GlassBgHover = Color(0x24FFFFFF)
+val BgGradientTop = BgTop
+val BgGradientBottom = BgBottom
+val PocketBg = PocketBase
+val TextMuted = TextSecondary

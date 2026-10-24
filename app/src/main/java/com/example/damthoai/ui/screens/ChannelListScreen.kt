@@ -11,9 +11,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -25,9 +22,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.damthoai.R
 
 @Composable
 fun ChannelListScreen(
@@ -53,7 +52,7 @@ fun ChannelListScreen(
             }
 
             OutlinedButton(onClick = onNavigateToCreateEvent) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = "Tạo sự kiện")
+                Icon(painter = painterResource(R.drawable.ic_plus), contentDescription = "Tạo sự kiện")
                 Text("Tạo sự kiện")
             }
         }
@@ -117,7 +116,7 @@ fun ChannelListScreen(
                         Text(text = name, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                         Text(text = subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Icon(imageVector = Icons.Default.VolumeUp, contentDescription = "Sound")
+                    Icon(painter = painterResource(R.drawable.ic_vol), contentDescription = "Sound")
                 }
             }
         }

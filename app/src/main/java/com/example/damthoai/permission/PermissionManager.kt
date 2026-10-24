@@ -38,6 +38,27 @@ object PermissionManager {
     )
     val permissionStates: StateFlow<Map<AppPermission, PermissionState>> = _permissionStates.asStateFlow()
 
+    fun hasAudioAndCameraPermissions(context: Context): Boolean =
+        checkPermissionState(context, AppPermission.AUDIO) == PermissionState.GRANTED &&
+            checkPermissionState(context, AppPermission.CAMERA) == PermissionState.GRANTED
+
+    fun hasNetworkAndBluetoothPermissions(context: Context): Boolean =
+        checkPermissionState(context, AppPermission.NETWORK) == PermissionState.GRANTED &&
+            checkPermissionState(context, AppPermission.BLUETOOTH) == PermissionState.GRANTED
+
+    fun hasBackgroundExecutionPermissions(context: Context): Boolean =
+        checkPermissionState(context, AppPermission.BACKGROUND) == PermissionState.GRANTED
+
+    fun requestPermissions(activity: Activity, requestCode: Int) {
+        val permissions = AppPermission.entries
+            .flatMap { it.getManifestPermissions().toList() }
+            .distinct()
+            .toTypedArray()
+        if (permissions.isNotEmpty()) {
+            ActivityCompat.requestPermissions(activity, permissions, requestCode)
+        }
+    }
+
     /**
      * Cập nhật lại trạng thái tất cả các nhóm quyền trong ứng dụng.
      * NÊN gọi hàm này trong `onResume()` của Activity hoặc khi nhận kết quả từ Activity Result API.

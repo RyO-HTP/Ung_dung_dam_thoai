@@ -23,12 +23,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.example.damthoai.permission.PermissionScreen
+import com.example.damthoai.permission.MicDeniedScreen
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.DamThoaiBackground
+import com.example.damthoai.ui.components.BgVariant
 import com.example.damthoai.ui.components.GlassCard
 import com.example.damthoai.ui.components.PrimaryButton
 import com.example.damthoai.ui.components.SecondaryButton
@@ -67,11 +70,7 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.MicrophonePermission.route) {
-            PlaceholderScreen(
-                title = "CẦN QUYỀN MICRO",
-                description = "Cảnh báo khi chưa được cấp quyền micro để đàm thoại PTT",
-                onBack = { navController.popBackStack() }
-            )
+            MicDeniedScreen(onRetry = { navController.popBackStack() })
         }
 
         // === NHÓM B: VÀO KÊNH ===
@@ -146,7 +145,7 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.PocketMode.route) {
-            DamThoaiBackground(isPocketMode = true) {
+            DamThoaiBackground(variant = BgVariant.Pocket) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
