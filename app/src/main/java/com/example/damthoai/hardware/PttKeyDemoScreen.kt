@@ -270,6 +270,7 @@ fun PttKeyDemoScreen(
             }
         }
     }
+    }
 }
 
 @Composable

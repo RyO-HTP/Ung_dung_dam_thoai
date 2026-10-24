@@ -53,7 +53,6 @@ import com.example.damthoai.R
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.example.damthoai.R
 import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.NavBarShape
 import com.example.damthoai.ui.theme.NavBg
