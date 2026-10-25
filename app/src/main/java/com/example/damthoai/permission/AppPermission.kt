@@ -59,7 +59,8 @@ enum class AppPermission(
 
     /**
      * Nhóm Bluetooth: Kết nối tai nghe không dây và nút PTT Bluetooth ngoại vi.
-     * Từ Android 12 (API 31) trở lên, cần xin quyền Runtime [BLUETOOTH_CONNECT] và [BLUETOOTH_SCAN].
+     * Từ Android 12 (API 31) trở lên, chỉ cần [BLUETOOTH_CONNECT] để dùng tai nghe đã ghép đôi.
+     * Nút Bluetooth rời là thiết bị HID, hệ thống tự gửi KeyEvent nên không cần quét Bluetooth.
      * Android 11 trở xuống dùng quyền Normal trong Manifest.
      */
     BLUETOOTH(
@@ -70,8 +71,7 @@ enum class AppPermission(
         override fun getManifestPermissions(): Array<String> {
             return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 arrayOf(
-                    Manifest.permission.BLUETOOTH_CONNECT,
-                    Manifest.permission.BLUETOOTH_SCAN
+                    Manifest.permission.BLUETOOTH_CONNECT
                 )
             } else {
                 // Trên API < 31, BLUETOOTH và BLUETOOTH_ADMIN là Normal permissions
@@ -105,7 +105,7 @@ enum class AppPermission(
     BACKGROUND(
         titleRes = R.string.perm_title_background,
         descriptionRes = R.string.perm_desc_background,
-        isRequired = true
+        isRequired = false
     ) {
         override fun getManifestPermissions(): Array<String> {
             // Không có quyền runtime chuẩn dạng mảng String, xử lý qua PowerManager API
@@ -121,7 +121,7 @@ enum class AppPermission(
     NETWORK(
         titleRes = R.string.perm_title_network,
         descriptionRes = R.string.perm_desc_network,
-        isRequired = true
+        isRequired = false
     ) {
         override fun getManifestPermissions(): Array<String> {
             // Normal permissions - HĐH tự động cấp

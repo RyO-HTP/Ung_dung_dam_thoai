@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- TV1 dùng mDNS để tìm thiết bị trong mạng cục bộ từ Tuần 5. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
@@ -28,6 +30,9 @@
         android:name="android.hardware.camera.autofocus"
         android:required="false" />
     <uses-feature
+        android:name="android.hardware.camera.flash"
+        android:required="false" />
+    <uses-feature
         android:name="android.hardware.microphone"
         android:required="true" />
 
@@ -41,7 +46,6 @@
 
     <!-- Bluetooth Modern (Android 12 / API 31 trở lên) -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
 
     <!-- Thông báo hệ thống (Android 13 / API 33 trở lên) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
