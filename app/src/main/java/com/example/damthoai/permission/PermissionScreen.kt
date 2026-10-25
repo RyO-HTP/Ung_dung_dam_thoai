@@ -130,6 +130,9 @@ fun PermissionScreen(
                     showSettingsDialogForPermission = permanentlyDenied
                 }
             }
+            // These stages are handled by the stage effect below.
+            ContinueRequestStage.BATTERY,
+            ContinueRequestStage.DONE -> Unit
         }
     }
 
