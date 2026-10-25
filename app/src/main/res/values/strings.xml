@@ -1,0 +1,74 @@
+<resources>
+    <string name="app_name">Đàm Thoại</string>
+    <string name="app_tagline">Hệ thống bộ đàm sự kiện chuyên nghiệp</string>
+
+    <!-- Navigation & Bottom Bar -->
+    <string name="tab_channels">Kênh</string>
+    <string name="tab_settings">Cài đặt</string>
+    <string name="btn_ptt_mic">PTT Mic</string>
+    <string name="btn_back">Quay lại</string>
+    <string name="btn_continue">Tiếp tục</string>
+    <string name="btn_cancel">Hủy</string>
+
+    <!-- Trạng thái -->
+    <string name="status_network_good">Internet · 42 ms</string>
+    <string name="status_priority">ƯU TIÊN</string>
+    <string name="status_attenuation">HẠ ÂM 80%</string>
+    <string name="status_level_1">CẤP 1</string>
+    <string name="status_pocket_locked">ĐÃ KHÓA MÀN HÌNH CHỐNG CHẠM</string>
+
+    <!-- Section Labels -->
+    <string name="section_frequency_pin">TẦN SỐ ẢO · PIN 6 SỐ</string>
+    <string name="section_channel_volume">ÂM LƯỢNG TỪNG KÊNH</string>
+    <string name="section_quick_join">KÊNH VÀ MÃ VÀO NHANH</string>
+
+    <!-- Quản lý quyền hệ thống (Permission Management - Tuần 1) -->
+    <string name="perm_title_audio">Micro &amp; Âm thanh</string>
+    <string name="perm_desc_audio">Bắt buộc để thu âm truyền giọng nói qua bộ đàm và chỉnh âm lượng.</string>
+
+    <string name="perm_title_camera">Camera &amp; Đèn Flash</string>
+    <string name="perm_desc_camera">Dùng để bật đèn Flash nháy báo động khẩn cấp (Emergency Ping).</string>
+
+    <string name="perm_title_bluetooth">Tai nghe &amp; Phím Bluetooth</string>
+    <string name="perm_desc_bluetooth">Dùng kết nối tai nghe không dây và phím bấm PTT Bluetooth rời.</string>
+
+    <string name="perm_title_notification">Thông báo hệ thống</string>
+    <string name="perm_desc_notification">Hiển thị trạng thái kênh đàm thoại đang chạy và tín hiệu khẩn cấp.</string>
+
+    <string name="perm_title_background">Chạy nền &amp; Bỏ tối ưu pin</string>
+    <string name="perm_desc_background">Giữ kết nối bộ đàm liên tục ngay cả khi tắt màn hình hoặc khóa máy.</string>
+
+    <string name="perm_title_network">Kết nối Mạng &amp; Wi-Fi</string>
+    <string name="perm_desc_network">Cho phép truyền nhận dữ liệu bộ đàm qua Wi-Fi hoặc 4G/5G.</string>
+
+    <!-- Trạng thái quyền -->
+    <string name="perm_status_granted">Đã cấp quyền</string>
+    <string name="perm_status_denied">Chưa cấp quyền</string>
+    <string name="perm_status_permanently_denied">Bị chặn vĩnh viễn</string>
+
+    <!-- Nút bấm & Hướng dẫn Quyền -->
+    <string name="perm_btn_grant">Cấp quyền</string>
+    <string name="perm_btn_grant_all">CẤP TẤT CẢ QUYỀN CẦN THIẾT</string>
+    <string name="perm_btn_open_settings">Mở Cài đặt ứng dụng</string>
+    <string name="perm_btn_ignore_battery">Tắt tối ưu hóa pin</string>
+
+    <string name="perm_rationale_title">Cần cấp quyền để hoạt động</string>
+    <string name="perm_rationale_message">Ứng dụng bộ đàm \"Đàm Thoại\" cần quyền %1$s để điều phối liên lạc sự kiện. Vui lòng cấp quyền để tiếp tục.</string>
+    <string name="perm_permanently_denied_title">Quyền bị từ chối vĩnh viễn</string>
+    <string name="perm_permanently_denied_message">Bạn đã chọn \"Không hỏi lại\". Vui lòng vào Cài đặt ứng dụng -> Quyền để bật thủ công quyền %1$s.</string>
+    <string name="perm_battery_note_xiaomi_oppo">Lưu ý: Đối với các dòng máy Xiaomi, OPPO, Vivo, Samsung..., bạn cần vào Cài đặt ứng dụng -> Bật \"Tự khởi chạy\" (Autostart) và đặt Pin thành \"Không hạn chế\" để bộ đàm không bị đứt kết nối khi tắt màn hình.</string>
+
+    <!-- Quản lý Phím cứng PTT (Hardware Key Mapping - Tuần 2) -->
+    <string name="ptt_status_speaking">ĐANG NÓI (MIC BẬT)</string>
+    <string name="ptt_status_listening">ĐANG NGHE (MIC TẮT)</string>
+    <string name="ptt_source_label">Nguồn kích hoạt: %1$s</string>
+    <string name="ptt_source_none">Chưa bấm phím nào</string>
+
+    <string name="ptt_setting_title">Cấu hình phím Volume PTT</string>
+    <string name="ptt_setting_mode_enabled">Bật chế độ bắt phím cứng PTT</string>
+    <string name="ptt_setting_both">Cả 2 phím Tăng &amp; Giảm âm lượng</string>
+    <string name="ptt_setting_vol_down_only">Chỉ phím Giảm âm lượng (Volume Down)</string>
+    <string name="ptt_setting_vol_up_only">Chỉ phím Tăng âm lượng (Volume Up)</string>
+
+    <string name="ptt_note_foreground_limit">Lưu ý: Hiện tại phím cứng chỉ hoạt động khi màn hình sáng và ứng dụng ở Foreground. Tính năng bắt phím khi tắt màn hình sẽ sử dụng MediaSession ở Tuần 3.</string>
+</resources>

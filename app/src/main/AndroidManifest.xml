@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ====================================================================== -->
+    <!-- 1. QUYỀN THÔNG THƯỜNG (NORMAL PERMISSIONS)                           -->
+    <!-- HĐH tự cấp quyền khi cài đặt, chỉ cần khai báo trong Manifest.        -->
+    <!-- ====================================================================== -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- ====================================================================== -->
+    <!-- 2. QUYỀN NGUY HIỂM (RUNTIME PERMISSIONS)                               -->
+    <!-- Phải xin người dùng chấp thuận lúc runtime trước khi sử dụng.          -->
+    <!-- ====================================================================== -->
+    <!-- Micro & Ghi âm (Bắt buộc cho TV2/TV4) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Camera / Đèn Flash nháy khẩn cấp Emergency Ping (TV4) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="true" />
+
+    <!-- Bluetooth Legacy (Android 11 / API 30 trở xuống) -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+
+    <!-- Bluetooth Modern (Android 12 / API 31 trở lên) -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+
+    <!-- Thông báo hệ thống (Android 13 / API 33 trở lên) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- ====================================================================== -->
+    <!-- 3. QUYỀN CHẠY NỀN & NĂNG LƯỢNG (BACKGROUND & POWER)                     -->
+    <!-- Đảm bảo ứng dụng chạy liên tục khi tắt màn hình cho bộ đàm            -->
+    <!-- ====================================================================== -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Ung_dung_dam_thoai">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Ung_dung_dam_thoai">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+
+</manifest>
