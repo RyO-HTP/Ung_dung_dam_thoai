@@ -18,6 +18,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.ui.Modifier
+import com.example.damthoai.hardware.HandsFreeSession
 import com.example.damthoai.hardware.HardwareKeyHandler
 import com.example.damthoai.hardware.PttController
 import com.example.damthoai.permission.PermissionManager
@@ -30,6 +31,8 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        HandsFreeSession.initialize(this)
 
         // Bật edge-to-edge tràn viền màn hình
         enableEdgeToEdge()
@@ -81,12 +84,12 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * AN TOÀN HỆ THỐNG: Ngắt Micro khi Activity tạm dừng, trừ khi có phiên chạy nền.
+     * AN TOÀN HỆ THỐNG: Ngắt Micro khi Activity tạm dừng, trừ khi capture hoặc phiên chạy nền đang hoạt động.
      */
     override fun onPause() {
         super.onPause()
-        // Giữ phiên PTT nếu có phiên chạy nền đã được đăng ký.
-        if (!PttController.backgroundSessionActive.value) {
+        // Giữ PTT khi capture đang chạy hoặc TV2 đã đăng ký phiên chạy nền.
+        if (!PttController.backgroundSessionActive.value && !HandsFreeSession.isRunning) {
             PttController.forceReleasePtt()
         }
     }

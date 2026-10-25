@@ -71,6 +71,7 @@ object PttController {
     fun acquireCapture(owner: String) {
         if (captureOwners.add(owner)) {
             _isCaptureActive.value = true
+            HandsFreeSession.onCaptureActiveChanged(true)
         }
     }
 
@@ -78,6 +79,7 @@ object PttController {
     fun releaseCapture(owner: String) {
         if (captureOwners.remove(owner) && captureOwners.isEmpty()) {
             _isCaptureActive.value = false
+            HandsFreeSession.onCaptureActiveChanged(false)
             forceReleasePtt()
         }
     }
