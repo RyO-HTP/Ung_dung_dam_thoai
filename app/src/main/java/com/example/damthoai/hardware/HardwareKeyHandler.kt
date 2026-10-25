@@ -17,8 +17,8 @@ import android.view.KeyEvent
  */
 object HardwareKeyHandler {
 
-    // Thời gian bấm phím gần nhất (ms) để xử lý chống dội phím (Debounce)
-    private var lastKeyDownTimeMs: Long = 0L
+    // Thời gian bấm gần nhất theo từng phím để debounce độc lập.
+    private val lastKeyDownTimeMs = mutableMapOf<Int, Long>()
     private const val DEBOUNCE_THRESHOLD_MS = 50L
 
     /**
@@ -29,8 +29,8 @@ object HardwareKeyHandler {
      * @return `true` nếu phím được xử lý làm PTT (HĐH sẽ KHÔNG đổi âm lượng), `false` để HĐH xử lý mặc định.
      */
     fun handleKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        // Chỉ xử lý nếu cờ chế độ PTT đang bật
-        if (!PttController.isPttModeEnabled.value) {
+        // Chỉ bắt phím khi PTT được bật và có ít nhất một chủ thể đang giữ quyền bắt phím.
+        if (!PttController.isPttModeEnabled.value || !PttController.isCaptureActive.value) {
             return false
         }
 
@@ -55,10 +55,13 @@ object HardwareKeyHandler {
 
         // Chống dội phím (Debounce)
         val currentTimeMs = System.currentTimeMillis()
-        if (currentTimeMs - lastKeyDownTimeMs < DEBOUNCE_THRESHOLD_MS) {
+        val previousKeyDownTimeMs = lastKeyDownTimeMs[keyCode]
+        if (previousKeyDownTimeMs != null &&
+            currentTimeMs - previousKeyDownTimeMs < DEBOUNCE_THRESHOLD_MS
+        ) {
             return true
         }
-        lastKeyDownTimeMs = currentTimeMs
+        lastKeyDownTimeMs[keyCode] = currentTimeMs
 
         // Gửi tín hiệu Bấm PTT sang PttController
         PttController.onKeyPressed(source)
@@ -78,7 +81,7 @@ object HardwareKeyHandler {
      * @return `true` nếu phím được xử lý làm PTT, `false` để HĐH xử lý mặc định.
      */
     fun handleKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
-        if (!PttController.isPttModeEnabled.value) {
+        if (!PttController.isPttModeEnabled.value || !PttController.isCaptureActive.value) {
             return false
         }
 

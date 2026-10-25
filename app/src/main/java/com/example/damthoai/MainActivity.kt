@@ -81,12 +81,14 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * AN TOÀN HỆ THỐNG: Ngắt Micro đàm thoại khi Activity tạm dừng (Background/Chuyển App).
+     * AN TOÀN HỆ THỐNG: Ngắt Micro khi Activity tạm dừng, trừ khi có phiên chạy nền.
      */
     override fun onPause() {
         super.onPause()
-        // Cưỡng chế thả phím PTT để tránh kẹt micro khi thoát app hoặc khóa màn hình
-        PttController.forceReleasePtt()
+        // Giữ phiên PTT nếu có phiên chạy nền đã được đăng ký.
+        if (!PttController.backgroundSessionActive.value) {
+            PttController.forceReleasePtt()
+        }
     }
 
     override fun onResume() {

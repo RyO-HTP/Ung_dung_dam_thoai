@@ -36,6 +36,13 @@ enum class VolumeKeySetting {
  */
 object PttController {
 
+    private val captureOwners = mutableSetOf<String>()
+    private val _isCaptureActive = MutableStateFlow(false)
+    val isCaptureActive: StateFlow<Boolean> = _isCaptureActive.asStateFlow()
+
+    private val _backgroundSessionActive = MutableStateFlow(false)
+    val backgroundSessionActive: StateFlow<Boolean> = _backgroundSessionActive.asStateFlow()
+
     // Trạng thái Micro đàm thoại hiện tại: true = Đang nói (Mic mở), false = Đang nghe (Mic tắt)
     private val _isPttActive = MutableStateFlow(false)
     val isPttActive: StateFlow<Boolean> = _isPttActive.asStateFlow()
@@ -60,6 +67,29 @@ object PttController {
     )
     val events: SharedFlow<PttEvent> = _events.asSharedFlow()
 
+    @Synchronized
+    fun acquireCapture(owner: String) {
+        if (captureOwners.add(owner)) {
+            _isCaptureActive.value = true
+        }
+    }
+
+    @Synchronized
+    fun releaseCapture(owner: String) {
+        if (captureOwners.remove(owner) && captureOwners.isEmpty()) {
+            _isCaptureActive.value = false
+            forceReleasePtt()
+        }
+    }
+
+    /**
+     * ĐIỂM NỐI: TV2 (Foreground Service) và chế độ Bỏ túi sẽ bật cờ này khi có phiên chạy nền
+     * trong Tuần 3. Khi cờ đang bật, MainActivity không cưỡng chế thả PTT trong onPause().
+     */
+    fun setBackgroundSessionActive(active: Boolean) {
+        _backgroundSessionActive.value = active
+    }
+
     /**
      * Được gọi khi người dùng BẤM VÀ GIỮ phím PTT.
      *
@@ -68,8 +98,8 @@ object PttController {
     fun onKeyPressed(source: PttSource) {
         if (!_isPttModeEnabled.value) return
 
-        // Nếu đang ở trạng thái nói từ nguồn khác, giữ nguyên nguồn đó
-        if (_isPttActive.value && _activeSource.value != null && _activeSource.value != source) {
+        if (_isPttActive.value) {
+            // Không phát lại khi cùng nguồn đang giữ; cũng không chiếm PTT từ nguồn khác.
             return
         }
 
@@ -85,7 +115,7 @@ object PttController {
      */
     fun onKeyReleased(source: PttSource) {
         // Chỉ ngắt PTT nếu nguồn thả phím trùng với nguồn đang kích hoạt PTT
-        if (_activeSource.value == source || _activeSource.value == null) {
+        if (_isPttActive.value && _activeSource.value == source) {
             _isPttActive.value = false
             _activeSource.value = null
             _events.tryEmit(PttEvent.PttReleased(source))
@@ -94,8 +124,8 @@ object PttController {
 
     /**
      * LỆNH AN TOÀN HỆ THỐNG: Cưỡng chế ngắt Micro đàm thoại.
-     * Cần gọi hàm này trong `onPause()` của Activity hoặc khi app bị mất focus
-     * để tránh tình trạng mic bị kẹt mở khi chuyển app hoặc tắt màn hình.
+     * Gọi khi Activity tạm dừng hoặc app bị mất focus để tránh mic bị kẹt mở,
+     * trừ khi có phiên chạy nền đang hoạt động.
      */
     fun forceReleasePtt() {
         if (_isPttActive.value) {
