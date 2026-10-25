@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,6 +73,11 @@ fun PttKeyDemoScreen(
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null
 ) {
+    DisposableEffect(Unit) {
+        PttController.acquireCapture("ptt_demo")
+        onDispose { PttController.releaseCapture("ptt_demo") }
+    }
+
     val isPttActive by PttController.isPttActive.collectAsStateWithLifecycle()
     val activeSource by PttController.activeSource.collectAsStateWithLifecycle()
     val isPttModeEnabled by PttController.isPttModeEnabled.collectAsStateWithLifecycle()
