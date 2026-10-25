@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * 4. Xử lý mở màn hình Tắt tối ưu hóa pin (Battery Optimization Exemption) & Cài đặt ứng dụng.
  */
 object PermissionManager {
+    private const val REQUESTED_PERMISSIONS_PREFERENCES = "app_permission_requests"
 
     /**
      * Luồng trạng thái phát ra Map chứa trạng thái hiện tại của từng nhóm [AppPermission].
@@ -38,6 +39,9 @@ object PermissionManager {
     )
     val permissionStates: StateFlow<Map<AppPermission, PermissionState>> = _permissionStates.asStateFlow()
 
+    /**
+     * Camera is optional; this returns true only when both audio and camera permissions are granted.
+     */
     fun hasAudioAndCameraPermissions(context: Context): Boolean =
         checkPermissionState(context, AppPermission.AUDIO) == PermissionState.GRANTED &&
             checkPermissionState(context, AppPermission.CAMERA) == PermissionState.GRANTED
@@ -49,22 +53,50 @@ object PermissionManager {
     fun hasBackgroundExecutionPermissions(context: Context): Boolean =
         checkPermissionState(context, AppPermission.BACKGROUND) == PermissionState.GRANTED
 
+    /**
+     * Requests all declared runtime permissions for the Settings screen.
+     * The dedicated Permission screen requests permissions sequentially instead.
+     */
     fun requestPermissions(activity: Activity, requestCode: Int) {
         val permissions = AppPermission.entries
             .flatMap { it.getManifestPermissions().toList() }
             .distinct()
             .toTypedArray()
         if (permissions.isNotEmpty()) {
+            AppPermission.entries
+                .filter { permission ->
+                    permission.getManifestPermissions().any(permissions::contains)
+                }
+                .forEach { markRequested(activity, it) }
             ActivityCompat.requestPermissions(activity, permissions, requestCode)
         }
     }
+
+    /**
+     * Records that a request for this permission group is about to be shown.
+     * Call immediately before launching the Android permission request.
+     */
+    fun markRequested(context: Context, permission: AppPermission) {
+        context.getSharedPreferences(
+            REQUESTED_PERMISSIONS_PREFERENCES,
+            Context.MODE_PRIVATE
+        ).edit().putBoolean(permission.name, true).apply()
+    }
+
+    private fun wasRequested(context: Context, permission: AppPermission): Boolean =
+        context.getSharedPreferences(
+            REQUESTED_PERMISSIONS_PREFERENCES,
+            Context.MODE_PRIVATE
+        ).getBoolean(permission.name, false)
 
     /**
      * Cập nhật lại trạng thái tất cả các nhóm quyền trong ứng dụng.
      * NÊN gọi hàm này trong `onResume()` của Activity hoặc khi nhận kết quả từ Activity Result API.
      *
      * @param context Context ứng dụng Android.
-     * @param activity Activity hiện tại (nếu có) để kiểm tra Rationale/Permanently Denied chính xác hơn.
+     * @param activity Activity hiện tại (nếu có) để kiểm tra Rationale và phân biệt từ chối vĩnh viễn.
+     * Nếu không có Activity, cờ đã hỏi chỉ cho biết quyền từng được yêu cầu; trạng thái vĩnh viễn
+     * được suy ra từ cờ này nhưng không thể phân biệt chắc chắn với một lần từ chối thông thường.
      */
     fun refreshPermissionStates(context: Context, activity: Activity? = null) {
         val updatedMap = AppPermission.entries.associateWith { permission ->
@@ -78,7 +110,8 @@ object PermissionManager {
      *
      * @param context Context Android.
      * @param appPermission Nhóm quyền cần kiểm tra.
-     * @param activity Activity (tùy chọn) để xác định xem quyền có bị từ chối vĩnh viễn hay không.
+     * @param activity Activity (tùy chọn) để kiểm tra rationale. Khi không có Activity, cờ đã hỏi
+     * được dùng để suy ra PERMANENTLY_DENIED nhưng không thể phân biệt chắc chắn kiểu từ chối.
      * @return Trạng thái [PermissionState] (GRANTED / DENIED / PERMANENTLY_DENIED).
      */
     fun checkPermissionState(
@@ -117,26 +150,26 @@ object PermissionManager {
             return PermissionState.GRANTED
         }
 
-        // Nếu có Activity, kiểm tra Rationale để phân biệt DENIED và PERMANENTLY_DENIED
+        val wasRequested = wasRequested(context, appPermission)
+
+        // ActivityCompat cần Activity để phân biệt lần từ chối thông thường với từ chối vĩnh viễn.
         if (activity != null) {
             val showRationale = manifestPermissions.any { perm ->
                 ActivityCompat.shouldShowRequestPermissionRationale(activity, perm)
             }
-            // Nếu không được cấp VÀ showRationale == false, có thể người dùng đã tick "Don't ask again"
-            // Hoặc là lần đầu tiên chưa từng hỏi xin.
-            return if (showRationale) {
-                PermissionState.DENIED
+            return if (!showRationale && wasRequested) {
+                PermissionState.PERMANENTLY_DENIED
             } else {
-                // Để chắc chắn, nếu đã từng từ chối, đây là PERMANENTLY_DENIED
                 PermissionState.DENIED
             }
         }
 
-        return PermissionState.DENIED
+        return if (wasRequested) PermissionState.PERMANENTLY_DENIED else PermissionState.DENIED
     }
 
     /**
      * Kiểm tra xem tất cả các quyền BẮT BUỘC ([AppPermission.isRequired] == true) đã được cấp chưa.
+     * Hiện tại Micro ([AppPermission.AUDIO]) là quyền bắt buộc duy nhất; các quyền khác không chặn vào ứng dụng.
      *
      * ĐIỂM NỐI CHO TV2 & TV3:
      * - TV3 (UI): Gọi hàm này trước khi cho phép người dùng bấm "Vào Kênh Đàm Thoại".
@@ -152,6 +185,14 @@ object PermissionManager {
                 checkPermissionState(context, appPerm) == PermissionState.GRANTED
             }
     }
+
+    /**
+     * Returns optional permissions that are useful to recommend but do not block app entry.
+     * Currently includes background execution and notifications when they are not granted.
+     */
+    fun recommendedMissing(context: Context): List<AppPermission> =
+        listOf(AppPermission.BACKGROUND, AppPermission.NOTIFICATION)
+            .filter { checkPermissionState(context, it) != PermissionState.GRANTED }
 
     /**
      * Kiểm tra xem ứng dụng đã được đưa vào danh sách bỏ qua tối ưu hóa pin hay chưa.

@@ -1,5 +1,6 @@
 package com.example.damthoai.permission
 import android.app.Activity
+import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -39,6 +40,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -57,17 +59,28 @@ import com.example.damthoai.ui.theme.DamType
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
 
+private enum class ContinueRequestStage {
+    NONE,
+    AUDIO,
+    OPTIONAL,
+    BATTERY,
+    DONE
+}
+
 @Composable
 fun PermissionScreen(
     modifier: Modifier = Modifier,
-    onAllPermissionsGranted: () -> Unit = {}
+    onAllPermissionsGranted: () -> Unit = {},
+    onMicDenied: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
     val lifecycleOwner = LocalLifecycleOwner.current
     val permissionStates by PermissionManager.permissionStates.collectAsStateWithLifecycle()
-    var currentRequestingPermission by remember { mutableStateOf<AppPermission?>(null) }
+    var currentRequestingPermissions by remember { mutableStateOf<List<AppPermission>>(emptyList()) }
     var showSettingsDialogForPermission by remember { mutableStateOf<AppPermission?>(null) }
+    var continueRequestStage by remember { mutableStateOf(ContinueRequestStage.NONE) }
+    var continueAfterSettingsDialog by remember { mutableStateOf(false) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -87,13 +100,36 @@ fun PermissionScreen(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
         PermissionManager.refreshPermissionStates(context, activity)
-        currentRequestingPermission?.let { requested ->
-            val newState = PermissionManager.checkPermissionState(context, requested, activity)
-            if (newState == PermissionState.PERMANENTLY_DENIED || newState == PermissionState.DENIED) {
-                showSettingsDialogForPermission = requested
+        val requestedPermissions = currentRequestingPermissions
+        currentRequestingPermissions = emptyList()
+        val permanentlyDenied = requestedPermissions.firstOrNull { requested ->
+            PermissionManager.checkPermissionState(context, requested, activity) ==
+                PermissionState.PERMANENTLY_DENIED
+        }
+
+        when (continueRequestStage) {
+            ContinueRequestStage.AUDIO -> {
+                continueRequestStage = ContinueRequestStage.NONE
+                when (PermissionManager.checkPermissionState(context, AppPermission.AUDIO, activity)) {
+                    PermissionState.GRANTED -> continueRequestStage = ContinueRequestStage.OPTIONAL
+                    PermissionState.PERMANENTLY_DENIED -> onMicDenied()
+                    PermissionState.DENIED -> Unit
+                }
+            }
+            ContinueRequestStage.OPTIONAL -> {
+                if (permanentlyDenied != null) {
+                    showSettingsDialogForPermission = permanentlyDenied
+                    continueAfterSettingsDialog = true
+                } else {
+                    continueRequestStage = ContinueRequestStage.BATTERY
+                }
+            }
+            ContinueRequestStage.NONE -> {
+                if (permanentlyDenied != null) {
+                    showSettingsDialogForPermission = permanentlyDenied
+                }
             }
         }
-        currentRequestingPermission = null
     }
 
     fun requestPermission(permission: AppPermission) {
@@ -102,38 +138,76 @@ fun PermissionScreen(
         } else {
             val manifestPermissions = permission.getManifestPermissions()
             if (manifestPermissions.isNotEmpty()) {
-                currentRequestingPermission = permission
+                PermissionManager.markRequested(context, permission)
+                currentRequestingPermissions = listOf(permission)
                 permissionLauncher.launch(manifestPermissions)
             }
         }
     }
 
-    val allGranted = PermissionManager.allRequiredGranted(context)
+    LaunchedEffect(continueRequestStage) {
+        when (continueRequestStage) {
+            ContinueRequestStage.OPTIONAL -> {
+                val optionalPermissions = listOf(AppPermission.NOTIFICATION, AppPermission.BLUETOOTH)
+                val runtimePermissions = optionalPermissions
+                    .flatMap { it.getManifestPermissions().toList() }
+                    .distinct()
+                    .filter { permission ->
+                        ContextCompat.checkSelfPermission(context, permission) !=
+                            PackageManager.PERMISSION_GRANTED
+                    }
+
+                if (runtimePermissions.isEmpty()) {
+                    continueRequestStage = ContinueRequestStage.BATTERY
+                } else {
+                    val requestedGroups = optionalPermissions.filter { permission ->
+                        permission.getManifestPermissions().any(runtimePermissions::contains)
+                    }
+                    requestedGroups.forEach { PermissionManager.markRequested(context, it) }
+                    currentRequestingPermissions = requestedGroups
+                    permissionLauncher.launch(runtimePermissions.toTypedArray())
+                }
+            }
+            ContinueRequestStage.BATTERY -> {
+                if (!PermissionManager.isIgnoringBatteryOptimizations(context)) {
+                    PermissionManager.requestIgnoreBatteryOptimizations(context)
+                }
+                continueRequestStage = ContinueRequestStage.DONE
+            }
+            ContinueRequestStage.DONE -> {
+                continueRequestStage = ContinueRequestStage.NONE
+                onAllPermissionsGranted()
+            }
+            ContinueRequestStage.NONE,
+            ContinueRequestStage.AUDIO -> Unit
+        }
+    }
+
     PermissionScreenContent(
         modifier = modifier,
         states = permissionStates,
         onRequest = ::requestPermission,
         onContinue = {
-            if (allGranted) {
-                onAllPermissionsGranted()
-            } else {
-                val allManifestPermissions = AppPermission.entries
-                    .flatMap { it.getManifestPermissions().toList() }
-                    .distinct()
-                    .toTypedArray()
-                if (allManifestPermissions.isNotEmpty()) {
-                    permissionLauncher.launch(allManifestPermissions)
+            when (PermissionManager.checkPermissionState(context, AppPermission.AUDIO, activity)) {
+                PermissionState.GRANTED -> continueRequestStage = ContinueRequestStage.OPTIONAL
+                PermissionState.DENIED -> {
+                    continueRequestStage = ContinueRequestStage.AUDIO
+                    requestPermission(AppPermission.AUDIO)
                 }
-                if (!PermissionManager.isIgnoringBatteryOptimizations(context)) {
-                    PermissionManager.requestIgnoreBatteryOptimizations(context)
-                }
+                PermissionState.PERMANENTLY_DENIED -> onMicDenied()
             }
         }
     )
 
     showSettingsDialogForPermission?.let { permission ->
         AlertDialog(
-            onDismissRequest = { showSettingsDialogForPermission = null },
+            onDismissRequest = {
+                showSettingsDialogForPermission = null
+                if (continueAfterSettingsDialog) {
+                    continueAfterSettingsDialog = false
+                    continueRequestStage = ContinueRequestStage.BATTERY
+                }
+            },
             icon = {
                 Icon(
                     painter = painterResource(R.drawable.ic_alert),
@@ -141,7 +215,9 @@ fun PermissionScreen(
                     tint = AccentRed
                 )
             },
-            title = { Text(text = androidx.compose.ui.res.stringResource(permission.titleRes)) },
+            title = {
+                Text(text = androidx.compose.ui.res.stringResource(R.string.perm_permanently_denied_title))
+            },
             text = {
                 Text(
                     text = androidx.compose.ui.res.stringResource(
@@ -154,12 +230,22 @@ fun PermissionScreen(
                 TextButton(onClick = {
                     showSettingsDialogForPermission = null
                     PermissionManager.openAppSettings(context)
+                    if (continueAfterSettingsDialog) {
+                        continueAfterSettingsDialog = false
+                        continueRequestStage = ContinueRequestStage.BATTERY
+                    }
                 }) {
                     Text(androidx.compose.ui.res.stringResource(R.string.perm_btn_open_settings))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showSettingsDialogForPermission = null }) {
+                TextButton(onClick = {
+                    showSettingsDialogForPermission = null
+                    if (continueAfterSettingsDialog) {
+                        continueAfterSettingsDialog = false
+                        continueRequestStage = ContinueRequestStage.BATTERY
+                    }
+                }) {
                     Text(androidx.compose.ui.res.stringResource(R.string.btn_cancel))
                 }
             }
