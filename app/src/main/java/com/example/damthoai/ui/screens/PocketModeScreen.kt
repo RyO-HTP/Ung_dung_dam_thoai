@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -38,6 +39,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -74,6 +76,8 @@ fun PocketModeScreen(
     var locked by remember { mutableStateOf(true) }
     var pttBounds by remember { mutableStateOf<Rect?>(null) }
     var unlockBounds by remember { mutableStateOf<Rect?>(null) }
+    // Tuần 3: sửa - đổi tọa độ chạm cục bộ sang root trước khi kiểm tra hitbox.
+    var pointerInputOrigin by remember { mutableStateOf(Offset.Zero) }
     val haptic = LocalHapticFeedback.current
     val view = LocalView.current
     val pttHitRadiusPx = with(LocalDensity.current) { 125.dp.toPx() }
@@ -92,25 +96,28 @@ fun PocketModeScreen(
         Box(
             modifier = modifier
                 .fillMaxSize()
-                .pointerInput(locked, pttBounds, unlockBounds) {
+                .pointerInput(locked, pttBounds, unlockBounds, pointerInputOrigin) {
                     if (locked) {
                         awaitPointerEventScope {
                             while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                // Tuần 3: sửa - để các nút con xử lý chạm trước lớp chặn.
+                                val event = awaitPointerEvent(PointerEventPass.Final)
                                 event.changes.forEach { change ->
+                                    val positionInRoot = change.position + pointerInputOrigin
                                     val pttCenter = pttBounds?.center
-                                    val dx = pttCenter?.let { change.position.x - it.x }
-                                    val dy = pttCenter?.let { change.position.y - it.y }
+                                    val dx = pttCenter?.let { positionInRoot.x - it.x }
+                                    val dy = pttCenter?.let { positionInRoot.y - it.y }
                                     val hitsPtt = dx != null && dy != null &&
                                         dx * dx + dy * dy <= pttHitRadiusPx * pttHitRadiusPx
                                     val isAllowedTouch = hitsPtt ||
-                                        unlockBounds?.contains(change.position) == true
+                                        unlockBounds?.contains(positionInRoot) == true
                                     if (change.pressed && !isAllowedTouch) change.consume()
                                 }
                             }
                         }
                     }
                 }
+                .onGloballyPositioned { pointerInputOrigin = it.positionInRoot() }
         ) {
             PocketModeContent(
                 locked = locked,
@@ -225,7 +232,10 @@ private fun PocketUnlockSlider(
 ) {
     var progress by remember { mutableStateOf(0f) }
     var trackWidth by remember { mutableStateOf(0) }
+    // Tuần 3: sửa - giữ núm sát ngón tay lúc kéo, dùng animation khi trả về.
+    var isDragging by remember { mutableStateOf(false) }
     val animatedProgress by animateFloatAsState(targetValue = progress, label = "unlockProgress")
+    val knobProgress = if (isDragging) progress else animatedProgress
     val knobSize = 48.dp
     val density = androidx.compose.ui.platform.LocalDensity.current
     val knobWidthPx = with(density) { knobSize.roundToPx() }
@@ -238,20 +248,31 @@ private fun PocketUnlockSlider(
             .onSizeChanged { trackWidth = it.width }
             .pointerInput(locked, trackWidth) {
                 detectHorizontalDragGestures(
+                    // Tuần 3: sửa - đồng bộ núm với ngón tay trong lúc gesture đang kéo.
+                    onDragStart = {
+                        isDragging = true
+                        progress = animatedProgress
+                    },
                     onHorizontalDrag = { change, dragAmount ->
                         val travel = (trackWidth - knobWidthPx).coerceAtLeast(1)
                         progress = (progress + dragAmount / travel).coerceIn(0f, 1f)
                         change.consume()
                     },
                     onDragEnd = {
-                        if (progress > 0.85f) {
+                        isDragging = false
+                        // Tuần 3: sửa - hoàn tất vuốt khi đạt ít nhất 80% hành trình.
+                        if (progress >= 0.8f) {
                             progress = 1f
                             onUnlock()
                         } else {
                             progress = 0f
                         }
                     },
-                    onDragCancel = { progress = 0f }
+                    onDragCancel = {
+                        // Tuần 3: sửa - khôi phục trạng thái nếu gesture bị hủy.
+                        isDragging = false
+                        progress = 0f
+                    }
                 )
             },
         contentAlignment = Alignment.Center
@@ -267,7 +288,7 @@ private fun PocketUnlockSlider(
                 .align(Alignment.CenterStart)
                 .offset {
                     IntOffset(
-                        x = (animatedProgress * (trackWidth - knobWidthPx).coerceAtLeast(0)).roundToInt(),
+                        x = (knobProgress * (trackWidth - knobWidthPx).coerceAtLeast(0)).roundToInt(),
                         y = 0
                     )
                 }
@@ -283,6 +304,15 @@ private fun PocketUnlockSlider(
                 modifier = Modifier.size(20.dp)
             )
         }
+    }
+}
+
+// Tuần 3: sửa - preview trực tiếp màn hình Bỏ túi cùng trạng thái khóa.
+@Preview(widthDp = 390, heightDp = 844, showBackground = true)
+@Composable
+private fun PocketModeScreenPreview() {
+    DamThoaiTheme {
+        PocketModeScreen(onUnlock = {})
     }
 }
 

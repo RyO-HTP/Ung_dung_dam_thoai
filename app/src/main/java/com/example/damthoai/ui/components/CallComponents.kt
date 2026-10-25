@@ -33,7 +33,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
 import com.example.damthoai.data.fake.FakeVolumeChannel
 import com.example.damthoai.ui.screens.CallUiState
@@ -142,9 +141,10 @@ fun PttButton(
                 modifier = Modifier.size(36.dp)
             )
             Spacer(Modifier.height(6.dp))
+            // Tuần 3: sửa - dùng cỡ chữ đầy đủ từ DamType.Button.
             Text(
                 text = label,
-                style = DamType.Button.copy(fontSize = 14.sp),
+                style = DamType.Button,
                 color = TextPrimary,
                 textAlign = TextAlign.Center
             )
@@ -260,6 +260,7 @@ fun CallStatusBanner(
     queuedCount: Int = 1,
     modifier: Modifier = Modifier
 ) {
+    // Tuần 3: sửa - dùng typography DamType thay cho cỡ chữ thu nhỏ.
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -277,10 +278,10 @@ fun CallStatusBanner(
         )
         Spacer(Modifier.width(10.dp))
         Column {
-            Text(title, style = DamType.Heading.copy(fontSize = 13.sp), color = color)
+            Text(title, style = DamType.Heading, color = color)
             Text(
                 text = if (state == CallOffline) "$description · $queuedCount tin chờ gửi" else description,
-                style = DamType.Small.copy(fontSize = 10.5.sp),
+                style = DamType.Small,
                 color = TextPrimary
             )
         }
@@ -307,10 +308,11 @@ fun CallBottomActions(
 
 @Composable
 private fun ActionItem(iconRes: Int, label: String, onClick: () -> Unit) {
+    // Tuần 3: sửa - nút tròn 54dp, nhãn DamType.Small có cỡ 11.5sp.
     Column(
         modifier = Modifier
             .width(78.dp)
-            .height(54.dp)
+            .height(78.dp)
             .pointerInput(onClick) {
                 detectTapGestures(onTap = { onClick() })
             },
@@ -318,7 +320,7 @@ private fun ActionItem(iconRes: Int, label: String, onClick: () -> Unit) {
     ) {
         Box(
             modifier = Modifier
-                .size(30.dp)
+                .size(54.dp)
                 .clip(CircleShape)
                 .background(CallActionBg)
                 .border(1.dp, CallActionBorder, CircleShape),
@@ -335,7 +337,7 @@ private fun ActionItem(iconRes: Int, label: String, onClick: () -> Unit) {
         Text(
             label,
             color = TextSecondary,
-            style = DamType.Small.copy(fontSize = 10.sp),
+            style = DamType.Small,
             textAlign = TextAlign.Center
         )
     }

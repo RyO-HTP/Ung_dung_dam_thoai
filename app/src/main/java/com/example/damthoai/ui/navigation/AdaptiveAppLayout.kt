@@ -10,7 +10,6 @@
  */
 package com.example.damthoai.ui.navigation
 
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -44,7 +43,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -78,10 +76,9 @@ fun AdaptiveAppLayout(
 
     val isCompact = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Compact
 
-    // Các màn hình chính hiển thị Bottom Bar
+    // Tuần 3: sửa - ẩn thanh dưới ở màn đàm thoại và Bỏ túi.
     val mainBottomNavRoutes = listOf(
         AppRoute.ChannelList.route,
-        AppRoute.ActiveCall.route,
         AppRoute.Settings.route
     )
     val shouldShowBottomBar = isCompact && currentRoute in mainBottomNavRoutes
@@ -107,7 +104,9 @@ fun AdaptiveAppLayout(
                                     restoreState = true
                                 }
                             }
-                        }
+                        },
+                        // Tuần 3: sửa - điều hướng từ nút micro vào màn đàm thoại.
+                        onMicClick = { navController.navigate(AppRoute.ActiveCall.route) }
                     )
                 }
             },
@@ -174,10 +173,10 @@ fun AdaptiveAppLayout(
 @Composable
 private fun FloatingPillBottomBar(
     currentRoute: String,
-    onNavigateToTab: (String) -> Unit
+    onNavigateToTab: (String) -> Unit,
+    // Tuần 3: sửa - nút micro mở màn đàm thoại.
+    onMicClick: () -> Unit
 ) {
-    val context = LocalContext.current
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -259,10 +258,8 @@ private fun FloatingPillBottomBar(
                 .shadow(elevation = 30.dp, shape = CircleShape, spotColor = NavShadow)
                 .clip(CircleShape)
                 .background(NavGlow)
-                .clickable {
-                    // Logic PTT Mic giả lập cho Tuần 1
-                    Toast.makeText(context, "Đã giữ Mic PTT (Mock - Tuần 1)", Toast.LENGTH_SHORT).show()
-                },
+                // Tuần 3: sửa - gọi callback điều hướng khi nhấn nút micro.
+                .clickable(onClick = onMicClick),
             contentAlignment = Alignment.Center
         ) {
             Box(

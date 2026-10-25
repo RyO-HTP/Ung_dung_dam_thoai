@@ -9,10 +9,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,7 +32,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
 import com.example.damthoai.data.fake.FakeCallData
 import com.example.damthoai.hardware.PttController
@@ -80,40 +84,56 @@ fun ActiveCallScreen(
     }
 
     DamThoaiBackground(modifier = modifier, variant = BgVariant.Default) {
+        // Tuần 3: sửa - giữ nút thao tác cố định, chỉ cuộn phần thông tin khi thiếu chiều cao.
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(9.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            CallHeader(onBack = onBack, state = displayState)
-            LiveCueCard()
-            CallStatusBanner(
-                state = displayState,
-                title = content.statusTitle,
-                description = content.statusDescription,
-                iconRes = content.statusIconRes,
-                color = content.statusColor,
-                backgroundColor = content.statusBackground,
-                queuedCount = queuedCount
-            )
-            SectionLabel(text = "Âm lượng từng kênh")
-            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                content.channels.forEachIndexed { index, channel ->
-                    VolumeRow(channel = channel.copy(volume = volumes[index])) { newValue ->
-                        volumes = volumes.toMutableList().also { it[index] = newValue }
+            // Tuần 3: sửa - cuộn phần thông tin độc lập, không cuộn hàng nút đáy.
+            Column(
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CallHeader(onBack = onBack, state = displayState)
+                LiveCueCard()
+                CallStatusBanner(
+                    state = displayState,
+                    title = content.statusTitle,
+                    description = content.statusDescription,
+                    iconRes = content.statusIconRes,
+                    color = content.statusColor,
+                    backgroundColor = content.statusBackground,
+                    queuedCount = queuedCount
+                )
+                SectionLabel(text = "Âm lượng từng kênh")
+                // Tuần 3: sửa - khoảng cách giữa các hàng âm lượng theo thiết kế.
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    content.channels.forEachIndexed { index, channel ->
+                        VolumeRow(channel = channel.copy(volume = volumes[index])) { newValue ->
+                            volumes = volumes.toMutableList().also { it[index] = newValue }
+                        }
                     }
                 }
             }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f, fill = true),
+                    // Tuần 3: sửa - PTT chiếm phần chiều cao còn lại ngoài vùng cuộn.
+                    .weight(1f),
                 contentAlignment = Alignment.Center
             ) {
                 PttButton(
                     size = 140.dp,
                     state = displayState,
+                    // Tuần 3: sửa - giữ vùng nút PTT tối thiểu 120dp.
+                    modifier = Modifier.heightIn(min = 120.dp),
                     onPress = {
                         PttController.onKeyPressed(PttSource.SCREEN_BUTTON)
                         isScreenPttPressed =
@@ -126,6 +146,7 @@ fun ActiveCallScreen(
                     }
                 )
             }
+            // Tuần 3: sửa - hàng bốn nút nằm ngoài vùng cuộn để luôn hiện.
             CallBottomActions(
                 onNavigateToPocket = onNavigateToPocketMode,
                 onNavigateToEmergency = onNavigateToEmergency
@@ -160,6 +181,7 @@ private fun CallHeader(onBack: () -> Unit, state: CallUiState) {
 
 @Composable
 private fun LiveCueCard() {
+    // Tuần 3: sửa - dùng nguyên các cỡ chữ định nghĩa trong DamType.
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
@@ -187,21 +209,28 @@ private fun LiveCueCard() {
                 Text(
                     "Live Cue · đang diễn",
                     color = AccentAmber,
-                    style = DamType.Label.copy(fontSize = 9.sp)
+                    style = DamType.Label
                 )
                 Text(
                     "Tiết mục 4 – Ban nhạc khách mời",
                     color = TextPrimary,
-                    style = DamType.Heading.copy(fontSize = 12.sp)
+                    style = DamType.Heading
                 )
                 Text(
                     "Hậu cần: chuẩn bị đạo cụ chuyển cảnh",
                     color = TextSecondary,
-                    style = DamType.Small.copy(fontSize = 10.sp)
+                    style = DamType.Small
                 )
             }
         }
     }
+}
+
+// Tuần 3: sửa - preview kích thước màn hình thấp để kiểm tra hàng nút dưới.
+@Preview(widthDp = 360, heightDp = 740, showBackground = true)
+@Composable
+private fun ActiveCallSmallScreenPreview() {
+    DamThoaiTheme { ActiveCallScreen(onNavigateToPocketMode = {}, state = CallUiState.CallIdle) }
 }
 
 @Preview(widthDp = 390, heightDp = 844, showBackground = true)
