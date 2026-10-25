@@ -66,7 +66,8 @@ fun AppNavHost(
             PermissionScreen(
                 onAllPermissionsGranted = {
                     navController.navigate(AppRoute.ScanQr.route)
-                }
+                },
+                onMicDenied = { navController.navigate(AppRoute.MicrophonePermission.route) }
             )
         }
         composable(AppRoute.MicrophonePermission.route) {
