@@ -8,3 +8,8 @@ captures/
 node_modules/
 design/
 .vscode/
+<<<<<<< HEAD
+=======
+__pycache__/
+*.pyc
+>>>>>>> origin/feat/tuan1-tv2-network

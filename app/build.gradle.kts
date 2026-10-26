@@ -73,5 +73,13 @@ dependencies {
     implementation("androidx.compose.material3.adaptive:adaptive-navigation:1.0.0")
     implementation("androidx.compose.material3:material3-adaptive-navigation-suite:1.3.0")
 
+    // Network & WebSocket (Thành viên 2)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.google.code.gson:gson:2.10.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
+
+    // WebRTC (Thành viên 2)
+    implementation("io.getstream:stream-webrtc-android:1.3.10")
+
     implementation("androidx.compose.ui:ui-tooling")
 }
