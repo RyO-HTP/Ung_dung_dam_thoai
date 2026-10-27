@@ -37,6 +37,12 @@ object HardwareKeyHandler {
         val source = when (keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP -> PttSource.VOLUME_UP
             KeyEvent.KEYCODE_VOLUME_DOWN -> PttSource.VOLUME_DOWN
+
+            // Gom tất cả các nút bấm từ tai nghe có dây và Bluetooth về nguồn HEADSET
+            KeyEvent.KEYCODE_HEADSETHOOK,
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            KeyEvent.KEYCODE_MEDIA_PLAY,
+            KeyEvent.KEYCODE_MEDIA_RECORD -> PttSource.HEADSET
             else -> return false
         }
 

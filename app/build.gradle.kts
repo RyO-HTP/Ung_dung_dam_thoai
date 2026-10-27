@@ -50,7 +50,6 @@ android {
 }
 
 dependencies {
-    implementation("io.getstream:stream-webrtc-android:1.3.10")
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
@@ -80,6 +79,9 @@ dependencies {
 
     // WebRTC (Thành viên 2)
     implementation("io.getstream:stream-webrtc-android:1.3.10")
+
+    // [MỚI THÊM] Hỗ trợ MediaSession bắt sự kiện phím tai nghe Bluetooth
+    implementation("androidx.media:media:1.7.0")
 
     implementation("androidx.compose.ui:ui-tooling")
 }

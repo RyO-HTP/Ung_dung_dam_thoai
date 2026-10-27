@@ -1,14 +1,15 @@
 /**
- * Path: app/src/main/java/com/example/damthoai/MainActivity.kt
- *
  * Khối KDoc tiếng Việt:
  * Activity chính của ứng dụng Đàm Thoại.
  * Khởi tạo chế độ Edge-to-Edge, cài đặt Theme/Layout,
- * và đánh chặn sự kiện phím cứng Volume (Hardware Keys) biến phím Volume thành nút PTT.
+ * và đánh chặn sự kiện phím cứng Volume / Tai nghe Bluetooth biến thành nút PTT.
  */
 package com.example.damthoai
 
+import android.content.Intent
 import android.os.Bundle
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -28,9 +29,15 @@ import com.example.damthoai.ui.theme.DamThoaiTheme
 
 class MainActivity : ComponentActivity() {
 
+    // [MỚI THÊM] Khai báo biến quản lý MediaSession cho tai nghe Bluetooth
+    private var mediaSession: MediaSessionCompat? = null
+
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // [MỚI THÊM] Khởi tạo hệ thống bắt sự kiện phím tai nghe Bluetooth
+        setupMediaSessionForBluetooth()
 
         HandsFreeSession.initialize(this)
 
@@ -54,8 +61,45 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     * [MỚI THÊM] Hàm cấu hình MediaSession để giành quyền ưu tiên nhận sự kiện
+     * nút bấm (Play/Pause/Call) từ tai nghe Bluetooth và có dây.
+     */
+    private fun setupMediaSessionForBluetooth() {
+        mediaSession = MediaSessionCompat(this, "DamThoaiPTT").apply {
+            setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS)
+
+            // Giả lập trạng thái "Đang phát media" để HĐH ưu tiên gửi phím bấm về app này
+            val state = PlaybackStateCompat.Builder()
+                .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PLAY_PAUSE)
+                .setState(PlaybackStateCompat.STATE_PLAYING, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1.0f)
+                .build()
+            setPlaybackState(state)
+
+            setCallback(object : MediaSessionCompat.Callback() {
+                override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
+                    // Trích xuất KeyEvent từ Intent của Bluetooth
+                    val keyEvent = mediaButtonEvent?.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+                    if (keyEvent != null) {
+                        when (keyEvent.action) {
+                            KeyEvent.ACTION_DOWN -> {
+                                HardwareKeyHandler.handleKeyDown(keyEvent.keyCode, keyEvent)
+                            }
+                            KeyEvent.ACTION_UP -> {
+                                HardwareKeyHandler.handleKeyUp(keyEvent.keyCode, keyEvent)
+                            }
+                        }
+                        return true // Báo cho HĐH là ứng dụng đã "nuốt" phím Media này
+                    }
+                    return super.onMediaButtonEvent(mediaButtonEvent)
+                }
+            })
+            // Kích hoạt MediaSession
+            isActive = true
+        }
+    }
+
+    /**
      * BẮT SỰ KIỆN PHÍM CỨNG NHẤN XUỐNG (Volume Up / Down).
-     *
      * @param keyCode Mã phím bấm phần cứng.
      * @param event Chi tiết sự kiện phím.
      * @return `true` nếu phím được xử lý làm PTT ("nuốt" sự kiện), HĐH Android sẽ DỪNG
@@ -71,7 +115,6 @@ class MainActivity : ComponentActivity() {
 
     /**
      * BẮT SỰ KIỆN PHÍM CỨNG THẢ RA.
-     *
      * @param keyCode Mã phím bấm phần cứng.
      * @param event Chi tiết sự kiện phím.
      * @return `true` nếu phím được xử lý thả PTT ("nuốt" sự kiện).
@@ -98,5 +141,14 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // Cập nhật lại trạng thái quyền khi ứng dụng quay lại foreground
         PermissionManager.refreshPermissionStates(this, this)
+    }
+
+    /**
+     * [MỚI THÊM] Giải phóng MediaSession khi thoát ứng dụng hoàn toàn
+     */
+    override fun onDestroy() {
+        super.onDestroy()
+        mediaSession?.isActive = false
+        mediaSession?.release()
     }
 }

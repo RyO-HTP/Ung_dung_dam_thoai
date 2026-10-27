@@ -1,14 +1,12 @@
 package com.example.damthoai.service
 
+import com.example.damthoai.webrtc.CustomPeerConnectionObserver
+import com.example.damthoai.network.SignalingEvent
+import com.example.damthoai.network.SignalingClient
+import com.example.damthoai.network.MdnsDiscoveryManager
+import com.example.damthoai.webrtc.WebRTCClient
 import android.content.Context
 import android.util.Log
-import com.example.damthoai.network.DiscoveredSignalingServer
-import com.example.damthoai.network.MdnsDiscoveryManager
-import com.example.damthoai.network.SignalingClient
-import com.example.damthoai.network.SignalingConnectionState
-import com.example.damthoai.network.SignalingEvent
-import com.example.damthoai.webrtc.SimplePeerConnectionObserver
-import com.example.damthoai.webrtc.WebRTCClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,6 +17,7 @@ import kotlinx.coroutines.launch
 import org.webrtc.IceCandidate
 import org.webrtc.PeerConnection
 import org.webrtc.SessionDescription
+import com.example.damthoai.hardware.PttController
 
 /**
  * Trạng thái cuộc gọi đàm thoại
@@ -68,6 +67,15 @@ class DamThoaiCallManager private constructor(private val context: Context) {
 
     init {
         observeSignalingEvents()
+        // Lắng nghe tín hiệu phím cứng từ PttController
+        scope.launch {
+            com.example.damthoai.hardware.PttController.events.collect { event ->
+                when (event.javaClass.simpleName) {
+                    "PttPressed" -> setPushToTalkPressed(true)
+                    "PttReleased" -> setPushToTalkPressed(false)
+                }
+            }
+        }
     }
 
     /**
@@ -100,7 +108,7 @@ class DamThoaiCallManager private constructor(private val context: Context) {
                 when (event) {
                     is SignalingEvent.ConfigReceived -> {
                         Log.d(TAG, "Nạp cấu hình ${event.iceServers.size} ICE Servers vào WebRTC Client")
-                        webRTCClient.updateIceServers(event.iceServers)
+                        webRTCClient.   updateIceServers(event.iceServers)
                     }
 
                     is SignalingEvent.OfferReceived -> {
@@ -138,6 +146,10 @@ class DamThoaiCallManager private constructor(private val context: Context) {
         activePeerUserId = targetUserId
         _callState.value = CallState.Calling(targetUserId)
 
+        // Bật chặn phím cứng đúng chuẩn API của PttController
+        com.example.damthoai.hardware.PttController.setPttModeEnabled(true)
+        com.example.damthoai.hardware.PttController.acquireCapture("DamThoaiCallManager")
+
         setupPeerConnection(targetUserId)
 
         webRTCClient.createOffer(
@@ -157,6 +169,11 @@ class DamThoaiCallManager private constructor(private val context: Context) {
      */
     private fun handleIncomingOffer(senderUserId: String, offerSdpStr: String) {
         activePeerUserId = senderUserId
+
+        // BẬT CHẶN PHÍM CỨNG PTT KHI NHẬN CUỘC GỌI
+        com.example.damthoai.hardware.PttController.setPttModeEnabled(true)
+        com.example.damthoai.hardware.PttController.acquireCapture("DamThoaiCallManager")
+
         setupPeerConnection(senderUserId)
 
         val offerSdp = SessionDescription(SessionDescription.Type.OFFER, offerSdpStr)
@@ -178,7 +195,7 @@ class DamThoaiCallManager private constructor(private val context: Context) {
      * Thiết lập PeerConnection và cấu hình chuyển tiếp ICE Candidates
      */
     private fun setupPeerConnection(targetUserId: String) {
-        webRTCClient.createPeerConnection(object : SimplePeerConnectionObserver() {
+        webRTCClient.createPeerConnection(object : CustomPeerConnectionObserver() {
             override fun onIceCandidate(candidate: IceCandidate?) {
                 candidate?.let { ice ->
                     Log.d(TAG, "Phát hiện ICE candidate cục bộ, gửi tới $targetUserId")
@@ -223,6 +240,11 @@ class DamThoaiCallManager private constructor(private val context: Context) {
         activePeerUserId = null
         _callState.value = CallState.Idle
         _isPttPressed.value = false
+
+        // TẮT PTT, TRẢ LẠI PHÍM ÂM LƯỢNG CHO HỆ ĐIỀU HÀNH
+        com.example.damthoai.hardware.PttController.releaseCapture("DamThoaiCallManager")
+        com.example.damthoai.hardware.PttController.setPttModeEnabled(false)
+        PttController.forceReleasePtt()
     }
 
     /**
