@@ -1,4 +1,6 @@
 package com.example.damthoai.hardware
+import android.content.pm.ApplicationInfo
+import android.media.AudioDeviceInfo
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -26,6 +28,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.Button
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -33,12 +36,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.damthoai.R
+import com.example.damthoai.hardware.diagnostics.FieldTestLogger
+import com.example.damthoai.hardware.audio.AudioIncident
+import com.example.damthoai.hardware.audio.AudioIncidentBus
+import com.example.damthoai.hardware.emergency.EmergencyAlert
+import com.example.damthoai.hardware.emergency.EmergencyAlertManager
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.GlassCard
@@ -82,6 +91,20 @@ fun PttKeyDemoScreen(
     val activeSource by PttController.activeSource.collectAsStateWithLifecycle()
     val isPttModeEnabled by PttController.isPttModeEnabled.collectAsStateWithLifecycle()
     val volumeKeySetting by PttController.volumeKeySetting.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val isDebuggable = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+    val isEmergencyVibrating by EmergencyAlertManager.isVibrating.collectAsStateWithLifecycle()
+    val isEmergencyFlashing by EmergencyAlertManager.isFlashing.collectAsStateWithLifecycle()
+    val flashUnavailableReason by EmergencyAlertManager.flashUnavailableReason.collectAsStateWithLifecycle()
+    val vibrationUnavailableReason by EmergencyAlertManager.vibrationUnavailableReason.collectAsStateWithLifecycle()
+    val recentAudioIncidents by AudioIncidentBus.recentIncidents.collectAsStateWithLifecycle()
+    val fieldLogActive by FieldTestLogger.loggingActive.collectAsStateWithLifecycle()
+    val fieldLogDirectory by FieldTestLogger.outputDirectoryPath.collectAsStateWithLifecycle()
+    val fieldLogFile by FieldTestLogger.currentCsvPath.collectAsStateWithLifecycle()
+    val fieldPressCounts by FieldTestLogger.pressCounts.collectAsStateWithLifecycle()
+    val duplicateKeyCount by FieldTestLogger.duplicateKeyCount.collectAsStateWithLifecycle()
+    val ignoredKeyCount by FieldTestLogger.ignoredKeyCount.collectAsStateWithLifecycle()
+    val bluetoothLatencyEstimateMs by FieldTestLogger.bluetoothLatencyEstimateMs.collectAsStateWithLifecycle()
 
     val animatedBgColor by animateColorAsState(
         targetValue = if (isPttActive) AccentRed else AccentMint,
@@ -162,6 +185,226 @@ fun PttKeyDemoScreen(
             }
 
             Spacer(modifier = Modifier.height(20.dp))
+
+            if (isDebuggable) {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = stringResource(R.string.emergency_demo_title),
+                            style = DamType.Heading
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(
+                                if (isEmergencyVibrating) {
+                                    R.string.emergency_demo_vibrating
+                                } else {
+                                    R.string.emergency_demo_not_vibrating
+                                }
+                            ),
+                            style = DamType.Body
+                        )
+                        Text(
+                            text = stringResource(
+                                if (isEmergencyFlashing) {
+                                    R.string.emergency_demo_flashing
+                                } else {
+                                    R.string.emergency_demo_not_flashing
+                                }
+                            ),
+                            style = DamType.Body
+                        )
+                        flashUnavailableReason?.let { reason ->
+                            Text(text = reason, style = DamType.Small)
+                        }
+                        vibrationUnavailableReason?.let { reason ->
+                            Text(text = reason, style = DamType.Small)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                EmergencyAlertManager.trigger(
+                                    context,
+                                    EmergencyAlert(
+                                        id = "debug-${System.currentTimeMillis()}",
+                                        fromName = context.getString(R.string.emergency_demo_sender_name),
+                                        fromRole = context.getString(R.string.emergency_demo_sender_role),
+                                        startedAtMs = System.currentTimeMillis(),
+                                        isDirectCall = true
+                                    )
+                                )
+                            }
+                        ) {
+                            Text(text = stringResource(R.string.emergency_demo_activate))
+                        }
+                        Button(onClick = { EmergencyAlertManager.stop() }) {
+                            Text(text = stringResource(R.string.emergency_demo_stop))
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+
+            if (isDebuggable) {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = stringResource(R.string.audio_incident_demo_title),
+                            style = DamType.Heading
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                AudioIncidentBus.simulate(
+                                    AudioIncident.HeadsetUnplugged(
+                                        AudioDeviceInfo.TYPE_WIRED_HEADSET
+                                    )
+                                )
+                            }
+                        ) {
+                            Text(text = stringResource(R.string.audio_incident_demo_headset))
+                        }
+                        Button(
+                            onClick = {
+                                AudioIncidentBus.simulate(
+                                    AudioIncident.AudioFocusLost(
+                                        context.getString(R.string.audio_incident_demo_focus_reason)
+                                    )
+                                )
+                            }
+                        ) {
+                            Text(text = stringResource(R.string.audio_incident_demo_focus))
+                        }
+                        Button(
+                            onClick = {
+                                AudioIncidentBus.simulate(
+                                    AudioIncident.MicUnavailable(
+                                        context.getString(R.string.audio_incident_demo_mic_reason)
+                                    )
+                                )
+                            }
+                        ) {
+                            Text(text = stringResource(R.string.audio_incident_demo_mic))
+                        }
+                        Text(
+                            text = stringResource(R.string.audio_incident_demo_recent),
+                            style = DamType.Body
+                        )
+                        recentAudioIncidents.forEach { incident ->
+                            Text(
+                                text = incident.toDisplayText(context),
+                                style = DamType.Small
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+
+            if (isDebuggable) {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = stringResource(R.string.field_test_title),
+                            style = DamType.Heading
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                if (fieldLogActive) {
+                                    FieldTestLogger.stop()
+                                } else {
+                                    FieldTestLogger.start(context)
+                                }
+                            }
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    if (fieldLogActive) {
+                                        R.string.field_test_stop_logging
+                                    } else {
+                                        R.string.field_test_start_logging
+                                    }
+                                )
+                            )
+                        }
+                        fieldLogDirectory?.let { directory ->
+                            Text(
+                                text = stringResource(R.string.field_test_directory, directory),
+                                style = DamType.Small
+                            )
+                        }
+                        fieldLogFile?.let { path ->
+                            Text(
+                                text = stringResource(R.string.field_test_csv_file, path),
+                                style = DamType.Small
+                            )
+                        }
+                        Button(
+                            onClick = { FieldTestLogger.playBluetoothLatencyTick() },
+                            enabled = fieldLogActive
+                        ) {
+                            Text(text = stringResource(R.string.field_test_play_tick))
+                        }
+                        bluetoothLatencyEstimateMs?.let { estimate ->
+                            Text(
+                                text = stringResource(
+                                    R.string.field_test_bluetooth_estimate,
+                                    estimate
+                                ),
+                                style = DamType.Body
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.field_test_press_counts),
+                            style = DamType.Body
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.field_test_press_count_volume_up,
+                                fieldPressCounts[PttSource.VOLUME_UP.name] ?: 0
+                            ),
+                            style = DamType.Small
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.field_test_press_count_volume_down,
+                                fieldPressCounts[PttSource.VOLUME_DOWN.name] ?: 0
+                            ),
+                            style = DamType.Small
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.field_test_press_count_headset,
+                                fieldPressCounts[PttSource.HEADSET.name] ?: 0
+                            ),
+                            style = DamType.Small
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.field_test_press_count_screen,
+                                fieldPressCounts[PttSource.SCREEN_BUTTON.name] ?: 0
+                            ),
+                            style = DamType.Small
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.field_test_duplicate_count,
+                                duplicateKeyCount
+                            ),
+                            style = DamType.Small
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.field_test_ignored_count,
+                                ignoredKeyCount
+                            ),
+                            style = DamType.Small
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+            }
 
             // NÚT PTT TRÊN MÀN HÌNH (SỬ DỤNG POINTER INPUT)
             GlassCard(modifier = Modifier.fillMaxWidth()) {
@@ -278,6 +521,31 @@ fun PttKeyDemoScreen(
     }
     }
 }
+
+private fun AudioIncident.toDisplayText(context: android.content.Context): String =
+    when (this) {
+        is AudioIncident.HeadsetUnplugged ->
+            context.getString(R.string.audio_incident_headset_unplugged, deviceType)
+        AudioIncident.HeadsetReconnected ->
+            context.getString(R.string.audio_incident_headset_reconnected)
+        AudioIncident.BluetoothDisconnected ->
+            context.getString(R.string.audio_incident_bluetooth_disconnected)
+        is AudioIncident.AudioFocusLost ->
+            context.getString(R.string.audio_incident_focus_lost, reason)
+        AudioIncident.AudioFocusRegained ->
+            context.getString(R.string.audio_incident_focus_regained)
+        is AudioIncident.MicUnavailable ->
+            context.getString(R.string.audio_incident_mic_unavailable, reason)
+        is AudioIncident.AudioPermissionRevoked ->
+            context.getString(R.string.audio_incident_permission_revoked, permission)
+        is AudioIncident.AudioRouteFailed ->
+            context.getString(R.string.audio_incident_route_failed, reason)
+        is AudioIncident.Unknown ->
+            context.getString(
+                R.string.audio_incident_unknown,
+                throwable.message ?: throwable.javaClass.simpleName
+            )
+    }
 
 @Composable
 private fun VolumeKeyOptionRow(

@@ -66,7 +66,6 @@ fun GrantPermissionScreen(
     modifier: Modifier = Modifier,
     uiState: PermissionUiState = PermissionUiState()
 ) {
-    // // TODO(TV4): Lấy trạng thái công tắc từ PermissionManager của Người 4
     var micState by remember { mutableStateOf(uiState.isMicrophoneGranted) }
     var notiState by remember { mutableStateOf(uiState.isNotificationGranted) }
     var btState by remember { mutableStateOf(uiState.isBluetoothGranted) }

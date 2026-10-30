@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
@@ -50,6 +51,7 @@ import com.example.damthoai.ui.theme.CallStatusOffline
 import com.example.damthoai.ui.theme.CallVolumeEnd
 import com.example.damthoai.ui.theme.CallVolumeStart
 import com.example.damthoai.ui.theme.CallVolumeTrack
+import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.DamType
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
@@ -292,29 +294,52 @@ fun CallStatusBanner(
 fun CallBottomActions(
     onNavigateToPocket: () -> Unit,
     onNavigateToEmergency: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    speakerSelected: Boolean = false,
+    headsetSelected: Boolean = false,
+    headsetEnabled: Boolean = true,
+    onSelectSpeaker: () -> Unit = {},
+    onSelectHeadset: () -> Unit = {}
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ActionItem(R.drawable.ic_vol, "Loa ngoài", onClick = {})
-        ActionItem(R.drawable.ic_head, "Tai nghe", onClick = {})
+        ActionItem(
+            R.drawable.ic_vol,
+            "Loa ngoài",
+            onClick = onSelectSpeaker,
+            selected = speakerSelected
+        )
+        ActionItem(
+            R.drawable.ic_head,
+            "Tai nghe",
+            onClick = onSelectHeadset,
+            selected = headsetSelected,
+            enabled = headsetEnabled
+        )
         ActionItem(R.drawable.ic_phone, "Bỏ túi", onClick = onNavigateToPocket)
         ActionItem(R.drawable.ic_alert, "Khẩn cấp", onClick = onNavigateToEmergency)
     }
 }
 
 @Composable
-private fun ActionItem(iconRes: Int, label: String, onClick: () -> Unit) {
+private fun ActionItem(
+    iconRes: Int,
+    label: String,
+    onClick: () -> Unit,
+    selected: Boolean = false,
+    enabled: Boolean = true
+) {
     // Tuần 3: sửa - nút tròn 54dp, nhãn DamType.Small có cỡ 11.5sp.
     Column(
         modifier = Modifier
             .width(78.dp)
             .height(78.dp)
-            .pointerInput(onClick) {
-                detectTapGestures(onTap = { onClick() })
+            .alpha(if (enabled) 1f else 0.38f)
+            .pointerInput(onClick, enabled) {
+                if (enabled) detectTapGestures(onTap = { onClick() })
             },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -329,7 +354,11 @@ private fun ActionItem(iconRes: Int, label: String, onClick: () -> Unit) {
             Icon(
                 painter = painterResource(iconRes),
                 contentDescription = label,
-                tint = if (label == "Khẩn cấp") CallStatusOffline else TextPrimary,
+                tint = when {
+                    label == "Khẩn cấp" -> CallStatusOffline
+                    selected -> AccentCyan
+                    else -> TextPrimary
+                },
                 modifier = Modifier.size(16.dp)
             )
         }

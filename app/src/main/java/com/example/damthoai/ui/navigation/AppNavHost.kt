@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -28,7 +29,9 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import kotlinx.coroutines.flow.collect
 import com.example.damthoai.hardware.PttKeyDemoScreen
+import com.example.damthoai.hardware.emergency.EmergencyAlertManager
 import com.example.damthoai.permission.PermissionScreen
 import com.example.damthoai.ui.channels.ChannelListScreen
 import com.example.damthoai.permission.MicDeniedScreen
@@ -46,6 +49,7 @@ import com.example.damthoai.ui.event.CreateEventScreen
 import com.example.damthoai.ui.event.RestoreEventScreen
 import com.example.damthoai.ui.onboarding.OnboardingScreen
 import com.example.damthoai.ui.screens.ActiveCallScreen
+import com.example.damthoai.ui.screens.EmergencyAlertIncomingScreen
 import com.example.damthoai.ui.screens.PocketModeScreen
 import com.example.damthoai.ui.components.BgVariant
 import com.example.damthoai.ui.theme.AccentCyan
@@ -59,6 +63,19 @@ fun AppNavHost(
     modifier: Modifier = Modifier,
     startDestination: String = AppRoute.Onboarding.route
 ) {
+    LaunchedEffect(navController) {
+        EmergencyAlertManager.currentAlert.collect { alert ->
+            if (
+                alert != null &&
+                navController.currentDestination?.route != AppRoute.EmergencyAlertIncoming.route
+            ) {
+                navController.navigate(AppRoute.EmergencyAlertIncoming.route) {
+                    launchSingleTop = true
+                }
+            }
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = startDestination,
@@ -172,10 +189,15 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.EmergencyAlertIncoming.route) {
-            PlaceholderScreen(
-                title = "CẢNH BÁO ĐẾN KHẨN CẤP",
-                description = "Cảnh báo khẩn cấp đỏ nổi bật đè lên màn hình",
-                onBack = { navController.popBackStack() }
+            EmergencyAlertIncomingScreen(
+                onAccept = {
+                    EmergencyAlertManager.acknowledge()
+                    navController.navigate(AppRoute.EmergencyActiveCall.route)
+                },
+                onDecline = {
+                    EmergencyAlertManager.snooze()
+                    navController.popBackStack()
+                }
             )
         }
         composable(AppRoute.EmergencyActiveCall.route) {

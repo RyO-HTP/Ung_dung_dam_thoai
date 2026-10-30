@@ -24,12 +24,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Shape
@@ -46,6 +48,7 @@ import com.example.damthoai.data.fake.FakeRepositories
 import com.example.damthoai.data.fake.LiveCue
 import com.example.damthoai.data.fake.Member
 import com.example.damthoai.data.fake.MemberLevel
+import com.example.damthoai.hardware.emergency.EmergencyAlertManager
 import com.example.damthoai.ui.channels.ChannelItemUiState
 import com.example.damthoai.ui.channels.ChannelMenuSheet
 import com.example.damthoai.ui.components.BackButton
@@ -398,6 +401,10 @@ fun EmergencyAlertIncomingScreen(
     onDecline: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val alert by EmergencyAlertManager.currentAlert.collectAsState()
+    val currentAlert = alert
+    val isVibrating by EmergencyAlertManager.isVibrating.collectAsState()
+
     ScreenFrame(
         title = "Cảnh báo khẩn cấp",
         onBack = onDecline,
@@ -424,18 +431,28 @@ fun EmergencyAlertIncomingScreen(
                 )
                 TagLabel(text = "CẢNH BÁO KHẨN CẤP", color = AccentRed)
                 Text(
-                    "Lan Phương gọi khẩn cấp",
+                    "${currentAlert?.fromName.orEmpty()} gọi khẩn cấp",
                     color = TextPrimary,
                     style = DamType.Title.copy(fontSize = 22.sp),
                     textAlign = TextAlign.Center
                 )
                 Text(
-                    "Tổng đạo diễn · gọi riêng bạn",
+                    buildString {
+                        append(currentAlert?.fromRole.orEmpty())
+                        if (currentAlert != null) {
+                            append(" · ")
+                            append(if (currentAlert.isDirectCall) "gọi riêng bạn" else "gọi toàn kênh")
+                        }
+                    },
                     color = TextSecondary,
                     style = DamType.Body,
                     textAlign = TextAlign.Center
                 )
-                TagLabel(text = "ĐANG RUNG", color = AccentRed)
+                TagLabel(
+                    text = "ĐANG RUNG",
+                    color = AccentRed,
+                    modifier = Modifier.alpha(if (isVibrating) 1f else 0.38f)
+                )
             }
         }
         Spacer(Modifier.height(20.dp))

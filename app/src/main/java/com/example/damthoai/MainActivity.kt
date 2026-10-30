@@ -2,14 +2,13 @@
  * Khối KDoc tiếng Việt:
  * Activity chính của ứng dụng Đàm Thoại.
  * Khởi tạo chế độ Edge-to-Edge, cài đặt Theme/Layout,
- * và đánh chặn sự kiện phím cứng Volume / Tai nghe Bluetooth biến thành nút PTT.
+ * và chuyển sự kiện phím Volume cứng tới bộ điều khiển PTT.
  */
 package com.example.damthoai
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
-import android.support.v4.media.session.MediaSessionCompat
-import android.support.v4.media.session.PlaybackStateCompat
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -19,27 +18,44 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.example.damthoai.hardware.AccessibilityStatus
+import com.example.damthoai.hardware.audio.AudioRouteGuard
 import com.example.damthoai.hardware.HandsFreeSession
+import com.example.damthoai.hardware.HandsFreeSettings
 import com.example.damthoai.hardware.HardwareKeyHandler
 import com.example.damthoai.hardware.PttController
+import com.example.damthoai.hardware.emergency.EmergencyAlertManager
+import com.example.damthoai.hardware.emergency.EmergencyNotifier
 import com.example.damthoai.permission.PermissionManager
 import com.example.damthoai.ui.navigation.AdaptiveAppLayout
 import com.example.damthoai.ui.theme.BgGradientTop
 import com.example.damthoai.ui.theme.DamThoaiTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
-
-    // [MỚI THÊM] Khai báo biến quản lý MediaSession cho tai nghe Bluetooth
-    private var mediaSession: MediaSessionCompat? = null
 
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // [MỚI THÊM] Khởi tạo hệ thống bắt sự kiện phím tai nghe Bluetooth
-        setupMediaSessionForBluetooth()
-
+        handleEmergencyAction(intent)
+        HandsFreeSettings.initialize(applicationContext)
         HandsFreeSession.initialize(this)
+        AudioRouteGuard.start(applicationContext)
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                EmergencyAlertManager.currentAlert.collect { alert ->
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                        setShowWhenLocked(alert != null)
+                        setTurnScreenOn(alert != null)
+                    }
+                }
+            }
+        }
 
         // Bật edge-to-edge tràn viền màn hình
         enableEdgeToEdge()
@@ -60,41 +76,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * [MỚI THÊM] Hàm cấu hình MediaSession để giành quyền ưu tiên nhận sự kiện
-     * nút bấm (Play/Pause/Call) từ tai nghe Bluetooth và có dây.
-     */
-    private fun setupMediaSessionForBluetooth() {
-        mediaSession = MediaSessionCompat(this, "DamThoaiPTT").apply {
-            setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS)
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleEmergencyAction(intent)
+    }
 
-            // Giả lập trạng thái "Đang phát media" để HĐH ưu tiên gửi phím bấm về app này
-            val state = PlaybackStateCompat.Builder()
-                .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PLAY_PAUSE)
-                .setState(PlaybackStateCompat.STATE_PLAYING, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1.0f)
-                .build()
-            setPlaybackState(state)
-
-            setCallback(object : MediaSessionCompat.Callback() {
-                override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
-                    // Trích xuất KeyEvent từ Intent của Bluetooth
-                    val keyEvent = mediaButtonEvent?.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
-                    if (keyEvent != null) {
-                        when (keyEvent.action) {
-                            KeyEvent.ACTION_DOWN -> {
-                                HardwareKeyHandler.handleKeyDown(keyEvent.keyCode, keyEvent)
-                            }
-                            KeyEvent.ACTION_UP -> {
-                                HardwareKeyHandler.handleKeyUp(keyEvent.keyCode, keyEvent)
-                            }
-                        }
-                        return true // Báo cho HĐH là ứng dụng đã "nuốt" phím Media này
-                    }
-                    return super.onMediaButtonEvent(mediaButtonEvent)
-                }
-            })
-            // Kích hoạt MediaSession
-            isActive = true
+    private fun handleEmergencyAction(intent: Intent?) {
+        when (intent?.action) {
+            EmergencyNotifier.ACTION_ACKNOWLEDGE -> EmergencyAlertManager.acknowledge(this)
+            EmergencyNotifier.ACTION_SNOOZE -> EmergencyAlertManager.snooze(this)
         }
     }
 
@@ -141,14 +132,11 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // Cập nhật lại trạng thái quyền khi ứng dụng quay lại foreground
         PermissionManager.refreshPermissionStates(this, this)
+        AccessibilityStatus.refresh(this)
     }
 
-    /**
-     * [MỚI THÊM] Giải phóng MediaSession khi thoát ứng dụng hoàn toàn
-     */
     override fun onDestroy() {
+        AudioRouteGuard.stop()
         super.onDestroy()
-        mediaSession?.isActive = false
-        mediaSession?.release()
     }
 }

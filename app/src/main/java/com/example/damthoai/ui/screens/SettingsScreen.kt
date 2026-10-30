@@ -16,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,6 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.damthoai.hardware.HandsFreeSettings
 import com.example.damthoai.permission.PermissionManager
 
 @Composable
@@ -36,8 +38,8 @@ fun SettingsScreen(
     val activity = context as? Activity
 
     var mdnsEnabled by remember { mutableStateOf(true) }
-    var headsetEnabled by remember { mutableStateOf(true) }
-    var duckingEnabled by remember { mutableStateOf(true) }
+    val headsetEnabled by HandsFreeSettings.headsetButtonEnabled.collectAsState()
+    val duckingEnabled by HandsFreeSettings.duckSecondaryEnabled.collectAsState()
 
     val hasAudioCamera = remember { PermissionManager.hasAudioAndCameraPermissions(context) }
     val hasNetworkBt = remember { PermissionManager.hasNetworkAndBluetoothPermissions(context) }
@@ -125,7 +127,10 @@ fun SettingsScreen(
                         Text(text = "Nút Play/Pause tai nghe", fontWeight = FontWeight.Bold)
                         Text(text = "Bấm để mở/tắt mic, có tiếng bíp", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Switch(checked = headsetEnabled, onCheckedChange = { headsetEnabled = it })
+                    Switch(
+                        checked = headsetEnabled,
+                        onCheckedChange = HandsFreeSettings::setHeadsetButtonEnabled
+                    )
                 }
             }
         }
@@ -146,7 +151,10 @@ fun SettingsScreen(
                         Text(text = "Hạ âm kênh phụ (Audio Ducking)", fontWeight = FontWeight.Bold)
                         Text(text = "Khi kênh ưu tiên có người nói", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Switch(checked = duckingEnabled, onCheckedChange = { duckingEnabled = it })
+                    Switch(
+                        checked = duckingEnabled,
+                        onCheckedChange = HandsFreeSettings::setDuckSecondaryEnabled
+                    )
                 }
             }
         }

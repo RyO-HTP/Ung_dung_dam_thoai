@@ -37,6 +37,8 @@ import com.example.damthoai.R
 import com.example.damthoai.data.fake.FakeCallData
 import com.example.damthoai.hardware.PttController
 import com.example.damthoai.hardware.PttSource
+import com.example.damthoai.hardware.audio.AudioRoute
+import com.example.damthoai.hardware.audio.AudioRouteGuard
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.BgVariant
 import com.example.damthoai.ui.components.CallBottomActions
@@ -79,6 +81,13 @@ fun ActiveCallScreen(
         state
     }
     val content = FakeCallData.contentFor(displayState)
+    val currentAudioRoute by AudioRouteGuard.currentRoute.collectAsState()
+    val availableAudioRoutes by AudioRouteGuard.availableRoutes.collectAsState()
+    val headsetRoute = when {
+        AudioRoute.HEADSET in availableAudioRoutes -> AudioRoute.HEADSET
+        AudioRoute.BLUETOOTH in availableAudioRoutes -> AudioRoute.BLUETOOTH
+        else -> null
+    }
     var queuedCount by remember { mutableStateOf(1) }
     var volumes by remember(state) {
         mutableStateOf(content.channels.map { channel -> channel.volume })
@@ -150,7 +159,15 @@ fun ActiveCallScreen(
             // Tuần 3: sửa - hàng bốn nút nằm ngoài vùng cuộn để luôn hiện.
             CallBottomActions(
                 onNavigateToPocket = onNavigateToPocketMode,
-                onNavigateToEmergency = onNavigateToEmergency
+                onNavigateToEmergency = onNavigateToEmergency,
+                speakerSelected = currentAudioRoute == AudioRoute.SPEAKER,
+                headsetSelected = currentAudioRoute == AudioRoute.HEADSET ||
+                    currentAudioRoute == AudioRoute.BLUETOOTH,
+                headsetEnabled = headsetRoute != null,
+                onSelectSpeaker = { AudioRouteGuard.userSelectRoute(AudioRoute.SPEAKER) },
+                onSelectHeadset = {
+                    headsetRoute?.let(AudioRouteGuard::userSelectRoute)
+                }
             )
         }
     }
