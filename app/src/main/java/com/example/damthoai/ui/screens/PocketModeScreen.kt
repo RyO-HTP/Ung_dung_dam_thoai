@@ -87,8 +87,11 @@ fun PocketModeScreen(
     DisposableEffect(view) {
         val window = (view.context as? Activity)?.window
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        PttController.acquireCapture("PocketModeScreen")
+        com.example.damthoai.service.DamThoaiAudioService.start(view.context, "Hậu cần – An ninh", "Tong_Dao_Dien")
         onDispose {
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            PttController.releaseCapture("PocketModeScreen")
         }
     }
 

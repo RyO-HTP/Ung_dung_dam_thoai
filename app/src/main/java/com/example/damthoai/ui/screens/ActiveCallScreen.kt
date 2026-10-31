@@ -82,6 +82,14 @@ fun ActiveCallScreen(
     var volumes by remember(state) {
         mutableStateOf(content.channels.map { channel -> channel.volume })
     }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        PttController.acquireCapture("ActiveCallScreen")
+        com.example.damthoai.service.DamThoaiAudioService.start(context, "Hậu cần – An ninh", "Tong_Dao_Dien")
+        onDispose {
+            PttController.releaseCapture("ActiveCallScreen")
+        }
+    }
 
     DamThoaiBackground(modifier = modifier, variant = BgVariant.Default) {
         // Tuần 3: sửa - giữ nút thao tác cố định, chỉ cuộn phần thông tin khi thiếu chiều cao.
