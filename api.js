@@ -10,8 +10,8 @@ const apiSecret = 'skNGqlelCYwJieKdYxa6if5aEf1kS9eh2PcxfoXWl4xF';
 
 // Bổ sung 'async' ở dòng này
 app.get('/get-token', async (req, res) => {
-    const roomName = 'Kenh_Hau_Can';
-    const participantName = 'Nguoi_Dung_Test_01';
+    const roomName = req.query.room || 'Kenh_Hau_Can';
+    const participantName = req.query.identity || req.query.user_id || 'Nguoi_Dung_Test_01';
 
     const at = new AccessToken(apiKey, apiSecret, {
         identity: participantName,
