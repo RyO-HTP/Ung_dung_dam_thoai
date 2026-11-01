@@ -8,40 +8,21 @@
  */
 package com.example.damthoai.ui.navigation
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
+import android.content.Intent
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import kotlinx.coroutines.flow.collect
 import com.example.damthoai.hardware.PttKeyDemoScreen
 import com.example.damthoai.hardware.emergency.EmergencyAlertManager
+import com.example.damthoai.data.fake.FakeRemainingUiData
 import com.example.damthoai.permission.PermissionScreen
 import com.example.damthoai.ui.channels.ChannelListScreen
 import com.example.damthoai.permission.MicDeniedScreen
-import com.example.damthoai.ui.components.BackButton
-import com.example.damthoai.ui.components.DamThoaiBackground
-import com.example.damthoai.ui.components.GlassCard
-import com.example.damthoai.ui.components.PrimaryButton
-import com.example.damthoai.ui.components.SecondaryButton
-import com.example.damthoai.ui.components.SectionLabel
-import com.example.damthoai.ui.components.StatusPill
 import com.example.damthoai.ui.join.JoinChannelScreen
 import com.example.damthoai.ui.join.JoinErrorScreen
 import com.example.damthoai.ui.join.UserInfoScreen
@@ -49,13 +30,21 @@ import com.example.damthoai.ui.event.CreateEventScreen
 import com.example.damthoai.ui.event.RestoreEventScreen
 import com.example.damthoai.ui.onboarding.OnboardingScreen
 import com.example.damthoai.ui.screens.ActiveCallScreen
+import com.example.damthoai.ui.screens.EmergencyActiveCallScreen
+import com.example.damthoai.ui.screens.EmergencyCallSelectScreen
 import com.example.damthoai.ui.screens.EmergencyAlertIncomingScreen
 import com.example.damthoai.ui.screens.PocketModeScreen
-import com.example.damthoai.ui.components.BgVariant
-import com.example.damthoai.ui.theme.AccentCyan
-import com.example.damthoai.ui.theme.AccentMint
-import com.example.damthoai.ui.theme.TextPrimary
-import com.example.damthoai.ui.theme.TextSecondary
+import com.example.damthoai.ui.screens.EventMembersScreen
+import com.example.damthoai.ui.screens.ChannelMenuRouteScreen
+import com.example.damthoai.ui.screens.EventEndedScreen
+import com.example.damthoai.ui.screens.HandsFreeAudioScreen
+import com.example.damthoai.ui.screens.LiveCueDraftScreen
+import com.example.damthoai.ui.screens.ManageEventScreen
+import com.example.damthoai.ui.screens.MultiLevelConnectionScreen
+import com.example.damthoai.ui.screens.MyQrCodeScreen
+import com.example.damthoai.ui.screens.RemovedFromEventScreen
+import com.example.damthoai.ui.screens.SettingsScreen
+import com.example.damthoai.ui.screens.UserProfileScreen
 
 @Composable
 fun AppNavHost(
@@ -63,6 +52,8 @@ fun AppNavHost(
     modifier: Modifier = Modifier,
     startDestination: String = AppRoute.Onboarding.route
 ) {
+    val context = LocalContext.current
+
     LaunchedEffect(navController) {
         EmergencyAlertManager.currentAlert.collect { alert ->
             if (
@@ -155,10 +146,10 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.ChannelMenuSheet.route) {
-            PlaceholderScreen(
-                title = "MENU KÊNH (BOTTOM SHEET)",
-                description = "Tùy chỉnh âm lượng kênh, rời kênh, đổi chức vụ",
-                onBack = { navController.popBackStack() }
+            ChannelMenuRouteScreen(
+                onDismiss = { navController.popBackStack() },
+                onToggleMute = {},
+                onLeaveChannel = { navController.popBackStack() }
             )
         }
 
@@ -169,7 +160,9 @@ fun AppNavHost(
                 onNavigateToPocketMode = {
                     navController.navigate(AppRoute.PocketMode.route)
                 },
-                onNavigateToEmergency = {}
+                onNavigateToEmergency = {
+                    navController.navigate(AppRoute.EmergencyCallSelect.route)
+                }
             )
         }
         composable(AppRoute.PocketMode.route) {
@@ -180,12 +173,11 @@ fun AppNavHost(
 
         // === NHÓM E: KHẨN CẤP ===
         composable(AppRoute.EmergencyCallSelect.route) {
-            PlaceholderScreen(
-                title = "GỌI KHẨN CẤP",
-                description = "Màn hình chọn người nhận cuộc gọi khẩn cấp",
+            EmergencyCallSelectScreen(
                 onBack = { navController.popBackStack() },
-                onNext = { navController.navigate(AppRoute.EmergencyActiveCall.route) },
-                nextButtonText = "Phát Cuộc gọi Khẩn cấp"
+                onCall = {
+                    navController.navigate(AppRoute.EmergencyActiveCall.route)
+                }
             )
         }
         composable(AppRoute.EmergencyAlertIncoming.route) {
@@ -197,45 +189,45 @@ fun AppNavHost(
                 onDecline = {
                     EmergencyAlertManager.snooze()
                     navController.popBackStack()
-                }
+                },
+                alertFlow = EmergencyAlertManager.currentAlert,
+                isVibratingFlow = EmergencyAlertManager.isVibrating,
+                isFlashingFlow = EmergencyAlertManager.isFlashing
             )
         }
         composable(AppRoute.EmergencyActiveCall.route) {
-            PlaceholderScreen(
-                title = "CUỘC GỌI KHẨN CẤP DANG DIỄN RA",
-                description = "Chiếm quyền ưu tiên toàn bộ các kênh",
-                onBack = { navController.popBackStack() }
-            )
+            EmergencyActiveCallScreen(onEndCall = { navController.popBackStack() })
         }
 
         // === NHÓM F: CÀI ĐẶT ===
         composable(AppRoute.Settings.route) {
-            PlaceholderScreen(
-                title = "CÀI ĐẶT",
-                description = "Hồ sơ, Kết nối đa tầng, Rảnh tay và âm thanh",
-                onNext = { navController.navigate(AppRoute.UserProfile.route) },
-                nextButtonText = "Xem Hồ sơ của bạn",
-                secondaryAction = { navController.navigate(AppRoute.MultiLevelConnection.route) },
-                secondaryButtonText = "Kết nối đa tầng"
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onProfile = { navController.navigate(AppRoute.UserProfile.route) },
+                onManageEvent = { navController.navigate(AppRoute.ManageEvent.route) },
+                onLeaveEvent = { navController.navigate(AppRoute.RemovedFromEvent.route) },
+                onMultiLevel = { navController.navigate(AppRoute.MultiLevelConnection.route) },
+                onHandsFree = { navController.navigate(AppRoute.HandsFreeAudio.route) },
+                onPttDebug = { navController.navigate(AppRoute.PttDebug.route) }
             )
         }
         composable(AppRoute.MultiLevelConnection.route) {
-            PlaceholderScreen(
-                title = "KẾT NỐI ĐA TẦNG",
-                description = "Mạng ngang hàng P2P / Server dự phòng",
+            MultiLevelConnectionScreen(onBack = { navController.popBackStack() })
+        }
+        composable(AppRoute.HandsFreeAudio.route) {
+            HandsFreeAudioScreen(
                 onBack = { navController.popBackStack() }
             )
         }
-        composable(AppRoute.HandsFreeAudio.route) {
+        composable(AppRoute.PttDebug.route) {
             PttKeyDemoScreen(
                 onBack = { navController.popBackStack() }
             )
         }
         composable(AppRoute.UserProfile.route) {
-            PlaceholderScreen(
-                title = "HỒ SƠ CỦA BẠN",
-                description = "Chỉnh sửa tên hiển thị và vai trò trong ekip",
-                onBack = { navController.popBackStack() }
+            UserProfileScreen(
+                onBack = { navController.popBackStack() },
+                onSave = { navController.popBackStack() }
             )
         }
 
@@ -252,14 +244,12 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.ManageEvent.route) {
-            PlaceholderScreen(
-                title = "QUẢN LÝ SỰ KIỆN",
-                description = "Mã QR của ban, Danh sách Thành viên, Live Cue",
+            ManageEventScreen(
                 onBack = { navController.popBackStack() },
-                onNext = { navController.navigate(AppRoute.EventMembers.route) },
-                nextButtonText = "Quản lý Thành viên",
-                secondaryAction = { navController.navigate(AppRoute.LiveCueDraft.route) },
-                secondaryButtonText = "Soạn Live Cue"
+                onQrCode = { navController.navigate(AppRoute.MyQrCode.route) },
+                onMembers = { navController.navigate(AppRoute.EventMembers.route) },
+                onLiveCue = { navController.navigate(AppRoute.LiveCueDraft.route) },
+                onEndEvent = { navController.navigate(AppRoute.EventEnded.route) }
             )
         }
         composable(AppRoute.RestoreEvent.route) {
@@ -271,125 +261,51 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.MyQrCode.route) {
-            PlaceholderScreen(
-                title = "MÃ QR CỦA BAN",
-                description = "Mã QR chia sẻ cho các ban ngành vào kênh nhanh",
-                onBack = { navController.popBackStack() }
+            MyQrCodeScreen(
+                onBack = { navController.popBackStack() },
+                onShare = {
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(
+                            Intent.EXTRA_TEXT,
+                            "${FakeRemainingUiData.event.name}\nMã PIN: ${FakeRemainingUiData.event.pinCode}"
+                        )
+                    }
+                    context.startActivity(
+                        Intent.createChooser(shareIntent, "Chia sẻ mã sự kiện")
+                    )
+                }
             )
         }
         composable(AppRoute.EventMembers.route) {
-            PlaceholderScreen(
-                title = "THÀNH VIÊN SỰ KIỆN",
-                description = "Danh sách thành viên và phân quyền Cấp 1/2/3",
-                onBack = { navController.popBackStack() }
-            )
+            EventMembersScreen(onBack = { navController.popBackStack() })
         }
         composable(AppRoute.LiveCueDraft.route) {
-            PlaceholderScreen(
-                title = "SOẠN LIVE CUE",
-                description = "Soạn thông báo khẩn/Lệnh đạo diễn ghim lên đầu kênh",
-                onBack = { navController.popBackStack() }
+            LiveCueDraftScreen(
+                onBack = { navController.popBackStack() },
+                onSendCue = { cue ->
+                    FakeRemainingUiData.sendLiveCue(cue)
+                    navController.popBackStack()
+                }
             )
         }
         composable(AppRoute.EventEnded.route) {
-            PlaceholderScreen(
-                title = "SỰ KIỆN ĐÃ KẾT THÚC",
-                description = "Màn hình thông báo sự kiện đã đóng bởi Cấp 1",
-                onBack = { navController.popBackStack() }
+            EventEndedScreen(
+                onReturn = {
+                    navController.navigate(AppRoute.ChannelList.route) {
+                        popUpTo(AppRoute.EventEnded.route) { inclusive = true }
+                    }
+                }
             )
         }
         composable(AppRoute.RemovedFromEvent.route) {
-            PlaceholderScreen(
-                title = "BẠN ĐÃ BỊ XÓA KHỎI SỰ KIỆN",
-                description = "Thông báo khi bị Cấp 1 xóa khỏi ban tổ chức",
-                onBack = { navController.popBackStack() }
+            RemovedFromEventScreen(
+                onReturn = {
+                    navController.navigate(AppRoute.ScanQr.route) {
+                        popUpTo(AppRoute.RemovedFromEvent.route) { inclusive = true }
+                    }
+                }
             )
-        }
-    }
-}
-
-/**
- * Composable giao diện Màn hình Mẫu (Placeholder) dùng cho các nhóm chưa code
- */
-@Composable
-private fun PlaceholderScreen(
-    title: String,
-    description: String,
-    onBack: (() -> Unit)? = null,
-    onNext: (() -> Unit)? = null,
-    nextButtonText: String = "Tiếp tục",
-    secondaryAction: (() -> Unit)? = null,
-    secondaryButtonText: String = "Hành động phụ"
-) {
-    DamThoaiBackground {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(20.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (onBack != null) {
-                    BackButton(onClick = onBack)
-                } else {
-                    StatusPill(text = "ĐÀM THOẠI", statusColor = AccentMint)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            GlassCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    SectionLabel(text = "MÀN HÌNH FRAMEWORK")
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = title,
-                        color = TextPrimary,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = description,
-                        color = TextSecondary,
-                        fontSize = 14.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            if (onNext != null) {
-                PrimaryButton(
-                    text = nextButtonText,
-                    onClick = onNext,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            if (secondaryAction != null) {
-                Spacer(modifier = Modifier.height(10.dp))
-                SecondaryButton(
-                    text = secondaryButtonText,
-                    onClick = secondaryAction,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
         }
     }
 }

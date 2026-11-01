@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -34,23 +35,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.damthoai.R
 import com.example.damthoai.data.fake.Channel
 import com.example.damthoai.data.fake.Event
+import com.example.damthoai.data.fake.FakeMultiLevelConnectionData
 import com.example.damthoai.data.fake.FakeRemainingUiData
 import com.example.damthoai.data.fake.FakeRepositories
 import com.example.damthoai.data.fake.LiveCue
 import com.example.damthoai.data.fake.Member
 import com.example.damthoai.data.fake.MemberLevel
-import com.example.damthoai.hardware.emergency.EmergencyAlertManager
 import com.example.damthoai.ui.channels.ChannelItemUiState
 import com.example.damthoai.ui.channels.ChannelMenuSheet
+import com.example.damthoai.ui.event.EventMembersUiState
+import com.example.damthoai.ui.event.EventMembersViewModel
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.BgVariant
 import com.example.damthoai.ui.components.DamThoaiBackground
@@ -58,6 +64,7 @@ import com.example.damthoai.ui.components.DangerButton
 import com.example.damthoai.ui.components.GlassCard
 import com.example.damthoai.ui.components.AvatarCircle
 import com.example.damthoai.ui.components.GlassTextField
+import com.example.damthoai.ui.components.KitBottomSheet
 import com.example.damthoai.ui.components.KitSwitch
 import com.example.damthoai.ui.components.LevelTag
 import com.example.damthoai.ui.components.PrimaryButton
@@ -68,15 +75,17 @@ import com.example.damthoai.ui.theme.AccentAmber
 import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.AccentMint
 import com.example.damthoai.ui.theme.AccentRed
+import com.example.damthoai.ui.theme.ChipInk
 import com.example.damthoai.ui.theme.DamThoaiTheme
 import com.example.damthoai.ui.theme.DamType
-import com.example.damthoai.ui.theme.DangerEnd
-import com.example.damthoai.ui.theme.DangerStart
+import com.example.damthoai.ui.theme.DangerText
 import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.GlassBorder
 import com.example.damthoai.ui.theme.PrimaryStart
 import com.example.damthoai.ui.theme.SelectedChannelBg
+import com.example.damthoai.ui.theme.TagNeutralBg
 import com.example.damthoai.ui.theme.TextPrimary
+import com.example.damthoai.ui.theme.TextPlaceholder
 import com.example.damthoai.ui.theme.TextSecondary
 
 @Composable
@@ -236,23 +245,39 @@ private fun ActionRow(
 
 @Composable
 private fun MemberRow(member: Member, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(20.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
+            .clip(shape)
             .background(GlassBg)
-            .border(1.dp, GlassBorder, RoundedCornerShape(18.dp))
+            .border(1.dp, GlassBorder, shape)
             .clickable(onClick = onClick)
-            .padding(12.dp),
+            .padding(horizontal = 14.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AvatarCircle(member.initials, size = 46.dp)
-        Spacer(Modifier.width(12.dp))
+        AvatarCircle(member.name, size = 40.dp)
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(member.name, color = TextPrimary, style = DamType.Heading)
-            Text(member.roleTitle, color = TextSecondary, style = DamType.Small)
+            Text(
+                member.name,
+                color = TextPrimary,
+                style = DamType.Body.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            )
+            Text(
+                member.roleTitle,
+                color = TextSecondary,
+                style = DamType.Small.copy(fontSize = 11.5.sp)
+            )
         }
         LevelTag(member.level)
+        Spacer(Modifier.width(8.dp))
+        Icon(
+            painter = painterResource(R.drawable.ic_chev),
+            contentDescription = null,
+            tint = TextSecondary,
+            modifier = Modifier.size(18.dp)
+        )
     }
 }
 
@@ -295,33 +320,6 @@ private fun SelectableChip(
 }
 
 @Composable
-private fun EmergencyPttButton(onClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .size(150.dp)
-            .clip(CircleShape)
-            .background(
-                Brush.radialGradient(
-                    listOf(DangerStart, DangerEnd)
-                )
-            )
-            .border(6.dp, DangerStart.copy(alpha = 0.18f), CircleShape)
-            .clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            painter = painterResource(R.drawable.ic_mic),
-            contentDescription = "Nói trong cuộc gọi khẩn cấp",
-            tint = TextPrimary,
-            modifier = Modifier.size(34.dp)
-        )
-        Spacer(Modifier.height(6.dp))
-        Text("GIỮ ĐỂ NÓI", color = TextPrimary, style = DamType.Button)
-    }
-}
-
-@Composable
 fun ChannelMenuRouteScreen(
     onDismiss: () -> Unit,
     onToggleMute: (Boolean) -> Unit,
@@ -345,308 +343,140 @@ fun ChannelMenuRouteScreen(
 }
 
 @Composable
-fun EmergencyCallSelectScreen(
-    onBack: () -> Unit,
-    onSendAlert: (String) -> Unit,
-    modifier: Modifier = Modifier,
-    initialSelectedTarget: String = "Hậu cần",
-    initialSelectedMemberId: String? = null
-) {
-    var selectedTarget by remember { mutableStateOf(initialSelectedTarget) }
-    var selectedMemberId by remember { mutableStateOf(initialSelectedMemberId) }
-    ScreenFrame("Gọi khẩn cấp", onBack, modifier, BgVariant.Emergency) {
-        PageIntro("Chỉ người được chọn nhận cảnh báo")
-        ChoiceRow(
-            "Tổng đạo diễn",
-            "Gửi nhanh tới Lan Phương",
-            selectedTarget == "Tổng đạo diễn",
-            { selectedTarget = "Tổng đạo diễn" },
-            R.drawable.ic_crown
-        )
-        ChoiceRow(
-            "Cả kênh Hậu cần",
-            "Thành viên trong kênh nhận cảnh báo",
-            selectedTarget == "Hậu cần",
-            { selectedTarget = "Hậu cần" },
-            R.drawable.ic_shield
-        )
-        ChoiceRow(
-            "Toàn sự kiện",
-            "Gửi cảnh báo tới tất cả thành viên",
-            selectedTarget == "Toàn sự kiện",
-            { selectedTarget = "Toàn sự kiện" },
-            R.drawable.ic_users
-        )
-        SectionLabel("Hoặc chọn người")
-        FakeRemainingUiData.eventMembers.take(4).forEachIndexed { index, member ->
-            ChoiceRow(
-                member.name,
-                member.roleTitle,
-                selectedMemberId == member.id,
-                { selectedMemberId = member.id },
-                R.drawable.ic_user
-            )
-        }
-        DangerButton(
-            text = "Gửi cảnh báo khẩn cấp",
-            onClick = { onSendAlert(selectedMemberId ?: selectedTarget) },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-
-@Composable
-fun EmergencyAlertIncomingScreen(
-    onAccept: () -> Unit,
-    onDecline: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val alert by EmergencyAlertManager.currentAlert.collectAsState()
-    val currentAlert = alert
-    val isVibrating by EmergencyAlertManager.isVibrating.collectAsState()
-
-    ScreenFrame(
-        title = "Cảnh báo khẩn cấp",
-        onBack = onDecline,
-        modifier = modifier,
-        variant = BgVariant.Emergency
-    ) {
-        Spacer(Modifier.height(20.dp))
-        GlassCard(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(20.dp)
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                ScreenIcon(
-                    R.drawable.ic_alert,
-                    tint = AccentRed,
-                    boxSize = 72.dp,
-                    iconSize = 34.dp,
-                    shape = CircleShape
-                )
-                TagLabel(text = "CẢNH BÁO KHẨN CẤP", color = AccentRed)
-                Text(
-                    "${currentAlert?.fromName.orEmpty()} gọi khẩn cấp",
-                    color = TextPrimary,
-                    style = DamType.Title.copy(fontSize = 22.sp),
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    buildString {
-                        append(currentAlert?.fromRole.orEmpty())
-                        if (currentAlert != null) {
-                            append(" · ")
-                            append(if (currentAlert.isDirectCall) "gọi riêng bạn" else "gọi toàn kênh")
-                        }
-                    },
-                    color = TextSecondary,
-                    style = DamType.Body,
-                    textAlign = TextAlign.Center
-                )
-                TagLabel(
-                    text = "ĐANG RUNG",
-                    color = AccentRed,
-                    modifier = Modifier.alpha(if (isVibrating) 1f else 0.38f)
-                )
-            }
-        }
-        Spacer(Modifier.height(20.dp))
-        PrimaryButton(
-            text = "Nhận cuộc gọi",
-            onClick = onAccept,
-            modifier = Modifier.fillMaxWidth()
-        )
-        SecondaryButton(
-            text = "Từ chối",
-            onClick = onDecline,
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-
-@Composable
-fun EmergencyActiveCallScreen(
-    onEndCall: () -> Unit,
-    noAnswer: Boolean = false,
-    onCallAgain: () -> Unit = onEndCall,
-    onMessageChannel: () -> Unit = onEndCall,
-    onTalk: () -> Unit = {},
-    modifier: Modifier = Modifier
-) {
-    ScreenFrame(
-        title = "Cuộc gọi khẩn cấp",
-        onBack = onEndCall,
-        modifier = modifier,
-        variant = BgVariant.Emergency
-    ) {
-        GlassCard(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(18.dp)
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                AvatarCircle("Lan Phương", size = 72.dp)
-                Text("Lan Phương", color = TextPrimary, style = DamType.Title.copy(fontSize = 22.sp))
-                Text(
-                    if (noAnswer) "Chưa ai trả lời" else "Cuộc gọi khẩn cấp",
-                    color = if (noAnswer) AccentAmber else AccentRed,
-                    style = DamType.Heading
-                )
-                Text(
-                    if (noAnswer) {
-                        "Đã gọi Lan Phương 30 giây nhưng máy chưa được nhấc. " +
-                            "Bạn có thể gọi lại hoặc nhắn qua kênh."
-                    } else {
-                        "Lan Phương · Minh Hậu (bạn) · Quốc Hùng"
-                    },
-                    color = TextSecondary,
-                    style = DamType.Body,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-        if (!noAnswer) {
-            EmergencyPttButton(onClick = onTalk)
-            DangerButton(
-                text = "Kết thúc cuộc gọi",
-                onClick = onEndCall,
-                modifier = Modifier.fillMaxWidth()
-            )
-        } else {
-            PrimaryButton(
-                text = "Gọi lại",
-                onClick = onCallAgain,
-                modifier = Modifier.fillMaxWidth()
-            )
-            SecondaryButton(
-                text = "Nhắn qua kênh",
-                onClick = onMessageChannel,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-    }
-}
-
-@Composable
-fun SettingsHubScreen(
-    onBack: () -> Unit,
-    onProfile: () -> Unit,
-    onMultiLevel: () -> Unit,
-    onHandsFree: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    ScreenFrame("Cài đặt", onBack, modifier) {
-        GlassCard(modifier = Modifier.fillMaxWidth()) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    FakeRemainingUiData.event.name,
-                    color = TextPrimary,
-                    style = DamType.Heading
-                )
-                Text("Bạn là Cấp 1 · quyền cao nhất", color = TextSecondary, style = DamType.Small)
-            }
-        }
-        SectionLabel("ỨNG DỤNG")
-        ActionRow(
-            R.drawable.ic_user,
-            "Hồ sơ của bạn",
-            "Tên hiển thị và chức vụ",
-            onProfile
-        )
-        ActionRow(
-            R.drawable.ic_wifi,
-            "Kết nối đa tầng",
-            "Internet, mạng nội bộ và hàng đợi ngoại tuyến",
-            onMultiLevel
-        )
-        ActionRow(
-            R.drawable.ic_head,
-            "Rảnh tay và âm thanh",
-            "Tai nghe, phím âm lượng, lọc ồn",
-            onHandsFree
-        )
-    }
-}
-
-@Composable
 fun MultiLevelConnectionScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var localNetwork by remember { mutableStateOf(true) }
-    var bluetooth by remember { mutableStateOf(true) }
-    var offlineQueue by remember { mutableStateOf(true) }
+    val uiState by FakeMultiLevelConnectionData.uiState.collectAsState()
+    MultiLevelConnectionContent(
+        onBack = onBack,
+        modifier = modifier,
+        internetEnabled = uiState.internetEnabled,
+        localNetworkEnabled = uiState.localNetworkEnabled,
+        bluetoothDirectEnabled = uiState.bluetoothDirectEnabled,
+        onInternetChange = FakeMultiLevelConnectionData::setInternetEnabled,
+        onLocalNetworkChange = FakeMultiLevelConnectionData::setLocalNetworkEnabled,
+        onBluetoothDirectChange = FakeMultiLevelConnectionData::setBluetoothDirectEnabled
+    )
+}
+
+@Composable
+private fun MultiLevelConnectionContent(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    internetEnabled: Boolean,
+    localNetworkEnabled: Boolean,
+    bluetoothDirectEnabled: Boolean,
+    onInternetChange: (Boolean) -> Unit,
+    onLocalNetworkChange: (Boolean) -> Unit,
+    onBluetoothDirectChange: (Boolean) -> Unit
+) {
     ScreenFrame("Kết nối đa tầng", onBack, modifier) {
-        SectionLabel("ỨNG DỤNG")
-        GlassCard(modifier = Modifier.fillMaxWidth()) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ScreenIcon(R.drawable.ic_wifi, tint = AccentMint)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Internet", color = TextPrimary, style = DamType.Heading)
-                    Text("Đang dùng · 42 ms", color = AccentMint, style = DamType.Small)
-                }
-                TagLabel("ĐANG DÙNG", color = AccentCyan)
-            }
-        }
-        ConnectionSwitchRow(
-            iconRes = R.drawable.ic_radio,
-            title = "Mạng nội bộ",
-            description = "Tự chuyển khi nghẽn mạng",
-            checked = localNetwork,
-            onCheckedChange = { localNetwork = it }
+        Text(
+            text = "App tự chuyển giữa các tầng khi mạng yếu. Bạn chỉ cần bật hoặc tắt từng tầng.",
+            color = TextSecondary,
+            style = DamType.Body.copy(fontSize = 13.sp, lineHeight = 19.5.sp)
         )
-        ConnectionSwitchRow(
+        ConnectionLayerCard(
+            iconRes = R.drawable.ic_radio,
+            title = "Internet",
+            status = if (internetEnabled) "ĐANG DÙNG" else "TẮT",
+            statusColor = if (internetEnabled) AccentCyan else TextSecondary,
+            statusBackground = if (internetEnabled) null else TagNeutralBg,
+            description = "4G/5G, Wi-Fi qua máy chủ SFU · 42 ms",
+            checked = internetEnabled,
+            onCheckedChange = onInternetChange
+        )
+        ConnectionLayerCard(
+            iconRes = R.drawable.ic_wifi,
+            title = "Mạng nội bộ",
+            status = if (localNetworkEnabled) "SẴN SÀNG" else "TẮT",
+            statusColor = TextSecondary,
+            statusBackground = TagNeutralBg,
+            description = "Wi-Fi hoặc hotspot, tự tìm máy (mDNS) · thấy 12 máy",
+            checked = localNetworkEnabled,
+            onCheckedChange = onLocalNetworkChange
+        )
+        ConnectionLayerCard(
             iconRes = R.drawable.ic_bt,
             title = "Bluetooth LE / Wi-Fi Direct",
-            description = "Kết nối trực tiếp ở gần",
-            checked = bluetooth,
-            onCheckedChange = { bluetooth = it }
+            description = "Ngang hàng 30–100 m khi không có mạng",
+            checked = bluetoothDirectEnabled,
+            onCheckedChange = onBluetoothDirectChange
         )
-        SectionLabel("KHI MẤT KẾT NỐI")
-        ConnectionSwitchRow(
-            iconRes = R.drawable.ic_save,
-            title = "Hàng đợi ngoại tuyến",
-            description = "Lưu nội dung, tự gửi khi có mạng",
-            checked = offlineQueue,
-            onCheckedChange = { offlineQueue = it }
-        )
+        GlassCard(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                horizontal = 14.dp,
+                vertical = 12.dp
+            )
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ConnectionLayerIcon(R.drawable.ic_save)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Hàng đợi ngoại tuyến", color = TextPrimary, style = DamType.Heading)
+                    Text(
+                        "Mất sóng thì ghi âm lưu lại, có mạng tự gửi",
+                        color = TextSecondary,
+                        style = DamType.Small
+                    )
+                }
+                Text("0 tin chờ", color = TextSecondary, style = DamType.Small)
+            }
+        }
     }
 }
 
 @Composable
-private fun ConnectionSwitchRow(
+private fun ConnectionLayerCard(
     iconRes: Int,
     title: String,
     description: String,
+    status: String? = null,
+    statusColor: androidx.compose.ui.graphics.Color = TextSecondary,
+    statusBackground: androidx.compose.ui.graphics.Color? = null,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(GlassBg)
-            .border(1.dp, GlassBorder, RoundedCornerShape(18.dp))
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        ScreenIcon(iconRes)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, color = TextPrimary, style = DamType.Heading)
-            Text(description, color = TextSecondary, style = DamType.Small)
+    GlassCard(modifier = Modifier.fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ConnectionLayerIcon(iconRes)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(title, color = TextPrimary, style = DamType.Heading)
+                    if (status != null) {
+                        TagLabel(
+                            text = status,
+                            color = statusColor,
+                            backgroundColor = statusBackground
+                        )
+                    }
+                }
+                Text(description, color = TextSecondary, style = DamType.Small)
+            }
+            Spacer(Modifier.width(8.dp))
+            KitSwitch(checked = checked, onCheckedChange = onCheckedChange)
         }
-        KitSwitch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun ConnectionLayerIcon(iconRes: Int) {
+    Box(
+        modifier = Modifier.size(40.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            tint = AccentCyan,
+            modifier = Modifier.size(20.dp)
+        )
     }
 }
 
@@ -824,70 +654,293 @@ fun MyQrCodeScreen(
 fun EventMembersScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    members: List<Member> = FakeRemainingUiData.eventMembers,
-    initiallySelectedMember: Member? = null,
-    onMemberRoleChanged: (Member, MemberLevel) -> Unit = { _, _ -> },
+    viewModel: EventMembersViewModel = viewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    var selectedMemberId by remember { mutableStateOf<String?>(null) }
+    val selectedMember = uiState.members.firstOrNull { it.id == selectedMemberId }
+
+    EventMembersContent(
+        onBack = onBack,
+        modifier = modifier,
+        uiState = uiState,
+        selectedMember = selectedMember,
+        onSearchQueryChange = viewModel::setSearchQuery,
+        onLevelSelected = viewModel::selectLevel,
+        onMemberSelected = { selectedMemberId = it.id },
+        onDismissSheet = { selectedMemberId = null },
+        onSaveMember = { member ->
+            viewModel.updateMember(member)
+            selectedMemberId = null
+        },
+        onRemoveMember = { member ->
+            viewModel.removeMember(member.id)
+            selectedMemberId = null
+        }
+    )
+}
+
+@Composable
+private fun EventMembersContent(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    uiState: EventMembersUiState,
+    selectedMember: Member? = null,
+    initialDraftLevel: MemberLevel? = null,
+    initialRoleTitle: String? = null,
+    onSearchQueryChange: (String) -> Unit = {},
+    onLevelSelected: (MemberLevel?) -> Unit = {},
+    onMemberSelected: (Member) -> Unit = {},
+    onDismissSheet: () -> Unit = {},
+    onSaveMember: (Member) -> Unit = {},
     onRemoveMember: (Member) -> Unit = {}
 ) {
-    var selectedMember by remember { mutableStateOf(initiallySelectedMember) }
-    var selectedLevel by remember(selectedMember) {
-        mutableStateOf(selectedMember?.level ?: MemberLevel.LEVEL_3)
-    }
-    ScreenFrame("Thành viên", onBack, modifier) {
-        SectionLabel("THÀNH VIÊN · 48 NGƯỜI")
-        Text("Chọn thành viên để sửa cấp và chức vụ.", color = TextSecondary, style = DamType.Small)
-        selectedMember?.let { member ->
-            GlassCard(
+    DamThoaiBackground(variant = BgVariant.Default, modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp)
+                .padding(top = 16.dp, bottom = 12.dp)
+        ) {
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp)
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            SectionLabel("SỬA THÀNH VIÊN")
-                            Text(member.name, color = TextPrimary, style = DamType.Heading)
-                        }
-                        Icon(
-                            painter = painterResource(R.drawable.ic_x),
-                            contentDescription = "Đóng",
-                            tint = TextSecondary,
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clickable { selectedMember = null }
-                        )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        MemberLevel.entries.forEach { level ->
-                            SelectableChip(
-                                text = level.shortLabel,
-                                selected = selectedLevel == level,
-                                onClick = { selectedLevel = level }
-                            )
-                        }
-                    }
-                    PrimaryButton(
-                        text = "Lưu thay đổi",
-                        onClick = { onMemberRoleChanged(member, selectedLevel) },
-                        modifier = Modifier.fillMaxWidth(),
-                        height = 48.dp
+                BackButton(onClick = onBack)
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "Thành viên",
+                        color = TextPrimary,
+                        style = DamType.Heading.copy(fontSize = 18.sp)
                     )
-                    DangerButton(
-                        text = "Xóa khỏi sự kiện",
-                        onClick = {
-                            onRemoveMember(member)
-                            selectedMember = null
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        height = 48.dp
+                    Text(
+                        text = "48 người trong sự kiện",
+                        color = TextSecondary,
+                        style = DamType.Small
                     )
                 }
             }
-        }
-        members.forEach { member ->
-            MemberRow(member) {
-                selectedMember = member
-                selectedLevel = member.level
+            Spacer(Modifier.height(14.dp))
+            MemberSearchField(
+                value = uiState.searchQuery,
+                onValueChange = onSearchQueryChange
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MemberFilterChip(
+                    text = "Tất cả",
+                    selected = uiState.selectedLevel == null,
+                    onClick = { onLevelSelected(null) }
+                )
+                MemberLevel.entries.forEach { level ->
+                    MemberFilterChip(
+                        text = "Cấp ${level.code}",
+                        selected = uiState.selectedLevel == level,
+                        onClick = { onLevelSelected(level) }
+                    )
+                }
             }
+            Spacer(Modifier.height(10.dp))
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                uiState.filteredMembers.forEach { member ->
+                    MemberRow(member) { onMemberSelected(member) }
+                }
+            }
+        }
+        selectedMember?.let { member ->
+            MemberEditSheet(
+                member = member,
+                initialDraftLevel = initialDraftLevel,
+                initialRoleTitle = initialRoleTitle,
+                onDismissRequest = onDismissSheet,
+                onSave = onSaveMember,
+                onRemove = onRemoveMember
+            )
+        }
+    }
+}
+
+@Composable
+private fun MemberSearchField(
+    value: String,
+    onValueChange: (String) -> Unit
+) {
+    val shape = RoundedCornerShape(18.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(GlassBg)
+            .border(1.dp, GlassBorder, shape)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_search),
+            contentDescription = null,
+            tint = TextSecondary,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(Modifier.width(10.dp))
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.weight(1f),
+            singleLine = true,
+            textStyle = DamType.Body.copy(fontSize = 14.sp, color = TextPrimary),
+            cursorBrush = SolidColor(AccentCyan),
+            decorationBox = { innerTextField ->
+                Box {
+                    if (value.isEmpty()) {
+                        Text(
+                            text = "Tìm theo tên hoặc chức vụ",
+                            color = TextPlaceholder,
+                            style = DamType.Body.copy(fontSize = 14.sp)
+                        )
+                    }
+                    innerTextField()
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun MemberFilterChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val background = if (selected) TextPrimary else GlassBg
+    val foreground = if (selected) ChipInk else TextPrimary
+    Box(
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(background)
+            .border(1.dp, if (selected) TextPrimary else GlassBorder, CircleShape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 13.dp, vertical = 7.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, color = foreground, style = DamType.Chip)
+    }
+}
+
+@Composable
+private fun MemberEditSheet(
+    member: Member,
+    initialDraftLevel: MemberLevel?,
+    initialRoleTitle: String?,
+    onDismissRequest: () -> Unit,
+    onSave: (Member) -> Unit,
+    onRemove: (Member) -> Unit
+) {
+    val defaultDraftLevel = initialDraftLevel ?: if (
+        member.name == "Thu Hà" && member.roleTitle == "CTV Kỹ thuật"
+    ) {
+        MemberLevel.LEVEL_2
+    } else {
+        member.level
+    }
+    val defaultRoleTitle = initialRoleTitle ?: if (
+        member.name == "Thu Hà" && member.roleTitle == "CTV Kỹ thuật"
+    ) {
+        "Trưởng ban Kỹ thuật"
+    } else {
+        member.roleTitle
+    }
+    var selectedLevel by remember(member.id, initialDraftLevel) {
+        mutableStateOf(defaultDraftLevel)
+    }
+    var roleTitle by remember(member.id, initialRoleTitle) {
+        mutableStateOf(defaultRoleTitle)
+    }
+
+    KitBottomSheet(onDismissRequest = onDismissRequest) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AvatarCircle(member.name, size = 48.dp)
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = member.name,
+                        color = TextPrimary,
+                        style = DamType.Heading.copy(fontSize = 17.sp)
+                    )
+                    Text(
+                        text = "Tự điền: ${member.roleTitle} · Cấp ${member.level.code}",
+                        color = TextSecondary,
+                        style = DamType.Small
+                    )
+                }
+            }
+            Text("Cấp", color = TextSecondary, style = DamType.Muted)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MemberLevel.entries.forEach { level ->
+                    val isSelected = selectedLevel == level
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (isSelected) TextPrimary else GlassBg)
+                            .border(
+                                1.dp,
+                                if (isSelected) TextPrimary else GlassBorder,
+                                RoundedCornerShape(14.dp)
+                            )
+                            .clickable { selectedLevel = level }
+                            .padding(vertical = 11.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Cấp ${level.code}",
+                            color = if (isSelected) ChipInk else TextPrimary,
+                            style = DamType.Chip
+                        )
+                    }
+                }
+            }
+            Text(
+                text = "1 Tổng đạo diễn · 2 Trưởng ban · 3 Cộng tác viên",
+                color = TextSecondary,
+                style = DamType.Small
+            )
+            GlassTextField(
+                value = roleTitle,
+                onValueChange = { roleTitle = it },
+                label = "Chức vụ",
+                placeholder = "Nhập chức vụ"
+            )
+            PrimaryButton(
+                text = "Lưu thay đổi",
+                onClick = { onSave(member.copy(level = selectedLevel, roleTitle = roleTitle)) },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                text = "Xóa khỏi sự kiện",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onRemove(member) }
+                    .padding(vertical = 2.dp),
+                color = DangerText,
+                style = DamType.Body.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold),
+                textAlign = TextAlign.Center
+            )
         }
     }
 }
@@ -1048,62 +1101,33 @@ private fun ChannelMenuRouteScreenPreview() {
 
 @Preview(widthDp = 390, heightDp = 844)
 @Composable
-private fun EmergencyCallSelectScreenPreview() {
+private fun MultiLevelConnectionScreenPreview() {
     DamThoaiTheme {
-        EmergencyCallSelectScreen({}, {})
-    }
-}
-
-@Preview(widthDp = 390, heightDp = 844)
-@Composable
-private fun EmergencyCallSelectPersonPreview() {
-    DamThoaiTheme {
-        EmergencyCallSelectScreen(
+        MultiLevelConnectionContent(
             onBack = {},
-            onSendAlert = {},
-            initialSelectedTarget = "",
-            initialSelectedMemberId = FakeRemainingUiData.eventMembers[1].id
+            internetEnabled = true,
+            localNetworkEnabled = true,
+            bluetoothDirectEnabled = false,
+            onInternetChange = {},
+            onLocalNetworkChange = {},
+            onBluetoothDirectChange = {}
         )
     }
 }
 
 @Preview(widthDp = 390, heightDp = 844)
 @Composable
-private fun EmergencyAlertIncomingScreenPreview() {
+private fun MultiLevelConnectionDisabledPreview() {
     DamThoaiTheme {
-        EmergencyAlertIncomingScreen({}, {})
-    }
-}
-
-@Preview(widthDp = 390, heightDp = 844)
-@Composable
-private fun EmergencyActiveCallScreenPreview() {
-    DamThoaiTheme {
-        EmergencyActiveCallScreen({})
-    }
-}
-
-@Preview(widthDp = 390, heightDp = 844)
-@Composable
-private fun EmergencyActiveCallNoAnswerPreview() {
-    DamThoaiTheme {
-        EmergencyActiveCallScreen({}, noAnswer = true)
-    }
-}
-
-@Preview(widthDp = 390, heightDp = 844)
-@Composable
-private fun SettingsHubScreenPreview() {
-    DamThoaiTheme {
-        SettingsHubScreen({}, {}, {}, {})
-    }
-}
-
-@Preview(widthDp = 390, heightDp = 844)
-@Composable
-private fun MultiLevelConnectionScreenPreview() {
-    DamThoaiTheme {
-        MultiLevelConnectionScreen({})
+        MultiLevelConnectionContent(
+            onBack = {},
+            internetEnabled = false,
+            localNetworkEnabled = false,
+            bluetoothDirectEnabled = true,
+            onInternetChange = {},
+            onLocalNetworkChange = {},
+            onBluetoothDirectChange = {}
+        )
     }
 }
 
@@ -1135,7 +1159,10 @@ private fun MyQrCodeScreenPreview() {
 @Composable
 private fun EventMembersScreenPreview() {
     DamThoaiTheme {
-        EventMembersScreen({})
+        EventMembersContent(
+            onBack = {},
+            uiState = EventMembersUiState()
+        )
     }
 }
 
@@ -1143,7 +1170,13 @@ private fun EventMembersScreenPreview() {
 @Composable
 private fun EventMembersEditScreenPreview() {
     DamThoaiTheme {
-        EventMembersScreen({}, initiallySelectedMember = FakeRemainingUiData.eventMembers.first())
+        EventMembersContent(
+            onBack = {},
+            uiState = EventMembersUiState(),
+            selectedMember = FakeRemainingUiData.eventMembers.first { it.name == "Thu Hà" },
+            initialDraftLevel = MemberLevel.LEVEL_2,
+            initialRoleTitle = "Trưởng ban Kỹ thuật"
+        )
     }
 }
 

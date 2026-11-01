@@ -35,6 +35,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.damthoai.R
 import com.example.damthoai.data.fake.FakeCallData
+import com.example.damthoai.data.fake.FakeNetworkStatus
+import com.example.damthoai.data.fake.NetworkStatus
 import com.example.damthoai.hardware.PttController
 import com.example.damthoai.hardware.PttSource
 import com.example.damthoai.hardware.audio.AudioRoute
@@ -51,9 +53,11 @@ import com.example.damthoai.ui.components.StatusPill
 import com.example.damthoai.ui.components.VolumeRow
 import com.example.damthoai.ui.theme.AccentAmber
 import com.example.damthoai.ui.theme.AccentCyan
-import com.example.damthoai.ui.theme.CallStatusOffline
+import com.example.damthoai.ui.theme.AccentMint
+import com.example.damthoai.ui.theme.AccentRed
 import com.example.damthoai.ui.theme.DamThoaiTheme
 import com.example.damthoai.ui.theme.DamType
+import com.example.damthoai.ui.theme.TagRedBg
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
 
@@ -72,8 +76,11 @@ fun ActiveCallScreen(
     modifier: Modifier = Modifier,
     state: CallUiState = CallUiState.CallIdle,
     onBack: () -> Unit = {},
-    onNavigateToEmergency: () -> Unit = {}
+    onNavigateToEmergency: () -> Unit = {},
+    networkStatusOverride: NetworkStatus? = null
 ) {
+    val observedNetworkStatus by FakeNetworkStatus.status.collectAsState()
+    val networkStatus = networkStatusOverride ?: observedNetworkStatus
     var isScreenPttPressed by remember(state) { mutableStateOf(false) }
     val displayState = if (state == CallUiState.CallIdle && isScreenPttPressed) {
         CallUiState.CallTalk
@@ -111,7 +118,7 @@ fun ActiveCallScreen(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                CallHeader(onBack = onBack, state = displayState)
+                CallHeader(onBack = onBack, networkStatus = networkStatus)
                 LiveCueCard()
                 CallStatusBanner(
                     state = displayState,
@@ -174,7 +181,7 @@ fun ActiveCallScreen(
 }
 
 @Composable
-private fun CallHeader(onBack: () -> Unit, state: CallUiState) {
+private fun CallHeader(onBack: () -> Unit, networkStatus: NetworkStatus) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -189,10 +196,20 @@ private fun CallHeader(onBack: () -> Unit, state: CallUiState) {
                 style = DamType.Small
             )
         }
-        if (state == CallUiState.CallOffline) {
-            StatusPill(text = "Offline", statusColor = CallStatusOffline)
-        } else {
-            StatusPill(text = "42 ms", statusColor = AccentCyan)
+        when (networkStatus) {
+            is NetworkStatus.Good -> StatusPill(
+                text = "${networkStatus.ms} ms",
+                statusColor = AccentMint
+            )
+            is NetworkStatus.Weak -> StatusPill(
+                text = "${networkStatus.ms} ms",
+                statusColor = AccentAmber
+            )
+            NetworkStatus.Offline -> StatusPill(
+                text = "Offline",
+                statusColor = AccentRed,
+                backgroundColor = TagRedBg
+            )
         }
     }
 }
@@ -284,5 +301,11 @@ private fun CallCutPreview() {
 @Preview(widthDp = 390, heightDp = 844, showBackground = true)
 @Composable
 private fun CallOfflinePreview() {
-    DamThoaiTheme { ActiveCallScreen(onNavigateToPocketMode = {}, state = CallUiState.CallOffline) }
+    DamThoaiTheme {
+        ActiveCallScreen(
+            onNavigateToPocketMode = {},
+            state = CallUiState.CallOffline,
+            networkStatusOverride = NetworkStatus.Offline
+        )
+    }
 }

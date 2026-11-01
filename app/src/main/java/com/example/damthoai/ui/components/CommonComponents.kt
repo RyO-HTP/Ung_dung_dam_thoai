@@ -278,7 +278,8 @@ fun SecondaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    height: Dp = 54.dp
+    height: Dp = 54.dp,
+    textColor: Color = TextPrimary
 ) {
     Box(
         modifier = modifier
@@ -290,7 +291,7 @@ fun SecondaryButton(
             .padding(horizontal = 24.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(text, style = DamType.Button, color = TextPrimary, textAlign = TextAlign.Center)
+        Text(text, style = DamType.Button, color = textColor, textAlign = TextAlign.Center)
     }
 }
 

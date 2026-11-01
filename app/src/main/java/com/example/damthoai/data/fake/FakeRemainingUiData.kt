@@ -8,6 +8,9 @@ data class LiveCue(
 )
 
 object FakeRemainingUiData {
+    var lastSentLiveCue: LiveCue? = null
+        private set
+
     val event = FakeRepositories.sampleEvent.copy(
         name = "Đêm nhạc Chào Tân sinh viên",
         memberCount = 48
@@ -27,11 +30,15 @@ object FakeRemainingUiData {
 
     val eventMembers = listOf(
         Member("mem_lp", "Lan Phương", "Tổng đạo diễn", "LP", MemberLevel.LEVEL_1, isTalking = true),
-        Member("mem_qh", "Quốc Hùng", "Trưởng ban Âm thanh", "QH", MemberLevel.LEVEL_2),
+        Member("mem_qh", "Quốc Hùng", "Trưởng ban Sân khấu", "QH", MemberLevel.LEVEL_2),
         Member("mem_mh", "Minh Hậu", "Trưởng ban Hậu cần", "MH", MemberLevel.LEVEL_2),
-        Member("mem_dl", "Đức Long", "Kỹ thuật sân khấu", "ĐL", MemberLevel.LEVEL_3),
-        Member("mem_th", "Thu Hà", "Điều phối đón tiếp", "TH", MemberLevel.LEVEL_2),
-        Member("mem_ma", "Minh Anh", "Cộng tác viên", "MA", MemberLevel.LEVEL_3),
-        Member("mem_bt", "Bảo Trâm", "Cộng tác viên", "BT", MemberLevel.LEVEL_3)
+        Member("mem_dl", "Đức Long", "Trưởng ban An ninh", "ĐL", MemberLevel.LEVEL_2),
+        Member("mem_th", "Thu Hà", "CTV Kỹ thuật", "TH", MemberLevel.LEVEL_3),
+        Member("mem_ma", "Minh Anh", "CTV Hậu cần", "MA", MemberLevel.LEVEL_3),
+        Member("mem_bt", "Bảo Trâm", "CTV Đón tiếp", "BT", MemberLevel.LEVEL_3)
     )
+
+    fun sendLiveCue(cue: LiveCue) {
+        lastSentLiveCue = cue
+    }
 }
