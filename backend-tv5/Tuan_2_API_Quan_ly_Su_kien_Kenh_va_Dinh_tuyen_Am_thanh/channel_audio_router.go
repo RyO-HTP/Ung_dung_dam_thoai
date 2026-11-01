@@ -14,6 +14,7 @@ import (
 // TUẦN 2 (NGƯỜI 5): BỘ ĐỊNH TUYẾN LUỒNG ÂM THANH THEO KÊNH (CHANNEL AUDIO ROUTER)
 // Nhận gói UDP 18-Byte + Opus Payload + 4-Byte HMAC4 và chuyển tiếp chính xác
 // tới những người dùng đã chọn nghe kênh tương ứng (Zero-Allocation sync.Pool).
+// Hỗ trợ phát toàn sự kiện trên Kênh 1 ("ch_01: Toàn sự kiện") khi Tổng đạo diễn (Cấp 1) nói.
 // =============================================================================
 
 const (
@@ -22,6 +23,7 @@ const (
 	MaxUdpPacketSize    = 512
 	PacketTypeAudio     = 0x01
 	PacketTypeHeartbeat = 0x02
+	AllEventChannelID   = 1 // Kênh 1 (ch_01: Toàn sự kiện)
 )
 
 type PeerEndpoint struct {
@@ -32,7 +34,7 @@ type PeerEndpoint struct {
 
 type ChannelAudioRouter struct {
 	mu                 sync.RWMutex
-	peers              map[uint32]*PeerEndpoint          // userID -> *PeerEndpoint
+	peers              map[uint32]*PeerEndpoint           // userID -> *PeerEndpoint
 	channelSubscribers map[uint8]map[uint32]*PeerEndpoint // channelID -> (userID -> *PeerEndpoint)
 	packetPool         sync.Pool
 	ForwardedPackets   atomic.Uint64
@@ -71,7 +73,7 @@ func (r *ChannelAudioRouter) RegisterUserSession(userID uint32, hmacSecret []byt
 	}
 }
 
-// UpdateUserSubscribedChannels cập nhật lại bảng định tuyến khi người dùng chuyển kênh trên App.
+// UpdateUserSubscribedChannels cập nhật lại bảng định tuyến khi người dùng chuyển kênh hoặc rời kênh trên App.
 func (r *ChannelAudioRouter) UpdateUserSubscribedChannels(userID uint32, newChannels []uint8) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -130,9 +132,11 @@ func (r *ChannelAudioRouter) ListenAndRouteUDP(listenAddr string) error {
 }
 
 func (r *ChannelAudioRouter) routePacketToChannel(conn *net.UDPConn, packet []byte, senderAddr *net.UDPAddr) {
-	// 1. Giải mã Header 18-byte Big-Endian
+	// 1. Giải mã Header 18-byte Big-Endian:
+	// Byte 0: [Version(2b) | PacketType(4b) | Priority(2b)]
 	byte0 := packet[0]
 	packetType := (byte0 >> 2) & 0x0F
+	priority := byte0 & 0x03
 	channelID := packet[1]
 	senderID := binary.BigEndian.Uint32(packet[2:6])
 
@@ -158,17 +162,29 @@ func (r *ChannelAudioRouter) routePacketToChannel(conn *net.UDPConn, packet []by
 		return
 	}
 
-	// 4. Nếu là gói Âm thanh (PacketTypeAudio = 0x01): Định tuyến tới đúng những người đang nghe channelID
+	// 4. Nếu là gói Âm thanh (PacketTypeAudio = 0x01):
+	// - Nếu phát trên Kênh 1 (Toàn sự kiện) với Priority == 3 (Tổng đạo diễn Cấp 1): Phát tới toàn bộ người dùng đang online.
+	// - Ngược lại: Định tuyến tới đúng những người đang nghe channelID.
 	if packetType == PacketTypeAudio {
 		r.mu.RLock()
-		subscribers := r.channelSubscribers[channelID]
-		for listenerID, listenerPeer := range subscribers {
-			if listenerID == senderID || listenerPeer.UDPAddr == nil {
-				continue // Không gửi ngược lại cho người đang nói
+		if channelID == AllEventChannelID && priority >= 3 {
+			for listenerID, listenerPeer := range r.peers {
+				if listenerID == senderID || listenerPeer.UDPAddr == nil {
+					continue
+				}
+				if _, err := conn.WriteToUDP(packet, listenerPeer.UDPAddr); err == nil {
+					r.ForwardedPackets.Add(1)
+				}
 			}
-			_, err := conn.WriteToUDP(packet, listenerPeer.UDPAddr)
-			if err == nil {
-				r.ForwardedPackets.Add(1)
+		} else {
+			subscribers := r.channelSubscribers[channelID]
+			for listenerID, listenerPeer := range subscribers {
+				if listenerID == senderID || listenerPeer.UDPAddr == nil {
+					continue
+				}
+				if _, err := conn.WriteToUDP(packet, listenerPeer.UDPAddr); err == nil {
+					r.ForwardedPackets.Add(1)
+				}
 			}
 		}
 		r.mu.RUnlock()
