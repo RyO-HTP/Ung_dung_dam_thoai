@@ -25,12 +25,19 @@ import com.example.damthoai.hardware.AccessibilityStatus
 import com.example.damthoai.hardware.audio.AudioRouteGuard
 import com.example.damthoai.hardware.HandsFreeSession
 import com.example.damthoai.hardware.HandsFreeSettings
+import com.example.damthoai.hardware.HapticController
 import com.example.damthoai.hardware.HardwareKeyHandler
 import com.example.damthoai.hardware.PttController
+import com.example.damthoai.hardware.PttEvent
+import com.example.damthoai.hardware.RogerBeepPlayer
 import com.example.damthoai.hardware.emergency.EmergencyAlertManager
 import com.example.damthoai.hardware.emergency.EmergencyNotifier
+import com.example.damthoai.data.AppStartPrefs
+import com.example.damthoai.permission.AppPermission
 import com.example.damthoai.permission.PermissionManager
+import com.example.damthoai.permission.PermissionState
 import com.example.damthoai.ui.navigation.AdaptiveAppLayout
+import com.example.damthoai.ui.navigation.AppRoute
 import com.example.damthoai.ui.theme.BgGradientTop
 import com.example.damthoai.ui.theme.DamThoaiTheme
 import kotlinx.coroutines.launch
@@ -45,6 +52,15 @@ class MainActivity : ComponentActivity() {
         HandsFreeSettings.initialize(applicationContext)
         HandsFreeSession.initialize(this)
         AudioRouteGuard.start(applicationContext)
+
+        lifecycleScope.launch {
+            PttController.events.collect { event ->
+                when (event) {
+                    is PttEvent.PttPressed -> HapticController.tick(window.decorView)
+                    is PttEvent.PttReleased -> RogerBeepPlayer.play()
+                }
+            }
+        }
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -63,6 +79,18 @@ class MainActivity : ComponentActivity() {
         // Cập nhật trạng thái quyền ban đầu
         PermissionManager.refreshPermissionStates(this, this)
 
+        val microphonePermissionState =
+            PermissionManager.checkPermissionState(this, AppPermission.AUDIO, this)
+        val startDestination = when {
+            !AppStartPrefs.isOnboardingDone(this) -> AppRoute.Onboarding.route
+            microphonePermissionState == PermissionState.PERMANENTLY_DENIED ->
+                AppRoute.MicrophonePermission.route
+            microphonePermissionState != PermissionState.GRANTED ->
+                AppRoute.GrantPermission.route
+            AppStartPrefs.hasJoinedEvent(this) -> AppRoute.ChannelList.route
+            else -> AppRoute.ScanQr.route
+        }
+
         setContent {
             DamThoaiTheme {
                 Surface(
@@ -70,7 +98,10 @@ class MainActivity : ComponentActivity() {
                     color = BgGradientTop
                 ) {
                     val windowSizeClass = calculateWindowSizeClass(this)
-                    AdaptiveAppLayout(windowSizeClass = windowSizeClass)
+                    AdaptiveAppLayout(
+                        windowSizeClass = windowSizeClass,
+                        startDestination = startDestination
+                    )
                 }
             }
         }
@@ -136,6 +167,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        RogerBeepPlayer.release()
         AudioRouteGuard.stop()
         super.onDestroy()
     }

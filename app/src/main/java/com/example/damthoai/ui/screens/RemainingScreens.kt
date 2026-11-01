@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,6 +30,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,16 +43,20 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.damthoai.R
 import com.example.damthoai.data.fake.Channel
+import com.example.damthoai.data.fake.ChannelMutationResult
+import com.example.damthoai.data.fake.ChannelValidationError
 import com.example.damthoai.data.fake.Event
+import com.example.damthoai.data.fake.FakeEventRepository
 import com.example.damthoai.data.fake.FakeMultiLevelConnectionData
 import com.example.damthoai.data.fake.FakeRemainingUiData
 import com.example.damthoai.data.fake.FakeRepositories
-import com.example.damthoai.data.fake.LiveCue
 import com.example.damthoai.data.fake.Member
 import com.example.damthoai.data.fake.MemberLevel
 import com.example.damthoai.ui.channels.ChannelItemUiState
@@ -64,13 +70,16 @@ import com.example.damthoai.ui.components.DangerButton
 import com.example.damthoai.ui.components.GlassCard
 import com.example.damthoai.ui.components.AvatarCircle
 import com.example.damthoai.ui.components.GlassTextField
+import com.example.damthoai.ui.components.IconBox
 import com.example.damthoai.ui.components.KitBottomSheet
+import com.example.damthoai.ui.components.KitDialog
 import com.example.damthoai.ui.components.KitSwitch
 import com.example.damthoai.ui.components.LevelTag
 import com.example.damthoai.ui.components.PrimaryButton
 import com.example.damthoai.ui.components.SecondaryButton
 import com.example.damthoai.ui.components.SectionLabel
 import com.example.damthoai.ui.components.TagLabel
+import com.example.damthoai.ui.components.dashedBorder
 import com.example.damthoai.ui.theme.AccentAmber
 import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.AccentMint
@@ -79,10 +88,12 @@ import com.example.damthoai.ui.theme.ChipInk
 import com.example.damthoai.ui.theme.DamThoaiTheme
 import com.example.damthoai.ui.theme.DamType
 import com.example.damthoai.ui.theme.DangerText
+import com.example.damthoai.ui.theme.DangerBrush
 import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.GlassBorder
 import com.example.damthoai.ui.theme.PrimaryStart
 import com.example.damthoai.ui.theme.SelectedChannelBg
+import com.example.damthoai.ui.theme.ChannelAddBorder
 import com.example.damthoai.ui.theme.TagNeutralBg
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextPlaceholder
@@ -94,6 +105,7 @@ private fun ScreenFrame(
     onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
     variant: BgVariant = BgVariant.Default,
+    bottomPadding: Dp = 16.dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
     DamThoaiBackground(modifier = modifier, variant = variant) {
@@ -103,7 +115,7 @@ private fun ScreenFrame(
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .padding(horizontal = 20.dp)
-                .padding(top = 12.dp, bottom = 12.dp)
+                .padding(top = 16.dp, bottom = bottomPadding)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -117,7 +129,7 @@ private fun ScreenFrame(
                     text = title,
                     modifier = Modifier.weight(1f),
                     color = TextPrimary,
-                    style = DamType.Title.copy(fontSize = 21.sp, lineHeight = 26.sp)
+                    style = DamType.Title21
                 )
             }
             Spacer(Modifier.height(12.dp))
@@ -135,7 +147,7 @@ private fun ScreenFrame(
 
 @Composable
 private fun PageIntro(title: String, subtitle: String? = null) {
-    Text(text = title, color = TextPrimary, style = DamType.Heading.copy(fontSize = 18.sp))
+    Text(text = title, color = TextPrimary, style = DamType.Heading18)
     if (subtitle != null) {
         Text(text = subtitle, color = TextSecondary, style = DamType.Body)
     }
@@ -262,12 +274,12 @@ private fun MemberRow(member: Member, onClick: () -> Unit) {
             Text(
                 member.name,
                 color = TextPrimary,
-                style = DamType.Body.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                style = DamType.Body14SemiBold
             )
             Text(
                 member.roleTitle,
                 color = TextSecondary,
-                style = DamType.Small.copy(fontSize = 11.5.sp)
+                style = DamType.Small
             )
         }
         LevelTag(member.level)
@@ -308,24 +320,30 @@ private fun SelectableChip(
     val borderColor = if (selected) AccentCyan.copy(alpha = 0.7f) else GlassBorder
     Box(
         modifier = Modifier
-            .clip(CircleShape)
-            .background(background)
-            .border(1.dp, borderColor, CircleShape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 8.dp),
+            .heightIn(min = 48.dp)
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(text, color = TextPrimary, style = DamType.Chip)
+        Box(
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(background)
+                .border(1.dp, borderColor, CircleShape)
+                .padding(horizontal = 13.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text, color = TextPrimary, style = DamType.Chip)
+        }
     }
 }
 
 @Composable
 fun ChannelMenuRouteScreen(
+    isMuted: Boolean,
     onDismiss: () -> Unit,
     onToggleMute: (Boolean) -> Unit,
     onLeaveChannel: () -> Unit
 ) {
-    var isMuted by remember { mutableStateOf(false) }
     DamThoaiBackground {
         ChannelMenuSheet(
             channelItem = ChannelItemUiState(
@@ -333,10 +351,7 @@ fun ChannelMenuRouteScreen(
                 isMuted = isMuted
             ),
             onDismiss = onDismiss,
-            onToggleMute = {
-                isMuted = it
-                onToggleMute(it)
-            },
+            onToggleMute = onToggleMute,
             onLeaveChannel = onLeaveChannel
         )
     }
@@ -375,7 +390,7 @@ private fun MultiLevelConnectionContent(
         Text(
             text = "App tự chuyển giữa các tầng khi mạng yếu. Bạn chỉ cần bật hoặc tắt từng tầng.",
             color = TextSecondary,
-            style = DamType.Body.copy(fontSize = 13.sp, lineHeight = 19.5.sp)
+            style = DamType.Body13Line19_5
         )
         ConnectionLayerCard(
             iconRes = R.drawable.ic_radio,
@@ -440,7 +455,12 @@ private fun ConnectionLayerCard(
     onCheckedChange: (Boolean) -> Unit
 ) {
     GlassCard(modifier = Modifier.fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onCheckedChange(!checked) },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             ConnectionLayerIcon(iconRes)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -481,48 +501,6 @@ private fun ConnectionLayerIcon(iconRes: Int) {
 }
 
 @Composable
-fun UserProfileScreen(
-    onBack: () -> Unit,
-    onSave: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var displayName by remember { mutableStateOf("Lan Phương") }
-    var role by remember { mutableStateOf("Tổng đạo diễn") }
-    ScreenFrame("Hồ sơ của bạn", onBack, modifier) {
-        GlassCard(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(18.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AvatarCircle("Lan Phương", size = 58.dp)
-                Spacer(Modifier.width(14.dp))
-                Column {
-                    Text("Cấp 1", color = AccentAmber, style = DamType.Tag)
-                    Text("Đêm nhạc Chào Tân sinh viên", color = TextSecondary, style = DamType.Small)
-                }
-            }
-        }
-        LabeledInput(
-            label = "TÊN HIỂN THỊ",
-            value = displayName,
-            onValueChange = { displayName = it },
-            placeholder = "Nhập tên hiển thị"
-        )
-        LabeledInput(
-            label = "CHỨC VỤ",
-            value = role,
-            onValueChange = { role = it },
-            placeholder = "Nhập chức vụ"
-        )
-        PrimaryButton(
-            text = "Lưu thay đổi",
-            onClick = onSave,
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-
-@Composable
 fun ManageEventScreen(
     onBack: () -> Unit,
     onQrCode: () -> Unit,
@@ -530,14 +508,67 @@ fun ManageEventScreen(
     onLiveCue: () -> Unit,
     onEndEvent: () -> Unit,
     modifier: Modifier = Modifier,
-    event: Event = FakeRemainingUiData.event,
-    channels: List<Channel> = FakeRemainingUiData.managementChannels
+    event: Event = FakeEventRepository.sampleEvent,
+    channels: List<Channel> = FakeEventRepository.sampleEvent.channels,
+    onChannelQrCode: (String) -> Unit = { onQrCode() }
 ) {
-    ScreenFrame("Quản lý sự kiện", onBack, modifier) {
+    val repositoryEvent by FakeEventRepository.currentEvent.collectAsStateWithLifecycle()
+    val displayedEvent = repositoryEvent ?: event
+    val displayedChannels = repositoryEvent?.channels ?: channels
+    ManageEventContent(
+        onBack = onBack,
+        onQrCode = onQrCode,
+        onChannelQrCode = onChannelQrCode,
+        onMembers = onMembers,
+        onLiveCue = onLiveCue,
+        onEndEvent = onEndEvent,
+        event = displayedEvent,
+        channels = displayedChannels,
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun ManageEventContent(
+    onBack: () -> Unit,
+    onQrCode: () -> Unit,
+    onChannelQrCode: (String) -> Unit,
+    onMembers: () -> Unit,
+    onLiveCue: () -> Unit,
+    onEndEvent: () -> Unit,
+    event: Event,
+    channels: List<Channel>,
+    modifier: Modifier = Modifier
+) {
+    var showEndEventDialog by rememberSaveable { mutableStateOf(false) }
+    var showAddChannelSheet by rememberSaveable { mutableStateOf(false) }
+    var channelMenuId by rememberSaveable { mutableStateOf<String?>(null) }
+    var renameChannelId by rememberSaveable { mutableStateOf<String?>(null) }
+    var deleteChannelId by rememberSaveable { mutableStateOf<String?>(null) }
+    var channelName by rememberSaveable { mutableStateOf("") }
+    var channelError by rememberSaveable { mutableStateOf<ChannelValidationError?>(null) }
+    val validationError = FakeEventRepository.validateChannelName(
+        channelName,
+        excludingChannelId = renameChannelId
+    )
+    val shownChannelError = channelError
+        ?: validationError.takeIf { channelName.isNotBlank() }
+    val channelErrorMessage = channelValidationMessage(shownChannelError)
+    val selectedMenuChannel = channels.firstOrNull { it.id == channelMenuId }
+    val channelToRename = channels.firstOrNull { it.id == renameChannelId }
+    val channelToDelete = channels.firstOrNull { it.id == deleteChannelId }
+    val eventOwner = event.members.firstOrNull { it.id == event.ownerId }
+
+    ScreenFrame("Quản lý sự kiện", onBack, modifier, bottomPadding = 26.dp) {
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(event.name, color = TextPrimary, style = DamType.Heading)
-                Text("Bạn là Cấp 1 · quyền cao nhất", color = TextSecondary, style = DamType.Small)
+                Text(
+                    eventOwner?.let { "Bạn là Cấp ${it.level.code} · quyền cao nhất" }
+                        ?: "Quản lý sự kiện",
+                    color = TextSecondary,
+                    style = DamType.Small
+                )
             }
         }
         SectionLabel("KÊNH VÀ MÃ VÀO NHANH")
@@ -548,21 +579,30 @@ fun ManageEventScreen(
                     .clip(RoundedCornerShape(16.dp))
                     .background(GlassBg)
                     .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
+                    .clickable { onChannelQrCode(channel.id) }
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     painter = painterResource(
-                        if (channel.isPriority) R.drawable.ic_crown else R.drawable.ic_radio
+                        if (channel.isDefault || channel.isPriority) {
+                            R.drawable.ic_crown
+                        } else {
+                            R.drawable.ic_radio
+                        }
                     ),
                     contentDescription = null,
-                    tint = if (channel.isPriority) AccentAmber else AccentCyan,
+                    tint = if (channel.isDefault || channel.isPriority) {
+                        AccentAmber
+                    } else {
+                        AccentCyan
+                    },
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(Modifier.width(10.dp))
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(channel.name, color = TextPrimary, style = DamType.Body)
-                    if (channel.id == "ch_01") {
+                    if (channel.isDefault) {
                         Text(
                             "Mọi người tự vào khi vào ban",
                             color = TextSecondary,
@@ -570,7 +610,28 @@ fun ManageEventScreen(
                         )
                     }
                 }
+                IconBox(
+                    iconRes = R.drawable.ic_dots,
+                    contentDescription = "Tùy chọn ${channel.name}",
+                    onClick = { channelMenuId = channel.id }
+                )
             }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(GlassBg)
+                .dashedBorder(ChannelAddBorder, 1.dp, 22.dp)
+                .clickable {
+                    channelName = ""
+                    channelError = null
+                    showAddChannelSheet = true
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Text("+ Thêm kênh", color = TextSecondary, style = DamType.Body13Bold)
         }
         ActionRow(
             R.drawable.ic_qr,
@@ -580,7 +641,7 @@ fun ManageEventScreen(
         )
         ActionRow(
             R.drawable.ic_users,
-            "Thành viên · 48 người",
+            "Thành viên · ${event.members.size} người",
             "Quản lý cấp và chức vụ",
             onMembers
         )
@@ -593,18 +654,178 @@ fun ManageEventScreen(
         )
         DangerButton(
             text = "Kết thúc sự kiện",
-            onClick = onEndEvent,
+            onClick = { showEndEventDialog = true },
             modifier = Modifier.fillMaxWidth()
         )
     }
+    if (showEndEventDialog) {
+        KitDialog(
+            title = "Kết thúc sự kiện?",
+            description = "Mọi người sẽ không thể tiếp tục tham gia sự kiện này.",
+            primaryButtonText = "Kết thúc",
+            secondaryButtonText = "Ở lại",
+            onPrimaryClick = {
+                showEndEventDialog = false
+                onEndEvent()
+            },
+            onDismissRequest = { showEndEventDialog = false },
+            primaryBrush = com.example.damthoai.ui.theme.DangerBrush
+        )
+    }
+    selectedMenuChannel?.let { channel ->
+        KitBottomSheet(onDismissRequest = { channelMenuId = null }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Tùy chọn kênh", color = TextPrimary, style = DamType.Heading)
+                ChannelMenuAction("Đổi tên") {
+                    channelName = channel.name
+                    channelError = null
+                    renameChannelId = channel.id
+                    channelMenuId = null
+                }
+                if (!channel.isDefault) {
+                    ChannelMenuAction("Xoá kênh") {
+                        deleteChannelId = channel.id
+                        channelMenuId = null
+                    }
+                }
+            }
+        }
+    }
+    if (showAddChannelSheet || channelToRename != null) {
+        val isRenaming = channelToRename != null
+        ChannelNameSheet(
+            title = if (isRenaming) "Đổi tên kênh" else "Thêm kênh",
+            actionText = if (isRenaming) "Lưu" else "Tạo kênh",
+            value = channelName,
+            onValueChange = {
+                channelName = it
+                channelError = null
+            },
+            errorMessage = channelErrorMessage,
+            submitEnabled = validationError == null,
+            onDismiss = {
+                showAddChannelSheet = false
+                renameChannelId = null
+                channelError = null
+            },
+            onSubmit = {
+                val result = if (isRenaming) {
+                    channelToRename?.let {
+                        FakeEventRepository.renameChannel(it.id, channelName)
+                    } ?: ChannelMutationResult.Rejected(ChannelValidationError.CHANNEL_NOT_FOUND)
+                } else {
+                    FakeEventRepository.addChannel(channelName)
+                }
+                when (result) {
+                    is ChannelMutationResult.Success -> {
+                        showAddChannelSheet = false
+                        renameChannelId = null
+                        channelError = null
+                    }
+                    is ChannelMutationResult.Rejected -> {
+                        channelError = result.reason
+                    }
+                }
+            }
+        )
+    }
+    channelToDelete?.let { channel ->
+        KitDialog(
+            title = "Xoá kênh ${channel.name}?",
+            description = "Người trong kênh sẽ bị đưa ra khỏi kênh. Mã QR và PIN của kênh ngừng dùng được.",
+            primaryButtonText = "Xoá",
+            secondaryButtonText = "Hủy",
+            onPrimaryClick = {
+                FakeEventRepository.removeChannel(channel.id)
+                deleteChannelId = null
+            },
+            onDismissRequest = { deleteChannelId = null },
+            primaryBrush = DangerBrush
+        )
+    }
 }
+
+@Composable
+private fun ChannelMenuAction(text: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(text, color = TextPrimary, style = DamType.Body)
+    }
+}
+
+@Composable
+private fun ChannelNameSheet(
+    title: String,
+    actionText: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    errorMessage: String?,
+    submitEnabled: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: () -> Unit
+) {
+    KitBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(title, color = TextPrimary, style = DamType.Heading16)
+            GlassTextField(
+                value = value,
+                onValueChange = onValueChange,
+                label = "Tên kênh",
+                placeholder = "Nhập tên kênh",
+                autoFocus = true
+            )
+            errorMessage?.let { message ->
+                Text(message, color = AccentRed, style = DamType.Small)
+            }
+            PrimaryButton(
+                text = actionText,
+                onClick = onSubmit,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = submitEnabled
+            )
+            SecondaryButton(
+                text = "Hủy",
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+private fun channelValidationMessage(error: ChannelValidationError?): String? =
+    when (error) {
+        ChannelValidationError.EMPTY_NAME -> "Tên kênh không được để trống."
+        ChannelValidationError.DUPLICATE_NAME -> "Tên kênh đã tồn tại."
+        ChannelValidationError.CHANNEL_LIMIT_REACHED -> "Sự kiện chỉ được có tối đa 8 kênh."
+        ChannelValidationError.EVENT_NOT_FOUND -> "Không tìm thấy sự kiện."
+        ChannelValidationError.CHANNEL_NOT_FOUND -> "Không tìm thấy kênh."
+        null -> null
+    }
 
 @Composable
 fun MyQrCodeScreen(
     onBack: () -> Unit,
     onShare: () -> Unit,
     modifier: Modifier = Modifier,
-    event: Event = FakeRemainingUiData.event
+    event: Event = FakeRemainingUiData.event,
+    channel: Channel? = null
 ) {
     ScreenFrame("Mã QR của ban", onBack, modifier) {
         GlassCard(
@@ -617,7 +838,12 @@ fun MyQrCodeScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(event.name, color = TextPrimary, style = DamType.Heading, textAlign = TextAlign.Center)
+                Text(
+                    channel?.name ?: event.name,
+                    color = TextPrimary,
+                    style = DamType.Heading,
+                    textAlign = TextAlign.Center
+                )
                 Box(
                     modifier = Modifier
                         .size(200.dp)
@@ -627,13 +853,13 @@ fun MyQrCodeScreen(
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_qr),
-                        contentDescription = "Mã QR",
+                        contentDescription = channel?.qrPayload ?: "Mã QR",
                         tint = PrimaryStart,
                         modifier = Modifier.size(140.dp)
                     )
                 }
-                SectionLabel("MÃ PIN CỦA SỰ KIỆN")
-                Text(event.pinCode, color = AccentCyan, style = DamType.PinBig)
+                SectionLabel(if (channel == null) "MÃ PIN CỦA SỰ KIỆN" else "MÃ PIN CỦA KÊNH")
+                Text(channel?.pin ?: event.pinCode, color = AccentCyan, style = DamType.PinBig)
                 Text(
                     "Quét mã QR của ban hoặc nhập PIN để vào sự kiện.",
                     color = TextSecondary,
@@ -656,14 +882,16 @@ fun EventMembersScreen(
     modifier: Modifier = Modifier,
     viewModel: EventMembersViewModel = viewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val repositoryEvent by FakeEventRepository.currentEvent.collectAsStateWithLifecycle()
+    val displayedUiState = repositoryEvent?.let { uiState.copy(members = it.members) } ?: uiState
     var selectedMemberId by remember { mutableStateOf<String?>(null) }
-    val selectedMember = uiState.members.firstOrNull { it.id == selectedMemberId }
+    val selectedMember = displayedUiState.members.firstOrNull { it.id == selectedMemberId }
 
     EventMembersContent(
         onBack = onBack,
         modifier = modifier,
-        uiState = uiState,
+        uiState = displayedUiState,
         selectedMember = selectedMember,
         onSearchQueryChange = viewModel::setSearchQuery,
         onLevelSelected = viewModel::selectLevel,
@@ -714,10 +942,10 @@ private fun EventMembersContent(
                     Text(
                         text = "Thành viên",
                         color = TextPrimary,
-                        style = DamType.Heading.copy(fontSize = 18.sp)
+                        style = DamType.Heading18
                     )
                     Text(
-                        text = "48 người trong sự kiện",
+                        text = "${uiState.members.size} người trong sự kiện",
                         color = TextSecondary,
                         style = DamType.Small
                     )
@@ -796,7 +1024,7 @@ private fun MemberSearchField(
             onValueChange = onValueChange,
             modifier = Modifier.weight(1f),
             singleLine = true,
-            textStyle = DamType.Body.copy(fontSize = 14.sp, color = TextPrimary),
+            textStyle = DamType.Body.copy(color = TextPrimary),
             cursorBrush = SolidColor(AccentCyan),
             decorationBox = { innerTextField ->
                 Box {
@@ -804,7 +1032,7 @@ private fun MemberSearchField(
                         Text(
                             text = "Tìm theo tên hoặc chức vụ",
                             color = TextPlaceholder,
-                            style = DamType.Body.copy(fontSize = 14.sp)
+                            style = DamType.Body
                         )
                     }
                     innerTextField()
@@ -824,14 +1052,20 @@ private fun MemberFilterChip(
     val foreground = if (selected) ChipInk else TextPrimary
     Box(
         modifier = Modifier
-            .clip(CircleShape)
-            .background(background)
-            .border(1.dp, if (selected) TextPrimary else GlassBorder, CircleShape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 7.dp),
+            .heightIn(min = 48.dp)
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(text, color = foreground, style = DamType.Chip)
+        Box(
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(background)
+                .border(1.dp, if (selected) TextPrimary else GlassBorder, CircleShape)
+                .padding(horizontal = 13.dp, vertical = 7.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text, color = foreground, style = DamType.Chip)
+        }
     }
 }
 
@@ -880,7 +1114,7 @@ private fun MemberEditSheet(
                     Text(
                         text = member.name,
                         color = TextPrimary,
-                        style = DamType.Heading.copy(fontSize = 17.sp)
+                        style = DamType.Heading17
                     )
                     Text(
                         text = "Tự điền: ${member.roleTitle} · Cấp ${member.level.code}",
@@ -896,22 +1130,29 @@ private fun MemberEditSheet(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(if (isSelected) TextPrimary else GlassBg)
-                            .border(
-                                1.dp,
-                                if (isSelected) TextPrimary else GlassBorder,
-                                RoundedCornerShape(14.dp)
-                            )
-                            .clickable { selectedLevel = level }
-                            .padding(vertical = 11.dp),
+                            .heightIn(min = 48.dp)
+                            .clickable { selectedLevel = level },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "Cấp ${level.code}",
-                            color = if (isSelected) ChipInk else TextPrimary,
-                            style = DamType.Chip
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (isSelected) TextPrimary else GlassBg)
+                                .border(
+                                    1.dp,
+                                    if (isSelected) TextPrimary else GlassBorder,
+                                    RoundedCornerShape(14.dp)
+                                )
+                                .padding(horizontal = 10.dp, vertical = 11.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Cấp ${level.code}",
+                                color = if (isSelected) ChipInk else TextPrimary,
+                                style = DamType.Chip
+                            )
+                        }
                     }
                 }
             }
@@ -931,75 +1172,21 @@ private fun MemberEditSheet(
                 onClick = { onSave(member.copy(level = selectedLevel, roleTitle = roleTitle)) },
                 modifier = Modifier.fillMaxWidth()
             )
-            Text(
-                text = "Xóa khỏi sự kiện",
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onRemove(member) }
-                    .padding(vertical = 2.dp),
-                color = DangerText,
-                style = DamType.Body.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold),
-                textAlign = TextAlign.Center
-            )
-        }
-    }
-}
-
-@Composable
-fun LiveCueDraftScreen(
-    onBack: () -> Unit,
-    onSendCue: (LiveCue) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var title by remember { mutableStateOf(FakeRemainingUiData.liveCue.title) }
-    var message by remember { mutableStateOf(FakeRemainingUiData.liveCue.message) }
-    var channel by remember { mutableStateOf(FakeRemainingUiData.liveCue.channelName) }
-    var priority by remember { mutableStateOf(true) }
-    ScreenFrame("Live Cue", onBack, modifier) {
-        PageIntro("Thông báo nổi bật", "Gửi lệnh đạo diễn ghim lên đầu kênh.")
-        LabeledInput(
-            "TIÊU ĐỀ",
-            title,
-            { title = it },
-            "Nhập tiêu đề Live Cue"
-        )
-        LabeledInput(
-            "NỘI DUNG",
-            message,
-            { message = it },
-            "Nhập nội dung Live Cue"
-        )
-        SectionLabel("GỬI TỚI KÊNH")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Toàn sự kiện", "Sân khấu", "Hậu cần").forEach { option ->
-                SelectableChip(
-                    text = option,
-                    selected = channel == option,
-                    onClick = { channel = option }
+                    .heightIn(min = 48.dp)
+                    .clickable { onRemove(member) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Xóa khỏi sự kiện",
+                    color = DangerText,
+                    style = DamType.Body13Bold,
+                    textAlign = TextAlign.Center
                 )
             }
         }
-        ChoiceRow(
-            "Đánh dấu ưu tiên",
-            "Làm nổi bật Live Cue trên màn hình",
-            priority,
-            { priority = !priority },
-            R.drawable.ic_zap
-        )
-        PrimaryButton(
-            text = "Đẩy lên mọi máy",
-            onClick = {
-                onSendCue(
-                    LiveCue(
-                        title = title,
-                        message = message,
-                        channelName = channel,
-                        isPriority = priority
-                    )
-                )
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
     }
 }
 
@@ -1071,7 +1258,7 @@ fun RemovedFromEventScreen(
                 Text(
                     "Bạn đã bị xóa khỏi sự kiện",
                     color = TextPrimary,
-                    style = DamType.Title.copy(fontSize = 22.sp),
+                    style = DamType.Title22,
                     textAlign = TextAlign.Center
                 )
                 Text(
@@ -1095,7 +1282,7 @@ fun RemovedFromEventScreen(
 @Composable
 private fun ChannelMenuRouteScreenPreview() {
     DamThoaiTheme {
-        ChannelMenuRouteScreen({}, {}, {})
+        ChannelMenuRouteScreen(false, {}, {}, {})
     }
 }
 
@@ -1133,17 +1320,103 @@ private fun MultiLevelConnectionDisabledPreview() {
 
 @Preview(widthDp = 390, heightDp = 844)
 @Composable
-private fun UserProfileScreenPreview() {
+private fun ManageEventScreenPreview() {
     DamThoaiTheme {
-        UserProfileScreen({}, {})
+        ManageEventScreen({}, {}, {}, {}, {})
     }
 }
 
 @Preview(widthDp = 390, heightDp = 844)
 @Composable
-private fun ManageEventScreenPreview() {
+private fun ManageEventNewEventPreview() {
+    val owner = FakeRepositories.sampleMembers.first { it.level == MemberLevel.LEVEL_1 }
+    val channel = FakeEventRepository.sampleEvent.channels.first()
+    val event = FakeEventRepository.sampleEvent.copy(
+        name = "Sự kiện mới",
+        channels = listOf(channel),
+        members = listOf(owner),
+        ownerId = owner.id
+    )
     DamThoaiTheme {
-        ManageEventScreen({}, {}, {}, {}, {})
+        ManageEventContent(
+            onBack = {},
+            onQrCode = {},
+            onChannelQrCode = {},
+            onMembers = {},
+            onLiveCue = {},
+            onEndEvent = {},
+            event = event,
+            channels = event.channels
+        )
+    }
+}
+
+@Preview(widthDp = 390, heightDp = 844)
+@Composable
+private fun ManageEventFullPreview() {
+    val channels = FakeRepositories.sampleChannels + listOf(
+        Channel(id = "preview_ch_04", name = "Kỹ thuật"),
+        Channel(id = "preview_ch_05", name = "Đón tiếp")
+    )
+    val members = List(48) { index ->
+        Member(
+            id = "preview_member_$index",
+            name = "Thành viên ${index + 1}",
+            roleTitle = "Thành viên",
+            initials = "TV",
+            level = MemberLevel.entries[index % MemberLevel.entries.size]
+        )
+    }
+    val event = FakeEventRepository.sampleEvent.copy(
+        name = "Sự kiện mẫu đầy đủ",
+        channels = channels,
+        members = members,
+        ownerId = members.first().id
+    )
+    DamThoaiTheme {
+        ManageEventContent(
+            onBack = {},
+            onQrCode = {},
+            onChannelQrCode = {},
+            onMembers = {},
+            onLiveCue = {},
+            onEndEvent = {},
+            event = event,
+            channels = channels
+        )
+    }
+}
+
+@Preview(widthDp = 390, heightDp = 844)
+@Composable
+private fun AddChannelSheetPreview() {
+    DamThoaiTheme {
+        ChannelNameSheet(
+            title = "Thêm kênh",
+            actionText = "Tạo kênh",
+            value = "Hậu cần",
+            onValueChange = {},
+            errorMessage = null,
+            submitEnabled = true,
+            onDismiss = {},
+            onSubmit = {}
+        )
+    }
+}
+
+@Preview(widthDp = 390, heightDp = 844)
+@Composable
+private fun DeleteChannelDialogPreview() {
+    DamThoaiTheme {
+        KitDialog(
+            title = "Xoá kênh Hậu cần?",
+            description = "Người trong kênh sẽ bị đưa ra khỏi kênh. Mã QR và PIN của kênh ngừng dùng được.",
+            primaryButtonText = "Xoá",
+            secondaryButtonText = "Hủy",
+            onPrimaryClick = {},
+            onDismissRequest = {},
+            primaryBrush = DangerBrush
+        )
     }
 }
 
@@ -1177,14 +1450,6 @@ private fun EventMembersEditScreenPreview() {
             initialDraftLevel = MemberLevel.LEVEL_2,
             initialRoleTitle = "Trưởng ban Kỹ thuật"
         )
-    }
-}
-
-@Preview(widthDp = 390, heightDp = 844)
-@Composable
-private fun LiveCueDraftScreenPreview() {
-    DamThoaiTheme {
-        LiveCueDraftScreen({}, {})
     }
 }
 

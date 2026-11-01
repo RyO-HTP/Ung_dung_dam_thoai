@@ -12,14 +12,23 @@ import android.content.Intent
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import kotlinx.coroutines.flow.collect
+import com.example.damthoai.data.AppStartPrefs
 import com.example.damthoai.hardware.PttKeyDemoScreen
 import com.example.damthoai.hardware.emergency.EmergencyAlertManager
+import com.example.damthoai.hardware.emergency.EmergencyAlert
 import com.example.damthoai.data.fake.FakeRemainingUiData
+import com.example.damthoai.data.fake.FakeEventRepository
 import com.example.damthoai.permission.PermissionScreen
 import com.example.damthoai.ui.channels.ChannelListScreen
 import com.example.damthoai.permission.MicDeniedScreen
@@ -53,6 +62,14 @@ fun AppNavHost(
     startDestination: String = AppRoute.Onboarding.route
 ) {
     val context = LocalContext.current
+    var channelMenuMuted by rememberSaveable { mutableStateOf(false) }
+    var selectedEmergencyMemberIds by remember {
+        mutableStateOf<Set<String>?>(null)
+    }
+    var activeEmergencyAlert by remember {
+        mutableStateOf<EmergencyAlert?>(null)
+    }
+    var selectedQrChannelId by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(navController) {
         EmergencyAlertManager.currentAlert.collect { alert ->
@@ -75,19 +92,42 @@ fun AppNavHost(
         // === NHÓM A: ONBOARDING & QUYỀN ===
         composable(AppRoute.Onboarding.route) {
             OnboardingScreen(
-                onFinishOnboarding = { navController.navigate(AppRoute.GrantPermission.route) }
+                onFinishOnboarding = {
+                    AppStartPrefs.setOnboardingDone(context, true)
+                    navController.navigate(AppRoute.GrantPermission.route)
+                }
             )
         }
         composable(AppRoute.GrantPermission.route) {
             PermissionScreen(
                 onAllPermissionsGranted = {
-                    navController.navigate(AppRoute.ScanQr.route)
+                    val destination = if (AppStartPrefs.hasJoinedEvent(context)) {
+                        AppRoute.ChannelList.route
+                    } else {
+                        AppRoute.ScanQr.route
+                    }
+                    navController.navigate(destination) {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
                 },
                 onMicDenied = { navController.navigate(AppRoute.MicrophonePermission.route) }
             )
         }
         composable(AppRoute.MicrophonePermission.route) {
-            MicDeniedScreen(onRetry = { navController.popBackStack() })
+            MicDeniedScreen(
+                onRetry = {
+                    if (!navController.popBackStack()) {
+                        val destination = if (AppStartPrefs.hasJoinedEvent(context)) {
+                            AppRoute.ChannelList.route
+                        } else {
+                            AppRoute.ScanQr.route
+                        }
+                        navController.navigate(destination) {
+                            popUpTo(navController.graph.id) { inclusive = true }
+                        }
+                    }
+                }
+            )
         }
 
         // === NHÓM B: VÀO KÊNH ===
@@ -131,8 +171,9 @@ fun AppNavHost(
             UserInfoScreen(
                 onBack = { navController.popBackStack() },
                 onEnterChannel = {
+                    AppStartPrefs.setHasJoinedEvent(context, true)
                     navController.navigate(AppRoute.ChannelList.route) {
-                        popUpTo(AppRoute.Onboarding.route) { inclusive = true }
+                        popUpTo(navController.graph.id) { inclusive = true }
                     }
                 }
             )
@@ -147,9 +188,15 @@ fun AppNavHost(
         }
         composable(AppRoute.ChannelMenuSheet.route) {
             ChannelMenuRouteScreen(
+                isMuted = channelMenuMuted,
                 onDismiss = { navController.popBackStack() },
-                onToggleMute = {},
-                onLeaveChannel = { navController.popBackStack() }
+                onToggleMute = { channelMenuMuted = it },
+                onLeaveChannel = {
+                    navController.navigate(AppRoute.ScanQr.route) {
+                        popUpTo(AppRoute.ChannelMenuSheet.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
             )
         }
 
@@ -175,7 +222,9 @@ fun AppNavHost(
         composable(AppRoute.EmergencyCallSelect.route) {
             EmergencyCallSelectScreen(
                 onBack = { navController.popBackStack() },
-                onCall = {
+                onCall = { selectedIds ->
+                    selectedEmergencyMemberIds = selectedIds
+                    activeEmergencyAlert = null
                     navController.navigate(AppRoute.EmergencyActiveCall.route)
                 }
             )
@@ -183,6 +232,8 @@ fun AppNavHost(
         composable(AppRoute.EmergencyAlertIncoming.route) {
             EmergencyAlertIncomingScreen(
                 onAccept = {
+                    selectedEmergencyMemberIds = null
+                    activeEmergencyAlert = EmergencyAlertManager.currentAlert.value
                     EmergencyAlertManager.acknowledge()
                     navController.navigate(AppRoute.EmergencyActiveCall.route)
                 },
@@ -196,19 +247,41 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.EmergencyActiveCall.route) {
-            EmergencyActiveCallScreen(onEndCall = { navController.popBackStack() })
+            EmergencyActiveCallScreen(
+                onEndCall = {
+                    selectedEmergencyMemberIds = null
+                    activeEmergencyAlert = null
+                    navController.popBackStack()
+                },
+                selectedMemberIds = selectedEmergencyMemberIds,
+                caller = activeEmergencyAlert
+            )
         }
 
         // === NHÓM F: CÀI ĐẶT ===
         composable(AppRoute.Settings.route) {
             SettingsScreen(
-                onBack = { navController.popBackStack() },
                 onProfile = { navController.navigate(AppRoute.UserProfile.route) },
                 onManageEvent = { navController.navigate(AppRoute.ManageEvent.route) },
-                onLeaveEvent = { navController.navigate(AppRoute.RemovedFromEvent.route) },
+                onLeaveEvent = {
+                    AppStartPrefs.setHasJoinedEvent(context, false)
+                    navController.navigate(AppRoute.ScanQr.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            inclusive = true
+                        }
+                        launchSingleTop = true
+                    }
+                },
                 onMultiLevel = { navController.navigate(AppRoute.MultiLevelConnection.route) },
                 onHandsFree = { navController.navigate(AppRoute.HandsFreeAudio.route) },
-                onPttDebug = { navController.navigate(AppRoute.PttDebug.route) }
+                onPttDebug = { navController.navigate(AppRoute.PttDebug.route) },
+                onReviewOnboarding = {
+                    AppStartPrefs.setOnboardingDone(context, false)
+                    navController.navigate(AppRoute.Onboarding.route) {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
             )
         }
         composable(AppRoute.MultiLevelConnection.route) {
@@ -236,7 +309,10 @@ fun AppNavHost(
             CreateEventScreen(
                 onBack = { navController.popBackStack() },
                 onEventCreated = {
-                    navController.navigate(AppRoute.ManageEvent.route)
+                    navController.navigate(AppRoute.ManageEvent.route) {
+                        popUpTo(AppRoute.CreateEvent.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 },
                 onNavigateToRestore = {
                     navController.navigate(AppRoute.RestoreEvent.route)
@@ -246,29 +322,52 @@ fun AppNavHost(
         composable(AppRoute.ManageEvent.route) {
             ManageEventScreen(
                 onBack = { navController.popBackStack() },
-                onQrCode = { navController.navigate(AppRoute.MyQrCode.route) },
+                onQrCode = {
+                    selectedQrChannelId = FakeEventRepository.currentEvent.value
+                        ?.channels
+                        ?.firstOrNull { it.isDefault }
+                        ?.id
+                    navController.navigate(AppRoute.MyQrCode.route)
+                },
+                onChannelQrCode = { channelId ->
+                    selectedQrChannelId = channelId
+                    navController.navigate(AppRoute.MyQrCode.route)
+                },
                 onMembers = { navController.navigate(AppRoute.EventMembers.route) },
                 onLiveCue = { navController.navigate(AppRoute.LiveCueDraft.route) },
-                onEndEvent = { navController.navigate(AppRoute.EventEnded.route) }
+                onEndEvent = {
+                    AppStartPrefs.setHasJoinedEvent(context, false)
+                    navController.navigate(AppRoute.EventEnded.route)
+                }
             )
         }
         composable(AppRoute.RestoreEvent.route) {
             RestoreEventScreen(
                 onBack = { navController.popBackStack() },
                 onRestore = {
-                    navController.navigate(AppRoute.ManageEvent.route)
+                    navController.navigate(AppRoute.ManageEvent.route) {
+                        popUpTo(AppRoute.RestoreEvent.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 }
             )
         }
         composable(AppRoute.MyQrCode.route) {
+            val event = FakeEventRepository.currentEvent.value ?: FakeRemainingUiData.event
+            val channel = FakeEventRepository.findChannel(selectedQrChannelId)
+                ?: event.channels.firstOrNull { it.isDefault }
             MyQrCodeScreen(
                 onBack = { navController.popBackStack() },
+                event = event,
+                channel = channel,
                 onShare = {
                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
                         type = "text/plain"
                         putExtra(
                             Intent.EXTRA_TEXT,
-                            "${FakeRemainingUiData.event.name}\nMã PIN: ${FakeRemainingUiData.event.pinCode}"
+                            "${event.name}\n${channel?.name ?: "Sự kiện"}\n" +
+                                "Mã PIN: ${channel?.pin ?: event.pinCode}\n" +
+                                "QR: ${channel?.qrPayload.orEmpty()}"
                         )
                     }
                     context.startActivity(
@@ -290,19 +389,33 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.EventEnded.route) {
+            LaunchedEffect(Unit) {
+                AppStartPrefs.setHasJoinedEvent(context, false)
+            }
             EventEndedScreen(
                 onReturn = {
-                    navController.navigate(AppRoute.ChannelList.route) {
-                        popUpTo(AppRoute.EventEnded.route) { inclusive = true }
+                    AppStartPrefs.setHasJoinedEvent(context, false)
+                    navController.navigate(AppRoute.ScanQr.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            inclusive = true
+                        }
+                        launchSingleTop = true
                     }
                 }
             )
         }
         composable(AppRoute.RemovedFromEvent.route) {
+            LaunchedEffect(Unit) {
+                AppStartPrefs.setHasJoinedEvent(context, false)
+            }
             RemovedFromEventScreen(
                 onReturn = {
+                    AppStartPrefs.setHasJoinedEvent(context, false)
                     navController.navigate(AppRoute.ScanQr.route) {
-                        popUpTo(AppRoute.RemovedFromEvent.route) { inclusive = true }
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            inclusive = true
+                        }
+                        launchSingleTop = true
                     }
                 }
             )

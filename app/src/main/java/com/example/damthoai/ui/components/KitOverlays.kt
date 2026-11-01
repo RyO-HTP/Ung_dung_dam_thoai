@@ -89,7 +89,7 @@ fun KitDialog(
             Text(
                 text = title,
                 color = TextPrimary,
-                style = DamType.Heading.copy(fontSize = 16.sp)
+                style = DamType.Heading16
             )
             Spacer(Modifier.height(6.dp))
             Text(
@@ -148,7 +148,7 @@ private fun DialogActionButton(
         Text(
             text = text,
             color = TextPrimary,
-            style = DamType.Small.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            style = DamType.DialogButton
         )
     }
 }

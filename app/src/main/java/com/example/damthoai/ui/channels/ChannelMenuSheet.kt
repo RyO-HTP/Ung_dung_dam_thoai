@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -102,7 +103,7 @@ fun ChannelMenuSheet(
                     Text(
                         channelItem.channel.name,
                         color = TextPrimary,
-                        style = DamType.Heading.copy(fontSize = 18.sp)
+                        style = DamType.Heading18
                     )
                     Text(
                         "MC · kênh chuyên trách",
@@ -114,7 +115,9 @@ fun ChannelMenuSheet(
 
             Spacer(Modifier.height(24.dp))
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { onToggleMute(!channelItem.isMuted) },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -128,7 +131,7 @@ fun ChannelMenuSheet(
                     Text(
                         "Tắt nghe kênh này",
                         color = TextPrimary,
-                        style = DamType.Heading.copy(fontSize = 16.sp)
+                        style = DamType.Heading16
                     )
                     Text(
                         "Vẫn ở trong kênh nhưng không nghe âm thanh",
@@ -147,6 +150,7 @@ fun ChannelMenuSheet(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(min = 48.dp)
                     .clickable(onClick = onLeaveChannel),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -161,7 +165,7 @@ fun ChannelMenuSheet(
                     Text(
                         "Rời kênh",
                         color = DangerText,
-                        style = DamType.Heading.copy(fontSize = 16.sp)
+                        style = DamType.Heading16
                     )
                     Text(
                         "Muốn vào lại phải quét QR hoặc nhập PIN",

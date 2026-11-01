@@ -13,7 +13,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,9 +24,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
+import com.example.damthoai.ui.theme.AccentCyan
+import com.example.damthoai.ui.theme.DamThoaiTheme
+import com.example.damthoai.ui.theme.DamType
+import com.example.damthoai.ui.theme.GlassBg
+import com.example.damthoai.ui.theme.TextPrimary
+import com.example.damthoai.ui.theme.TextSecondary
 
 @Composable
 fun QuickJoinScreen(
@@ -45,23 +50,22 @@ fun QuickJoinScreen(
     ) {
         Text(
             text = "ĐÀM THOẠI",
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
+            style = DamType.Label,
+            color = AccentCyan
         )
 
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
             text = "Vào kênh trong 3 giây",
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold
+            style = DamType.Title22,
+            color = TextPrimary
         )
 
         Text(
             text = "Không cần kết bạn hay tạo tài khoản. Quét mã của ban bạn hoặc nhập tần số.",
-            fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = DamType.Body,
+            color = TextSecondary,
             modifier = Modifier.padding(top = 4.dp, bottom = 20.dp)
         )
 
@@ -69,7 +73,7 @@ fun QuickJoinScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 8.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            colors = CardDefaults.cardColors(containerColor = GlassBg)
         ) {
             Column(
                 modifier = Modifier
@@ -83,8 +87,8 @@ fun QuickJoinScreen(
                     modifier = Modifier.height(100.dp)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(text = "Đưa mã QR của ban vào khung", fontWeight = FontWeight.Medium)
-                Text(text = "Tên và vai trò được gán tự động", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = "Đưa mã QR của ban vào khung", color = TextPrimary, style = DamType.Body14SemiBold)
+                Text(text = "Tên và vai trò được gán tự động", color = TextSecondary, style = DamType.Small12)
             }
         }
 
@@ -92,15 +96,16 @@ fun QuickJoinScreen(
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = GlassBg)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = "hoặc nhập tần số ảo (PIN 6 số)", fontWeight = FontWeight.SemiBold)
+                Text(text = "hoặc nhập tần số ảo (PIN 6 số)", color = TextPrimary, style = DamType.Body14SemiBold)
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = pinCode,
                     onValueChange = { pinCode = it },
-                    label = { Text("Mã PIN") },
+                    label = { Text("Mã PIN", color = TextSecondary, style = DamType.Small) },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -115,7 +120,15 @@ fun QuickJoinScreen(
                 .height(50.dp),
             shape = RoundedCornerShape(8.dp)
         ) {
-            Text(text = "Vào kênh", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(text = "Vào kênh", style = DamType.Button)
         }
+    }
+}
+
+@Preview(widthDp = 390, heightDp = 844)
+@Composable
+private fun QuickJoinScreenPreview() {
+    DamThoaiTheme {
+        QuickJoinScreen(onNavigateToChannels = {})
     }
 }

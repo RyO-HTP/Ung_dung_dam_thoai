@@ -11,7 +11,12 @@ data class Event(
     val name: String,
     val pinCode: String,
     val adminCode: String? = null,
-    val memberCount: Int = 0,
+    val channels: List<Channel> = emptyList(),
+    val members: List<Member> = emptyList(),
+    val ownerId: String = "",
     val isOwner: Boolean = false,
     val isActive: Boolean = true
-)
+) {
+    val memberCount: Int
+        get() = members.size
+}

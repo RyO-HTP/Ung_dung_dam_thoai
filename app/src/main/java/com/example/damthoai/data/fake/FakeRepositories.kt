@@ -14,7 +14,6 @@ object FakeRepositories {
         name = "Lễ Trao Giải Âm Nhạc 2026",
         pinCode = "889900",
         adminCode = "ADM-7788",
-        memberCount = 24,
         isOwner = true
     )
 

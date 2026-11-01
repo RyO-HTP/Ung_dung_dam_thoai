@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -31,22 +32,30 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.LaunchedEffect
 import com.example.damthoai.R
 import com.example.damthoai.data.fake.MemberLevel
 import com.example.damthoai.ui.theme.AccentAmber
@@ -61,6 +70,8 @@ import com.example.damthoai.ui.theme.DamType
 import com.example.damthoai.ui.theme.DamThoaiTheme
 import com.example.damthoai.ui.theme.DangerBrush
 import com.example.damthoai.ui.theme.DangerShadow
+import com.example.damthoai.ui.theme.DisabledButtonEnd
+import com.example.damthoai.ui.theme.DisabledButtonStart
 import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.GlassBorder
 import com.example.damthoai.ui.theme.PillShape
@@ -82,6 +93,34 @@ import com.example.damthoai.ui.theme.TagNeutralBg
 import com.example.damthoai.ui.theme.TagRedBg
 import com.example.damthoai.ui.theme.TagRedText
 import com.example.damthoai.ui.theme.TextPlaceholder
+import com.example.damthoai.ui.theme.PureWhite
+import com.example.damthoai.ui.theme.Transparent
+
+fun Modifier.outerGlow(
+    color: Color,
+    corner: Dp,
+    spread: Dp = 18.dp,
+    maxAlpha: Float = 0.25f
+): Modifier = drawBehind {
+    val steps = 10
+    val spreadPx = spread.toPx()
+    val strokeWidth = spreadPx / steps * 1.2f
+    val alphaLimit = maxAlpha.coerceIn(0f, 1f)
+
+    for (step in 1..steps) {
+        val fraction = step.toFloat() / steps
+        val grow = spreadPx * fraction
+        val fade = (1f - fraction) * (1f - fraction)
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(-grow, -grow),
+            size = Size(size.width + 2f * grow, size.height + 2f * grow),
+            cornerRadius = CornerRadius(corner.toPx() + grow),
+            alpha = alphaLimit * fade,
+            style = Stroke(width = strokeWidth)
+        )
+    }
+}
 
 @Composable
 fun AvatarCircle(nameOrInitials: String, size: Dp) {
@@ -105,10 +144,7 @@ fun AvatarCircle(nameOrInitials: String, size: Dp) {
         Text(
             text = initials,
             color = AvatarInk,
-            style = DamType.Heading.copy(
-                fontSize = (size.value * 0.375f).sp,
-                fontWeight = FontWeight.ExtraBold
-            )
+            style = DamType.avatar(size)
         )
     }
 }
@@ -138,11 +174,17 @@ fun GlassTextField(
     modifier: Modifier = Modifier,
     label: String? = null,
     placeholder: String = "",
-    autoCapitalize: Boolean = false
+    autoCapitalize: Boolean = false,
+    autoFocus: Boolean = false
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
+    val focusRequester = remember { FocusRequester() }
     val shape = RoundedCornerShape(18.dp)
+
+    LaunchedEffect(autoFocus) {
+        if (autoFocus) focusRequester.requestFocus()
+    }
 
     Column(modifier = modifier) {
         if (label != null) {
@@ -156,10 +198,17 @@ fun GlassTextField(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .shadow(
-                    elevation = if (isFocused) 24.dp else 0.dp,
-                    shape = shape,
-                    spotColor = AccentCyan.copy(alpha = 0.45f)
+                .then(
+                    if (isFocused) {
+                        Modifier.outerGlow(
+                            color = AccentCyan,
+                            corner = 18.dp,
+                            spread = 24.dp,
+                            maxAlpha = 0.45f
+                        )
+                    } else {
+                        Modifier
+                    }
                 )
                 .clip(shape)
                 .background(GlassBg)
@@ -176,7 +225,9 @@ fun GlassTextField(
                 onValueChange = { input ->
                     onValueChange(if (autoCapitalize) input.uppercase() else input)
                 },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focusRequester),
                 singleLine = true,
                 interactionSource = interactionSource,
                 keyboardOptions = KeyboardOptions(
@@ -186,11 +237,7 @@ fun GlassTextField(
                         KeyboardCapitalization.None
                     }
                 ),
-                textStyle = DamType.Body.copy(
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextPrimary
-                ),
+                textStyle = DamType.Input.copy(color = TextPrimary),
                 cursorBrush = SolidColor(AccentCyan),
                 decorationBox = { innerTextField ->
                     Box {
@@ -198,10 +245,7 @@ fun GlassTextField(
                             Text(
                                 text = placeholder,
                                 color = TextPlaceholder,
-                                style = DamType.Body.copy(
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                                style = DamType.InputHint
                             )
                         }
                         innerTextField()
@@ -244,7 +288,7 @@ fun PrimaryButton(
     val gradient = if (enabled) {
         PrimaryBrush
     } else {
-        Brush.horizontalGradient(listOf(Color.Gray, Color.DarkGray))
+        Brush.horizontalGradient(listOf(DisabledButtonStart, DisabledButtonEnd))
     }
     Box(
         modifier = modifier.heightIn(min = maxOf(height, 54.dp)),
@@ -255,7 +299,7 @@ fun PrimaryButton(
                 .matchParentSize()
                 .offset(y = 10.dp)
                 .shadow(30.dp, ButtonShape, spotColor = PrimaryShadow)
-                .background(Color.Transparent, ButtonShape)
+                .background(Transparent, ButtonShape)
         )
         Box(
             modifier = Modifier
@@ -312,7 +356,7 @@ fun DangerButton(
                 .matchParentSize()
                 .offset(y = 10.dp)
                 .shadow(30.dp, ButtonShape, spotColor = DangerShadow)
-                .background(Color.Transparent, ButtonShape)
+                .background(Transparent, ButtonShape)
         )
         Box(
             modifier = Modifier
@@ -356,22 +400,33 @@ fun IconBox(
     tint: Color = TextPrimary,
     onClick: (() -> Unit)? = null
 ) {
-    val clickModifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
     Box(
-        modifier = modifier
-            .size(40.dp)
-            .clip(IconBoxShape)
-            .background(IconBoxBg)
-            .border(1.dp, IconBoxBorder, IconBoxShape)
-            .then(clickModifier),
+        modifier = modifier.then(
+            if (onClick != null) {
+                Modifier
+                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .clickable(role = Role.Button, onClick = onClick)
+            } else {
+                Modifier
+            }
+        ),
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = contentDescription,
-            tint = tint,
-            modifier = Modifier.size(20.dp)
-        )
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(IconBoxShape)
+                .background(IconBoxBg)
+                .border(1.dp, IconBoxBorder, IconBoxShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = contentDescription,
+                tint = tint,
+                modifier = Modifier.size(20.dp)
+            )
+        }
     }
 }
 
@@ -383,24 +438,29 @@ fun KitSwitch(
     enabled: Boolean = true
 ) {
     Box(
-        modifier = modifier
-            .size(width = 46.dp, height = 28.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .then(
-                if (checked) Modifier.background(SwitchOnBrush)
-                else Modifier.background(SwitchOff)
-            )
-            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange),
-        contentAlignment = Alignment.CenterStart
+        modifier = modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp),
+        contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
-                .padding(start = 3.dp)
-                .size(22.dp)
-                .offset(x = if (checked) 18.dp else 0.dp)
-                .clip(CircleShape)
-                .background(Color.White)
-        )
+                .size(width = 46.dp, height = 28.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .then(
+                    if (checked) Modifier.background(SwitchOnBrush)
+                    else Modifier.background(SwitchOff)
+                )
+                .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Box(
+                modifier = Modifier
+                    .padding(start = 3.dp)
+                    .size(22.dp)
+                    .offset(x = if (checked) 18.dp else 0.dp)
+                    .clip(CircleShape)
+                    .background(PureWhite)
+            )
+        }
     }
 }
 
@@ -409,14 +469,18 @@ fun StatusPill(
     text: String,
     modifier: Modifier = Modifier,
     statusColor: Color = AccentMint,
-    backgroundColor: Color = GlassBg
+    backgroundColor: Color = GlassBg,
+    textColor: Color = TextPrimary,
+    horizontalPadding: Dp = 10.dp,
+    verticalPadding: Dp = 4.dp,
+    textStyle: TextStyle = DamType.Small.copy(fontWeight = FontWeight.SemiBold)
 ) {
     Row(
         modifier = modifier
             .clip(PillShape)
             .background(backgroundColor)
             .border(1.dp, GlassBorder, CircleShape)
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+            .padding(horizontal = horizontalPadding, vertical = verticalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -428,8 +492,8 @@ fun StatusPill(
         Spacer(modifier = Modifier.width(6.dp))
         Text(
             text = text,
-            color = TextPrimary,
-            style = DamType.Small.copy(fontWeight = FontWeight.SemiBold)
+            color = textColor,
+            style = textStyle
         )
     }
 }
@@ -490,7 +554,7 @@ fun Modifier.dashedBorder(
 }
 
 // ================= PREVIEWS =================
-@Preview(name = "Common Components Preview", showBackground = true, backgroundColor = 0xFF060A1F)
+@Preview(name = "Common Components Preview", widthDp = 390, heightDp = 844, showBackground = true)
 @Composable
 private fun CommonComponentsPreview() {
     DamThoaiTheme {

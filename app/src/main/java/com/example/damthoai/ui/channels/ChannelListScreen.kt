@@ -38,7 +38,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -52,13 +51,16 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.damthoai.R
 import com.example.damthoai.data.fake.FakeNetworkStatus
+import com.example.damthoai.data.fake.FakeRemainingUiData
 import com.example.damthoai.data.fake.FakeSpeakingState
 import com.example.damthoai.data.fake.FakeRepositories
 import com.example.damthoai.data.fake.NetworkStatus
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.GlassCard
+import com.example.damthoai.ui.components.LiveCueCard
 import com.example.damthoai.ui.components.TagLabel
 import com.example.damthoai.ui.components.dashedBorder
+import com.example.damthoai.ui.components.outerGlow
 import com.example.damthoai.ui.theme.AccentAmber
 import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.AccentMint
@@ -78,6 +80,7 @@ import com.example.damthoai.ui.theme.TagAmberBg
 import com.example.damthoai.ui.theme.TagRedBg
 import com.example.damthoai.ui.theme.TrackBg
 import com.example.damthoai.ui.theme.TextPrimary
+import com.example.damthoai.ui.theme.PureWhite
 import com.example.damthoai.ui.theme.TextSecondary
 import com.example.damthoai.ui.theme.cssGradient
 import kotlin.math.sin
@@ -92,6 +95,7 @@ fun ChannelListScreen(
     val uiState by viewModel.uiState.collectAsState()
     val networkStatus by FakeNetworkStatus.status.collectAsState()
     val speakingChannelIds by FakeSpeakingState.speakingChannelIds.collectAsState()
+    val liveCue by FakeRemainingUiData.liveCueState.collectAsState()
     val (networkStatusLabel, networkStatusColor) = when (val status = networkStatus) {
         is NetworkStatus.Good -> "Internet · ${status.ms} ms" to AccentMint
         is NetworkStatus.Weak -> "Internet · ${status.ms} ms" to AccentAmber
@@ -115,19 +119,23 @@ fun ChannelListScreen(
                 ) {
                     Text("Kênh", color = TextPrimary, style = DamType.Title)
                     Box(
-                        Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(PrimaryBrush)
-                            .clickable(onClick = onNavigateToAddChannel),
+                        Modifier.size(48.dp).clickable(onClick = onNavigateToAddChannel),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_plus),
-                            contentDescription = "Thêm kênh",
-                            tint = TextPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Box(
+                            Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(PrimaryBrush),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_plus),
+                                contentDescription = "Thêm kênh",
+                                tint = TextPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
 
@@ -166,50 +174,13 @@ fun ChannelListScreen(
                         Text(
                             networkStatusLabel,
                             color = networkStatusColor,
-                            style = DamType.Small.copy(
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            style = DamType.Small11Bold
                         )
                     }
                 }
 
                 Spacer(Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(cssGradient(135f, CueGradientStart, CueGradientEnd))
-                        .border(1.dp, CueBorder, RoundedCornerShape(20.dp))
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_zap),
-                        contentDescription = null,
-                        tint = AccentAmber,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            uiState.liveCueHeader,
-                            color = AccentAmber,
-                            style = DamType.Tag
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            uiState.liveCueTitle,
-                            color = TextPrimary,
-                            style = DamType.Heading.copy(fontSize = 13.5.sp)
-                        )
-                        Text(
-                            uiState.liveCueSubtitle,
-                            color = TextSecondary,
-                            style = DamType.Small
-                        )
-                    }
-                }
+                liveCue?.let { LiveCueCard(cue = it) }
 
                 Spacer(Modifier.height(12.dp))
                 uiState.channels.forEach { item ->
@@ -239,10 +210,7 @@ fun ChannelListScreen(
                     Text(
                         "+ Vào thêm kênh bằng QR hoặc PIN",
                         color = TextSecondary,
-                        style = DamType.Body.copy(
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        style = DamType.Body13Bold
                     )
                 }
                 Spacer(Modifier.height(100.dp))
@@ -263,7 +231,7 @@ fun ChannelListScreen(
                         viewModel.toggleMuteChannel(selected.channel.id, isMuted)
                         viewModel.closeChannelMenu()
                     },
-                    onLeaveChannel = viewModel::closeChannelMenu
+                    onLeaveChannel = { viewModel.leaveChannel(selected.channel.id) }
                 )
             }
         }
@@ -312,12 +280,11 @@ private fun ChannelCardItem(
         .fillMaxWidth()
         .then(
             if (isSelectedMic || speakingGlow > 0.01f) {
-                Modifier.shadow(
-                    elevation = 18.dp * maxOf(if (isSelectedMic) 0.55f else 0f, speakingGlow),
-                    shape = shape,
-                    spotColor = AccentCyan.copy(
-                        alpha = maxOf(if (isSelectedMic) 0.4f else 0f, glowAlpha * 0.8f)
-                    )
+                Modifier.outerGlow(
+                    color = AccentCyan,
+                    corner = 24.dp,
+                    spread = 30.dp,
+                    maxAlpha = (if (isSelectedMic) 0.10f else 0f) + glowAlpha * 0.20f
                 )
             } else {
                 Modifier
@@ -368,7 +335,7 @@ private fun ChannelCardItem(
                         Text(
                             item.channel.name,
                             color = TextPrimary,
-                            style = DamType.Heading.copy(fontSize = 16.sp)
+                            style = DamType.Heading16
                         )
                         if (item.channel.isPriority) {
                             Spacer(Modifier.width(6.dp))
@@ -399,37 +366,51 @@ private fun ChannelCardItem(
                 }
                 Spacer(Modifier.width(8.dp))
                 Box(
-                    Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .then(
-                            if (isSelectedMic) {
-                                Modifier.background(PrimaryBrush, CircleShape)
-                            } else {
-                                Modifier.background(GlassBg, CircleShape)
-                            }
-                        )
-                        .then(
-                            if (isSelectedMic) {
-                                Modifier.shadow(10.dp, CircleShape, spotColor = AccentCyan)
-                            } else {
-                                Modifier.border(1.dp, GlassBorder, CircleShape)
-                            }
-                        )
-                        .clickable(onClick = onMicClick),
+                    Modifier.size(48.dp).clickable(onClick = onMicClick),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_mic),
-                        contentDescription = "Mic phát",
-                        tint = TextPrimary,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Box(
+                        Modifier
+                            .size(38.dp)
+                            .then(
+                                if (isSelectedMic) {
+                                    Modifier.outerGlow(
+                                        color = AccentCyan,
+                                        corner = 19.dp,
+                                        spread = 10.dp,
+                                        maxAlpha = 0.20f
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .clip(CircleShape)
+                            .then(
+                                if (isSelectedMic) {
+                                    Modifier.background(PrimaryBrush, CircleShape)
+                                } else {
+                                    Modifier.background(GlassBg, CircleShape)
+                                }
+                            )
+                            .then(
+                                if (isSelectedMic) {
+                                    Modifier
+                                } else {
+                                    Modifier.border(1.dp, GlassBorder, CircleShape)
+                                }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_mic),
+                            contentDescription = "Mic phát",
+                            tint = TextPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
                 Box(
-                    Modifier
-                        .size(width = 28.dp, height = 38.dp)
-                        .clickable(onClick = onMenuClick),
+                    Modifier.size(48.dp).clickable(onClick = onMenuClick),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -462,7 +443,7 @@ private fun ChannelCardItem(
                             Modifier
                                 .size(16.dp)
                                 .clip(CircleShape)
-                                .background(Color.White)
+                                .background(PureWhite)
                         )
                     },
                     track = { sliderState ->

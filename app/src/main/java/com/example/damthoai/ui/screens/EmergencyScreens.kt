@@ -1,5 +1,7 @@
 package com.example.damthoai.ui.screens
 
+import android.os.SystemClock
+import android.widget.Toast
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -16,9 +18,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -28,12 +33,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -42,12 +50,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -58,6 +71,7 @@ import com.example.damthoai.R
 import com.example.damthoai.data.fake.EmergencyCallParticipant
 import com.example.damthoai.data.fake.FakeEmergencyUiData
 import com.example.damthoai.data.fake.Member
+import com.example.damthoai.data.fake.MemberLevel
 import com.example.damthoai.hardware.PttController
 import com.example.damthoai.hardware.PttSource
 import com.example.damthoai.hardware.emergency.EmergencyAlert
@@ -70,24 +84,25 @@ import com.example.damthoai.ui.components.GlassCard
 import com.example.damthoai.ui.components.SecondaryButton
 import com.example.damthoai.ui.components.SectionLabel
 import com.example.damthoai.ui.theme.AccentRed
+import com.example.damthoai.ui.theme.ButtonShape
 import com.example.damthoai.ui.theme.DamThoaiTheme
 import com.example.damthoai.ui.theme.DamType
+import com.example.damthoai.ui.theme.DangerBrush
 import com.example.damthoai.ui.theme.DangerEnd
 import com.example.damthoai.ui.theme.DangerShadow
 import com.example.damthoai.ui.theme.DangerStart
 import com.example.damthoai.ui.theme.DangerText
+import com.example.damthoai.ui.theme.DisabledButtonEnd
+import com.example.damthoai.ui.theme.DisabledButtonStart
 import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.GlassBorder
 import com.example.damthoai.ui.theme.TagRedBg
 import com.example.damthoai.ui.theme.TagRedText
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
+import com.example.damthoai.ui.theme.Transparent
 import kotlinx.coroutines.flow.StateFlow
-
-data class EmergencyCallSelection(
-    val quickTarget: String,
-    val members: List<Member>
-)
+import kotlinx.coroutines.withTimeoutOrNull
 
 private fun Modifier.emergencyGradient() = drawBehind {
     drawCircle(
@@ -106,17 +121,56 @@ private fun Modifier.emergencyGradient() = drawBehind {
 @Composable
 fun EmergencyCallSelectScreen(
     onBack: () -> Unit,
-    onCall: (EmergencyCallSelection) -> Unit,
+    onCall: (Set<String>) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedQuickTarget by remember { mutableStateOf("Tổng đạo diễn") }
-    var selectedMemberIds by remember {
+    val context = LocalContext.current
+    var selectedIds by rememberSaveable(
+        stateSaver = listSaver<Set<String>, String>(
+            save = { it.toList() },
+            restore = { it.toSet() }
+        )
+    ) {
         mutableStateOf(setOf(FakeEmergencyUiData.recipients.first().id))
     }
 
-    val selection = EmergencyCallSelection(
-        quickTarget = selectedQuickTarget,
-        members = FakeEmergencyUiData.recipients.filter { it.id in selectedMemberIds }
+    EmergencyCallSelectContent(
+        selectedIds = selectedIds,
+        onSelectedIdsChange = { selectedIds = it },
+        onBack = onBack,
+        onCall = onCall,
+        onShortHold = {
+            Toast.makeText(
+                context,
+                "Giữ 2 giây để gọi",
+                Toast.LENGTH_SHORT
+            ).show()
+        },
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun EmergencyCallSelectContent(
+    selectedIds: Set<String>,
+    onSelectedIdsChange: (Set<String>) -> Unit,
+    onBack: () -> Unit,
+    onCall: (Set<String>) -> Unit,
+    onShortHold: () -> Unit,
+    modifier: Modifier = Modifier,
+    previewProgress: Float? = null
+) {
+    val recipients = FakeEmergencyUiData.recipients
+    val quickTargets = listOf(
+        "Tổng đạo diễn" to recipients
+            .filter { it.level == MemberLevel.LEVEL_1 }
+            .map { it.id }
+            .toSet(),
+        "Cả kênh Hậu cần" to recipients
+            .filter { it.roleTitle.contains("Hậu cần", ignoreCase = true) }
+            .map { it.id }
+            .toSet(),
+        "Toàn sự kiện" to recipients.map { it.id }.toSet()
     )
 
     DamThoaiBackground(modifier = modifier, variant = BgVariant.Emergency) {
@@ -138,7 +192,7 @@ fun EmergencyCallSelectScreen(
                     Text(
                         text = "Gọi khẩn cấp",
                         color = TextPrimary,
-                        style = DamType.Title.copy(fontSize = 22.sp)
+                        style = DamType.Title22
                     )
                     Text(
                         text = "Chỉ người được chọn nhận cảnh báo",
@@ -155,12 +209,12 @@ fun EmergencyCallSelectScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                listOf("Tổng đạo diễn", "Cả kênh Hậu cần", "Toàn sự kiện").forEach { target ->
+                quickTargets.forEach { (target, targetIds) ->
                     QuickTargetChip(
                         text = target,
-                        selected = selectedQuickTarget == target,
+                        selected = selectedIds == targetIds,
                         modifier = Modifier.weight(1f),
-                        onClick = { selectedQuickTarget = target }
+                        onClick = { onSelectedIdsChange(targetIds) }
                     )
                 }
             }
@@ -169,16 +223,16 @@ fun EmergencyCallSelectScreen(
             SectionLabel(text = "Hoặc chọn người", color = DangerText)
             Spacer(Modifier.height(10.dp))
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FakeEmergencyUiData.recipients.forEach { member ->
+                recipients.forEach { member ->
                     EmergencyRecipientCard(
                         member = member,
-                        selected = member.id in selectedMemberIds,
+                        selected = member.id in selectedIds,
                         onClick = {
-                            selectedMemberIds = if (member.id in selectedMemberIds) {
-                                selectedMemberIds - member.id
+                            onSelectedIdsChange(if (member.id in selectedIds) {
+                                selectedIds - member.id
                             } else {
-                                selectedMemberIds + member.id
-                            }
+                                selectedIds + member.id
+                            })
                         }
                     )
                 }
@@ -194,7 +248,12 @@ fun EmergencyCallSelectScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp, vertical = 12.dp)
             )
-            HoldToCallButton(selection = selection, onCall = onCall)
+            HoldToCallButton(
+                selectedIds = selectedIds,
+                onCall = onCall,
+                onShortHold = onShortHold,
+                previewProgress = previewProgress
+            )
         }
     }
 }
@@ -211,20 +270,26 @@ private fun QuickTargetChip(
     val textColor = if (selected) TextPrimary else TextSecondary
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .background(fillColor)
-            .border(1.dp, borderColor, RoundedCornerShape(50))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 10.dp),
+            .heightIn(min = 48.dp)
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = text,
-            color = textColor,
-            style = DamType.Tag.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
-            textAlign = TextAlign.Center,
-            maxLines = 1
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(50))
+                .background(fillColor)
+                .border(1.dp, borderColor, RoundedCornerShape(50))
+                .padding(horizontal = 8.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                color = textColor,
+                style = DamType.Tag11.copy(fontWeight = FontWeight.SemiBold),
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
 
@@ -284,13 +349,19 @@ private fun EmergencyRecipientCard(
 
 @Composable
 private fun HoldToCallButton(
-    selection: EmergencyCallSelection,
-    onCall: (EmergencyCallSelection) -> Unit
+    selectedIds: Set<String>,
+    onCall: (Set<String>) -> Unit,
+    onShortHold: () -> Unit,
+    previewProgress: Float? = null
 ) {
+    val enabled = selectedIds.isNotEmpty()
     var isHolding by remember { mutableStateOf(false) }
     var progress by remember { mutableFloatStateOf(0f) }
-    val currentSelection by rememberUpdatedState(selection)
+    val currentSelectedIds by rememberUpdatedState(selectedIds)
     val currentOnCall by rememberUpdatedState(onCall)
+    val currentOnShortHold by rememberUpdatedState(onShortHold)
+    val haptic = LocalHapticFeedback.current
+    val displayedProgress = (previewProgress ?: progress).coerceIn(0f, 1f)
 
     LaunchedEffect(isHolding) {
         if (!isHolding) {
@@ -304,64 +375,103 @@ private fun HoldToCallButton(
             progress = (elapsedNanos / 2_000_000_000f).coerceIn(0f, 1f)
         }
         if (isHolding && progress >= 1f) {
-            currentOnCall(currentSelection)
+            progress = 1f
         }
     }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
-                        isHolding = true
-                        try {
-                            tryAwaitRelease()
-                        } finally {
-                            isHolding = false
+            .height(60.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .offset(y = 10.dp)
+                .shadow(30.dp, ButtonShape, spotColor = DangerShadow)
+                .background(Transparent, ButtonShape)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (previewProgress == null && enabled) {
+                        Modifier.pointerInput(enabled) {
+                            detectTapGestures(
+                                onPress = {
+                                    isHolding = true
+                                    try {
+                                        val holdStartedAt = SystemClock.uptimeMillis()
+                                        val releasedBeforeTimeout =
+                                            withTimeoutOrNull(2_000L) {
+                                                tryAwaitRelease()
+                                            }
+                                        val heldDuration =
+                                            SystemClock.uptimeMillis() - holdStartedAt
+                                        when {
+                                            releasedBeforeTimeout == null ||
+                                                (releasedBeforeTimeout == true &&
+                                                    heldDuration >= 2_000L) -> {
+                                                progress = 1f
+                                                haptic.performHapticFeedback(
+                                                    HapticFeedbackType.LongPress
+                                                )
+                                                currentOnCall(currentSelectedIds)
+                                            }
+                                            releasedBeforeTimeout == true ->
+                                                currentOnShortHold()
+                                        }
+                                    } finally {
+                                        isHolding = false
+                                    }
+                                }
+                            )
                         }
+                    } else {
+                        Modifier
                     }
                 )
+                .alpha(if (enabled) 1f else 0.62f)
+                .clip(ButtonShape)
+                .background(
+                    if (enabled) {
+                        DangerBrush
+                    } else {
+                        Brush.horizontalGradient(
+                            listOf(DisabledButtonStart, DisabledButtonEnd)
+                        )
+                    }
+                ),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(displayedProgress)
+                    .background(DangerEnd)
+            )
+            Row(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_alert),
+                    contentDescription = null,
+                    tint = TextPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Giữ 2 giây để gọi",
+                    color = TextPrimary,
+                    style = DamType.Button,
+                    textAlign = TextAlign.Center
+                )
             }
-    ) {
-        DangerButton(
-            text = "",
-            onClick = {},
-            modifier = Modifier.fillMaxWidth(),
-            enabled = false,
-            height = 60.dp
-        )
-        Row(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_alert),
-                contentDescription = null,
-                tint = TextPrimary,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "Giữ 2 giây để gọi",
-                color = TextPrimary,
-                style = DamType.Button,
-                textAlign = TextAlign.Center
-            )
-        }
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(4.dp)
-                .align(Alignment.BottomStart)
-        ) {
-            drawRect(
-                color = TextPrimary.copy(alpha = 0.8f),
-                size = size.copy(width = size.width * progress)
-            )
         }
     }
 }
@@ -396,7 +506,7 @@ fun EmergencyAlertIncomingScreen(
                     .background(TagRedBg)
                     .padding(horizontal = 12.dp, vertical = 6.dp),
                 color = TagRedText,
-                style = DamType.Tag.copy(fontSize = 12.sp)
+                style = DamType.Tag12
             )
             Spacer(Modifier.height(30.dp))
             EmergencyAlertOrb()
@@ -404,7 +514,7 @@ fun EmergencyAlertIncomingScreen(
             Text(
                 text = "${alert?.fromName ?: FakeEmergencyUiData.sampleAlert.fromName} gọi khẩn cấp",
                 color = TextPrimary,
-                style = DamType.Title.copy(fontSize = 26.sp, lineHeight = 32.sp),
+                style = DamType.Title26,
                 textAlign = TextAlign.Center
             )
             val displayAlert = alert ?: FakeEmergencyUiData.sampleAlert
@@ -413,7 +523,7 @@ fun EmergencyAlertIncomingScreen(
                     if (displayAlert.isDirectCall) "gọi riêng bạn" else "gọi toàn kênh"
                 }",
                 color = TextSecondary,
-                style = DamType.Body.copy(fontSize = 14.sp),
+                style = DamType.Body,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 4.dp)
             )
@@ -527,6 +637,65 @@ private fun AlertStatusChip(
 @Composable
 fun EmergencyActiveCallScreen(
     onEndCall: () -> Unit,
+    modifier: Modifier = Modifier,
+    selectedMemberIds: Set<String>? = null,
+    caller: EmergencyAlert? = null
+) {
+    val participants = selectedMemberIds?.let { ids ->
+        FakeEmergencyUiData.recipients
+            .filter { it.id in ids }
+            .map { member ->
+                EmergencyCallParticipant(member, status = "Đang chờ trả lời...")
+            }
+    } ?: FakeEmergencyUiData.callParticipants
+    val displayParticipants = caller?.let { alert ->
+        val callerTemplate = participants.firstOrNull()
+            ?: FakeEmergencyUiData.callParticipants.first()
+        val callerParticipant = callerTemplate.copy(
+            member = callerTemplate.member.copy(
+                name = alert.fromName,
+                roleTitle = alert.fromRole
+            ),
+            status = "${alert.fromRole} · đang nói",
+            isSpeaking = true
+        )
+        listOf(callerParticipant) + participants.filterNot {
+            it.member.name == alert.fromName
+        }
+    } ?: participants
+    val isTalking by PttController.isPttActive.collectAsState()
+    val view = LocalView.current
+    val latestOnEndCall by rememberUpdatedState(onEndCall)
+    val finishCall = {
+        PttController.forceReleasePtt()
+        latestOnEndCall()
+    }
+
+    DisposableEffect(view) {
+        val observer = view.viewTreeObserver
+        val focusListener = android.view.ViewTreeObserver.OnWindowFocusChangeListener { hasFocus ->
+            if (!hasFocus) PttController.forceReleasePtt()
+        }
+        observer.addOnWindowFocusChangeListener(focusListener)
+        onDispose {
+            if (observer.isAlive) observer.removeOnWindowFocusChangeListener(focusListener)
+            PttController.forceReleasePtt()
+        }
+    }
+
+    EmergencyActiveCallContent(
+        participants = displayParticipants,
+        isTalking = isTalking,
+        onEndCall = finishCall,
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun EmergencyActiveCallContent(
+    participants: List<EmergencyCallParticipant>,
+    isTalking: Boolean,
+    onEndCall: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     DamThoaiBackground(modifier = modifier, variant = BgVariant.Emergency) {
@@ -536,20 +705,25 @@ fun EmergencyActiveCallScreen(
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .padding(horizontal = 24.dp)
-                .padding(top = 14.dp, bottom = 26.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(top = 14.dp, bottom = 26.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                contentAlignment = Alignment.Center
             ) {
-                BackButton(onClick = onEndCall)
-                Spacer(Modifier.width(12.dp))
-                Column {
+                BackButton(onClick = onEndCall, modifier = Modifier.align(Alignment.CenterStart))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 52.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Text(
                         text = "Cuộc gọi khẩn cấp",
                         color = TextPrimary,
-                        style = DamType.Title.copy(fontSize = 22.sp)
+                        style = DamType.Heading16
                     )
                     Text(
                         text = "Các kênh khác đã hạ âm",
@@ -557,35 +731,43 @@ fun EmergencyActiveCallScreen(
                         style = DamType.Muted
                     )
                 }
+                Spacer(Modifier.size(40.dp).align(Alignment.CenterEnd))
             }
 
+            Spacer(Modifier.height(16.dp))
             GlassCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
+                shape = RoundedCornerShape(24.dp),
                 borderColor = AccentRed.copy(alpha = 0.5f),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    FakeEmergencyUiData.callParticipants.forEach { participant ->
-                        EmergencyParticipantRow(participant)
+                    participants.forEach { participant ->
+                        EmergencyParticipantRow(
+                            participant = participant,
+                            isUserTalking = isTalking
+                        )
                     }
                 }
             }
 
+            Spacer(Modifier.weight(1f))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .heightIn(min = 150.dp),
                 contentAlignment = Alignment.Center
             ) {
-                EmergencyPttButton()
+                EmergencyPttButton(isTalking = isTalking)
             }
 
+            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(12.dp))
             SecondaryButton(
                 text = "Kết thúc cuộc gọi",
                 onClick = onEndCall,
                 modifier = Modifier.fillMaxWidth(),
-                height = 60.dp,
+                height = 54.dp,
                 textColor = DangerText
             )
         }
@@ -593,7 +775,12 @@ fun EmergencyActiveCallScreen(
 }
 
 @Composable
-private fun EmergencyParticipantRow(participant: EmergencyCallParticipant) {
+private fun EmergencyParticipantRow(
+    participant: EmergencyCallParticipant,
+    isUserTalking: Boolean
+) {
+    val isSpeaking = participant.isSpeaking ||
+        (participant.member.name == "Minh Hậu" && isUserTalking)
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -611,12 +798,16 @@ private fun EmergencyParticipantRow(participant: EmergencyCallParticipant) {
                 style = DamType.Body.copy(fontWeight = FontWeight.SemiBold)
             )
             Text(
-                text = participant.status,
-                color = if (participant.isSpeaking) DangerText else TextSecondary,
+                text = if (participant.member.name == "Minh Hậu" && isUserTalking) {
+                    "đang nói"
+                } else {
+                    participant.status
+                },
+                color = if (isSpeaking) DangerText else TextSecondary,
                 style = DamType.Small
             )
         }
-        if (participant.isSpeaking) {
+        if (isSpeaking) {
             SpeakingWaveform()
         }
     }
@@ -643,27 +834,24 @@ private fun SpeakingWaveform() {
 }
 
 @Composable
-private fun EmergencyPttButton() {
+private fun EmergencyPttButton(isTalking: Boolean) {
     Box(
-        modifier = Modifier.size(234.dp),
+        modifier = Modifier.size(214.dp),
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
-                .size(210.dp)
-                .background(AccentRed.copy(alpha = 0.08f), CircleShape)
+                .size(214.dp)
+                .background(DangerStart.copy(alpha = if (isTalking) 0.16f else 0.08f), CircleShape)
         )
         Box(
             modifier = Modifier
-                .size(174.dp)
-                .background(AccentRed.copy(alpha = 0.16f), CircleShape)
+                .size(178.dp)
+                .background(DangerStart.copy(alpha = if (isTalking) 0.30f else 0.18f), CircleShape)
         )
-        Column(
+        Box(
             modifier = Modifier
                 .size(150.dp)
-                .shadow(28.dp, CircleShape, spotColor = DangerShadow)
-                .clip(CircleShape)
-                .emergencyGradient()
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onPress = {
@@ -676,22 +864,36 @@ private fun EmergencyPttButton() {
                         }
                     )
                 },
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            contentAlignment = Alignment.Center
         ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_mic),
-                contentDescription = "Giữ để nói",
-                tint = TextPrimary,
-                modifier = Modifier.size(26.dp)
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "GIỮ ĐỂ NÓI",
-                color = TextPrimary,
-                style = DamType.Button,
-                textAlign = TextAlign.Center
-            )
+            Column(
+                modifier = Modifier
+                    .size(150.dp)
+                    .shadow(28.dp, CircleShape, spotColor = DangerShadow)
+                    .clip(CircleShape)
+                    .emergencyGradient()
+                    .graphicsLayer {
+                        val scale = if (isTalking) 0.97f else 1f
+                        scaleX = scale
+                        scaleY = scale
+                    },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_mic),
+                    contentDescription = "Giữ để nói",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(38.dp)
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "GIỮ ĐỂ NÓI",
+                    color = TextPrimary,
+                    style = DamType.Body.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold),
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }
@@ -701,6 +903,36 @@ private fun EmergencyPttButton() {
 private fun EmergencyCallSelectScreenPreview() {
     DamThoaiTheme {
         EmergencyCallSelectScreen(onBack = {}, onCall = {})
+    }
+}
+
+@Preview(widthDp = 390, heightDp = 844)
+@Composable
+private fun EmergencyCallSelectNoSelectionPreview() {
+    DamThoaiTheme {
+        EmergencyCallSelectContent(
+            selectedIds = emptySet(),
+            onSelectedIdsChange = {},
+            onBack = {},
+            onCall = {},
+            onShortHold = {},
+            previewProgress = 0f
+        )
+    }
+}
+
+@Preview(widthDp = 390, heightDp = 844)
+@Composable
+private fun EmergencyCallSelectHalfHeldPreview() {
+    DamThoaiTheme {
+        EmergencyCallSelectContent(
+            selectedIds = setOf(FakeEmergencyUiData.recipients.first().id),
+            onSelectedIdsChange = {},
+            onBack = {},
+            onCall = {},
+            onShortHold = {},
+            previewProgress = 0.5f
+        )
     }
 }
 
@@ -729,6 +961,22 @@ private fun EmergencyAlertInactiveSignalsPreview() {
 @Composable
 private fun EmergencyActiveCallScreenPreview() {
     DamThoaiTheme {
-        EmergencyActiveCallScreen(onEndCall = {})
+        EmergencyActiveCallContent(
+            participants = FakeEmergencyUiData.callParticipants,
+            isTalking = false,
+            onEndCall = {}
+        )
+    }
+}
+
+@Preview(widthDp = 390, heightDp = 844)
+@Composable
+private fun EmergencyActiveCallTalkingPreview() {
+    DamThoaiTheme {
+        EmergencyActiveCallContent(
+            participants = FakeEmergencyUiData.callParticipants,
+            isTalking = true,
+            onEndCall = {}
+        )
     }
 }

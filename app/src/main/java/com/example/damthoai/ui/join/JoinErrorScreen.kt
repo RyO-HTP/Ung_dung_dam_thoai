@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -38,6 +40,7 @@ import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.GlassBorder
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
+import com.example.damthoai.ui.theme.Transparent
 
 @Composable
 fun JoinErrorScreen(
@@ -48,7 +51,11 @@ fun JoinErrorScreen(
 ) {
     DamThoaiBackground(modifier = modifier) {
         Column(
-            Modifier.fillMaxSize().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 26.dp),
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 26.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(Modifier.weight(1f))
@@ -126,7 +133,7 @@ private fun ErrorReason(text: String) {
             Modifier.padding(top = 7.dp).size(8.dp).clip(CircleShape).background(AccentAmber)
         )
         Spacer(Modifier.size(10.dp))
-        Text(text, color = TextPrimary, style = DamType.Body.copy(fontSize = 14.sp, lineHeight = 21.sp))
+        Text(text, color = TextPrimary, style = DamType.Body14Line21)
     }
 }
 

@@ -1,5 +1,9 @@
 package com.example.damthoai.data.fake
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
 data class LiveCue(
     val title: String,
     val message: String,
@@ -13,12 +17,9 @@ object FakeRemainingUiData {
 
     val event = FakeRepositories.sampleEvent.copy(
         name = "Đêm nhạc Chào Tân sinh viên",
-        memberCount = 48
-    )
-
-    val managementChannels = FakeRepositories.sampleChannels + listOf(
-        Channel(id = "ch_04", name = "Kỹ thuật"),
-        Channel(id = "ch_05", name = "Đón tiếp")
+        channels = FakeRepositories.sampleChannels,
+        members = FakeRepositories.sampleMembers,
+        ownerId = "mem_01"
     )
 
     val liveCue = LiveCue(
@@ -27,6 +28,9 @@ object FakeRemainingUiData {
         channelName = "Toàn sự kiện",
         isPriority = true
     )
+
+    private val _liveCueState = MutableStateFlow<LiveCue?>(liveCue)
+    val liveCueState: StateFlow<LiveCue?> = _liveCueState.asStateFlow()
 
     val eventMembers = listOf(
         Member("mem_lp", "Lan Phương", "Tổng đạo diễn", "LP", MemberLevel.LEVEL_1, isTalking = true),
@@ -40,5 +44,6 @@ object FakeRemainingUiData {
 
     fun sendLiveCue(cue: LiveCue) {
         lastSentLiveCue = cue
+        _liveCueState.value = cue
     }
 }

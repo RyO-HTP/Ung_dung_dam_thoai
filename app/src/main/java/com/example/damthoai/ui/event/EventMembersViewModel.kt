@@ -1,6 +1,7 @@
 package com.example.damthoai.ui.event
 
 import androidx.lifecycle.ViewModel
+import com.example.damthoai.data.fake.FakeEventRepository
 import com.example.damthoai.data.fake.FakeRemainingUiData
 import com.example.damthoai.data.fake.Member
 import com.example.damthoai.data.fake.MemberLevel
@@ -36,6 +37,7 @@ class EventMembersViewModel : ViewModel() {
     }
 
     fun updateMember(updatedMember: Member) {
+        FakeEventRepository.updateMember(updatedMember)
         _uiState.update { state ->
             state.copy(
                 members = state.members.map { member ->
@@ -46,6 +48,7 @@ class EventMembersViewModel : ViewModel() {
     }
 
     fun removeMember(memberId: String) {
+        FakeEventRepository.removeMember(memberId)
         _uiState.update { state ->
             state.copy(members = state.members.filterNot { it.id == memberId })
         }
