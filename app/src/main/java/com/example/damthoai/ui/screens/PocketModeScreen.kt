@@ -66,6 +66,7 @@ import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.GlassBorder
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
+import com.example.damthoai.ui.theme.PureWhite
 import kotlin.math.roundToInt
 
 @Composable
@@ -176,7 +177,7 @@ private fun PocketModeContent(
             Text(
                 "Hậu cần – An ninh",
                 color = TextPrimary,
-                style = DamType.Heading.copy(fontSize = 20.sp)
+                style = DamType.Heading20
             )
         }
         PttButton(
@@ -294,7 +295,7 @@ private fun PocketUnlockSlider(
                 }
                 .size(knobSize)
                 .clip(CircleShape)
-                .background(Brush.horizontalGradient(listOf(AccentCyan, Color.White))),
+                .background(Brush.horizontalGradient(listOf(AccentCyan, PureWhite))),
             contentAlignment = Alignment.Center
         ) {
             Icon(

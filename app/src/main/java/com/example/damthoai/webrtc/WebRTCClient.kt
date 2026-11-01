@@ -113,6 +113,31 @@ class WebRTCClient(private val context: Context) {
     }
 
     /**
+     * Khởi động lại ICE (ICE Restart) khi chuyển từ Wi-Fi sang 4G (Seamless Handover).
+     * Bắt buộc WebRTC dò tìm lại đường truyền mạng mà không cần ngắt cuộc gọi.
+     */
+    fun restartIce(onSuccess: (SessionDescription) -> Unit, onError: (String) -> Unit) {
+        val constraints = MediaConstraints().apply {
+            // Cờ bắt buộc khởi động lại dò tìm ICE
+            mandatory.add(MediaConstraints.KeyValuePair("IceRestart", "true"))
+        }
+
+        peerConnection?.createOffer(object : SimpleSdpObserver() {
+            override fun onCreateSuccess(desc: SessionDescription?) {
+                desc?.let {
+                    // Lưu SDP mới làm cấu hình cục bộ và trả về cho CallManager
+                    peerConnection?.setLocalDescription(SimpleSdpObserver(), it)
+                    onSuccess(it)
+                }
+            }
+
+            override fun onCreateFailure(error: String?) {
+                onError(error ?: "Lỗi ICE Restart không xác định")
+            }
+        }, constraints)
+    }
+
+    /**
      * Đóng và giải phóng tài nguyên WebRTC
      */
     fun close() {

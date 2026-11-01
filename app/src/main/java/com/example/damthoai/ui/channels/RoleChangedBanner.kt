@@ -22,13 +22,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
 import com.example.damthoai.ui.components.DamThoaiBackground
+import com.example.damthoai.ui.components.outerGlow
 import com.example.damthoai.ui.theme.AccentAmber
 import com.example.damthoai.ui.theme.DamThoaiTheme
 import com.example.damthoai.ui.theme.DamType
@@ -56,7 +56,7 @@ fun RoleChangedBanner(
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(start = 16.dp, end = 16.dp, top = 20.dp)
-                .shadow(14.dp, shape)
+                .outerGlow(AccentAmber, corner = 20.dp, spread = 14.dp, maxAlpha = 0.20f)
                 .clip(shape)
                 .background(RoleToastBg)
                 .border(1.dp, AccentAmber.copy(alpha = 0.5f), shape)
@@ -74,7 +74,7 @@ fun RoleChangedBanner(
                 Text(
                     title,
                     color = TextPrimary,
-                    style = DamType.Heading.copy(fontSize = 13.5.sp)
+                    style = DamType.Heading13_5
                 )
                 Text(
                     subtitle,

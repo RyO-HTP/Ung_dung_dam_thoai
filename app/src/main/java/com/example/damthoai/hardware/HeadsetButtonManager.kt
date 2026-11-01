@@ -15,34 +15,32 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 
+/**
+ * Cách bấm nút tai nghe: bật/tắt mic hoặc chỉ giữ mic trong lúc nhấn.
+ */
 enum class HeadsetPttMode {
     TOGGLE,
     HOLD
 }
 
 /**
- * Routes wired and Bluetooth headset media buttons through the central PTT controller.
+ * Định tuyến nút tai nghe có dây/Bluetooth về [PttController].
  *
- * The active platform MediaSession advertises playback while the capture session is running.
- * Android uses that active session to route headset media-button events to this app, including
- * when the screen is off. The session is deliberately not an audio player and does not create a
- * service; its owner must start and stop it with the capture session.
+ * MediaSession nền tảng quảng bá trạng thái đang phát với ACTION_PLAY_PAUSE để Android
+ * định tuyến phím media về ứng dụng khi phiên rảnh tay đang hoạt động, kể cả lúc tắt màn hình.
+ * Đây không phải trình phát âm thanh và không tạo Service; phiên MediaSession chỉ sống cùng
+ * [HandsFreeSession].
  */
 object HeadsetButtonManager {
 
     private const val TAG = "HeadsetButtonManager"
-    private const val DUPLICATE_EVENT_WINDOW_MS = 300L
-    private const val HEADSET_PTT_TIMEOUT_MS = 60_000L
+    private const val DUPLICATE_HEADSET_EVENT_WINDOW_MS = 300L
+    private const val HEADSET_PTT_AUTO_RELEASE_TIMEOUT_MS = 60_000L
 
-    private val _headsetButtonEnabled = MutableStateFlow(true)
-    val headsetButtonEnabled: StateFlow<Boolean> = _headsetButtonEnabled.asStateFlow()
-
-    private val _headsetPttMode = MutableStateFlow(HeadsetPttMode.TOGGLE)
-    val headsetPttMode: StateFlow<HeadsetPttMode> = _headsetPttMode.asStateFlow()
+    val headsetButtonEnabled: StateFlow<Boolean> = HandsFreeSettings.headsetButtonEnabled
+    val headsetPttMode: StateFlow<HeadsetPttMode> = HandsFreeSettings.headsetPttMode
 
     private var mediaSession: MediaSession? = null
     private var timeoutScope: CoroutineScope? = null
@@ -51,39 +49,74 @@ object HeadsetButtonManager {
     private var lastAcceptedPressAtMs: Long? = null
     private var holdPressActive = false
 
+    val isRunning: Boolean
+        get() = synchronized(this) { mediaSession != null }
+
     @Synchronized
     fun start(context: Context) {
         if (mediaSession != null) return
 
-        timeoutScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val session = MediaSession(context.applicationContext, "DamThoaiHeadsetPtt")
-        session.setFlags(
-            MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or
-                MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS
-        )
-        session.setCallback(object : MediaSession.Callback() {
-            override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
-                val event = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    mediaButtonIntent.getParcelableExtra(
-                        Intent.EXTRA_KEY_EVENT,
-                        KeyEvent::class.java
-                    )
-                } else {
-                    @Suppress("DEPRECATION")
-                    mediaButtonIntent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
-                }
-                return event?.let(::handleMediaKeyEvent)
-                    ?: super.onMediaButtonEvent(mediaButtonIntent)
+        val session = try {
+            MediaSession(context.applicationContext, "DamThoaiHeadsetPtt")
+        } catch (exception: SecurityException) {
+            Log.e(TAG, "Không thể tạo MediaSession tai nghe do thiếu quyền hệ thống", exception)
+            return
+        } catch (exception: IllegalStateException) {
+            Log.e(TAG, "Không thể tạo MediaSession tai nghe ở trạng thái hiện tại", exception)
+            return
+        }
+
+        try {
+            session.apply {
+                setFlags(
+                    MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or
+                        MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS
+                )
+                setCallback(object : MediaSession.Callback() {
+                    override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
+                        val event = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            mediaButtonIntent.getParcelableExtra(
+                                Intent.EXTRA_KEY_EVENT,
+                                KeyEvent::class.java
+                            )
+                        } else {
+                            @Suppress("DEPRECATION")
+                            mediaButtonIntent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+                        }
+                        return event?.let(::handleMediaKeyEvent)
+                            ?: super.onMediaButtonEvent(mediaButtonIntent)
+                    }
+                })
+                setPlaybackState(
+                    PlaybackState.Builder()
+                        .setActions(PlaybackState.ACTION_PLAY_PAUSE)
+                        .setState(PlaybackState.STATE_PLAYING, 0L, 1f)
+                        .build()
+                )
+                setActive(true)
             }
-        })
-        session.setPlaybackState(
-            PlaybackState.Builder()
-                .setActions(PlaybackState.ACTION_PLAY_PAUSE)
-                .setState(PlaybackState.STATE_PLAYING, 0L, 1f)
-                .build()
-        )
+        } catch (exception: SecurityException) {
+            Log.e(TAG, "Không thể khởi động MediaSession tai nghe do thiếu quyền hệ thống", exception)
+            releaseAfterStartFailure(session)
+            return
+        } catch (exception: IllegalStateException) {
+            Log.e(TAG, "MediaSession tai nghe không thể khởi động ở trạng thái hiện tại", exception)
+            releaseAfterStartFailure(session)
+            return
+        }
+
         mediaSession = session
-        session.isActive = true
+        timeoutScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    }
+
+    private fun releaseAfterStartFailure(session: MediaSession) {
+        try {
+            session.release()
+        } catch (exception: SecurityException) {
+            Log.e(TAG, "Không có quyền giải phóng MediaSession tai nghe sau lỗi khởi động", exception)
+        } catch (exception: IllegalStateException) {
+            Log.e(TAG, "Không thể giải phóng MediaSession tai nghe sau lỗi khởi động", exception)
+        }
     }
 
     @Synchronized
@@ -92,21 +125,33 @@ object HeadsetButtonManager {
         timeoutScope?.cancel()
         timeoutScope = null
         holdPressActive = false
+        lastAcceptedPressAtMs = null
 
         if (PttController.activeSource.value == PttSource.HEADSET) {
             PttController.onKeyReleased(PttSource.HEADSET)
         }
 
         mediaSession?.let { session ->
-            session.isActive = false
-            session.release()
+            try {
+                session.setActive(false)
+            } catch (exception: SecurityException) {
+                Log.e(TAG, "Không thể tắt MediaSession tai nghe", exception)
+            } catch (exception: IllegalStateException) {
+                Log.e(TAG, "MediaSession tai nghe đã ở trạng thái không hợp lệ khi tắt", exception)
+            }
+            try {
+                session.release()
+            } catch (exception: SecurityException) {
+                Log.e(TAG, "Không có quyền giải phóng MediaSession tai nghe", exception)
+            } catch (exception: IllegalStateException) {
+                Log.e(TAG, "Không thể giải phóng MediaSession tai nghe", exception)
+            }
         }
         mediaSession = null
-        lastAcceptedPressAtMs = null
     }
 
     fun setHeadsetButtonEnabled(enabled: Boolean) {
-        _headsetButtonEnabled.value = enabled
+        HandsFreeSettings.setHeadsetButtonEnabled(enabled)
         if (!enabled) {
             synchronized(this) {
                 releaseHeadsetPress()
@@ -116,8 +161,8 @@ object HeadsetButtonManager {
 
     fun setHeadsetPttMode(mode: HeadsetPttMode) {
         synchronized(this) {
-            if (_headsetPttMode.value == mode) return
-            _headsetPttMode.value = mode
+            if (headsetPttMode.value == mode) return
+            HandsFreeSettings.setHeadsetPttMode(mode)
             releaseHeadsetPress()
         }
     }
@@ -135,22 +180,25 @@ object HeadsetButtonManager {
         when (event.action) {
             KeyEvent.ACTION_DOWN -> {
                 if (event.repeatCount != 0) return true
+
                 val now = SystemClock.elapsedRealtime()
                 val previous = lastAcceptedPressAtMs
-                if (previous != null && now - previous < DUPLICATE_EVENT_WINDOW_MS) {
+                if (previous != null &&
+                    now - previous < DUPLICATE_HEADSET_EVENT_WINDOW_MS
+                ) {
                     return true
                 }
                 lastAcceptedPressAtMs = now
-                if (!_headsetButtonEnabled.value) return true
+                if (!headsetButtonEnabled.value) return true
 
-                when (_headsetPttMode.value) {
+                when (headsetPttMode.value) {
                     HeadsetPttMode.TOGGLE -> toggleHeadsetPtt()
                     HeadsetPttMode.HOLD -> pressAndHoldHeadsetPtt()
                 }
             }
 
             KeyEvent.ACTION_UP -> {
-                if (_headsetPttMode.value == HeadsetPttMode.HOLD && holdPressActive) {
+                if (headsetPttMode.value == HeadsetPttMode.HOLD && holdPressActive) {
                     holdPressActive = false
                     PttController.onKeyReleased(PttSource.HEADSET)
                 }
@@ -175,12 +223,6 @@ object HeadsetButtonManager {
     }
 
     private fun pressAndHoldHeadsetPtt() {
-        if (PttController.isPttActive.value &&
-            PttController.activeSource.value != PttSource.HEADSET
-        ) {
-            return
-        }
-
         PttController.onKeyPressed(PttSource.HEADSET)
         holdPressActive = PttController.activeSource.value == PttSource.HEADSET
     }
@@ -190,14 +232,14 @@ object HeadsetButtonManager {
         val scope = timeoutScope ?: return
         val generation = ++autoReleaseGeneration
         autoReleaseJob = scope.launch {
-            delay(HEADSET_PTT_TIMEOUT_MS)
+            delay(HEADSET_PTT_AUTO_RELEASE_TIMEOUT_MS)
             synchronized(this@HeadsetButtonManager) {
                 if (generation == autoReleaseGeneration &&
-                    _headsetPttMode.value == HeadsetPttMode.TOGGLE &&
+                    headsetPttMode.value == HeadsetPttMode.TOGGLE &&
                     PttController.activeSource.value == PttSource.HEADSET
                 ) {
                     PttController.onKeyReleased(PttSource.HEADSET)
-                    Log.w(TAG, "Headset PTT auto-released after 60 seconds")
+                    Log.w(TAG, "Headset PTT tự thả sau 60 giây")
                 }
                 autoReleaseJob = null
             }

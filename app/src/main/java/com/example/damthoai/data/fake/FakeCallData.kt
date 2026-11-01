@@ -44,7 +44,7 @@ private val quietEventChannel = FakeVolumeChannel(
     name = "Toàn sự kiện",
     valueLabel = "100%",
     volume = 1f,
-    speaker = "Không ai đang nói",
+    speaker = "Lan Phương đang nói",
     speakerColor = CallStatusMint
 )
 private val quietStageChannel = FakeVolumeChannel(
@@ -58,10 +58,11 @@ private val quietStageChannel = FakeVolumeChannel(
 private val quietSupportChannel = FakeVolumeChannel(
     iconRes = R.drawable.ic_mic,
     name = "Hậu cần – An ninh",
-    valueLabel = "80%",
-    volume = 0.8f,
+    valueLabel = "20%",
+    volume = 0.2f,
     speaker = "Yên lặng",
-    speakerColor = CallStatusMint
+    speakerColor = CallStatusMint,
+    tag = "HẠ ÂM 80%"
 )
 
 private val standardChannels = listOf(
@@ -132,8 +133,6 @@ object FakeCallData {
             statusBackground = CallStatusRedBg,
             channels = standardChannels.mapIndexed { index, channel ->
                 if (index == 2) channel.copy(
-                    valueLabel = "CẤP 1",
-                    tag = "CẤP 1",
                     speaker = "Lan Phương đang nói",
                     speakerColor = CallStatusRed
                 ) else channel.copy(speaker = "Không ai đang nói")

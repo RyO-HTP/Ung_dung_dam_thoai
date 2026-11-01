@@ -58,6 +58,8 @@ import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.DamType
 import com.example.damthoai.ui.theme.DamThoaiTheme
 import com.example.damthoai.ui.theme.TextPrimary
+import com.example.damthoai.ui.theme.PureWhite
+import com.example.damthoai.ui.theme.Transparent
 
 private const val SVG_WIDTH = 350f
 private const val SVG_HEIGHT = 400f
@@ -71,7 +73,7 @@ fun Slide1Visual(modifier: Modifier = Modifier) {
             drawContext.transform.scale(sx, sy, androidx.compose.ui.geometry.Offset.Zero)
             drawCircle(
                 brush = Brush.radialGradient(
-                    listOf(BlueGlowIntro, Color.Transparent),
+                    listOf(BlueGlowIntro, Transparent),
                     center = androidx.compose.ui.geometry.Offset(175f, 200f),
                     radius = 170f
                 ),
@@ -79,20 +81,20 @@ fun Slide1Visual(modifier: Modifier = Modifier) {
                 center = androidx.compose.ui.geometry.Offset(175f, 200f)
             )
             drawRoundRect(
-                color = Color.White.copy(alpha = 0.08f),
+                color = PureWhite.copy(alpha = 0.08f),
                 topLeft = androidx.compose.ui.geometry.Offset(65f, 50f),
                 size = androidx.compose.ui.geometry.Size(220f, 290f),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(36f)
             )
             drawRoundRect(
-                color = Color.White.copy(alpha = 0.28f),
+                color = PureWhite.copy(alpha = 0.28f),
                 topLeft = androidx.compose.ui.geometry.Offset(65f, 50f),
                 size = androidx.compose.ui.geometry.Size(220f, 290f),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(36f),
                 style = Stroke(1.5f)
             )
             drawRoundRect(
-                color = Color.White.copy(alpha = 0.3f),
+                color = PureWhite.copy(alpha = 0.3f),
                 topLeft = androidx.compose.ui.geometry.Offset(150f, 62f),
                 size = androidx.compose.ui.geometry.Size(50f, 6f),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(3f)
@@ -107,7 +109,7 @@ fun Slide1Visual(modifier: Modifier = Modifier) {
                 androidx.compose.ui.geometry.Offset(241f, 264f)
             ).forEach {
                 drawRoundRect(
-                    Color.White,
+                    PureWhite,
                     topLeft = it,
                     size = androidx.compose.ui.geometry.Size(16f, 16f),
                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f)
@@ -149,7 +151,7 @@ fun Slide1Visual(modifier: Modifier = Modifier) {
             )
             drawRect(
                 brush = Brush.horizontalGradient(
-                    listOf(Color.Transparent, AccentCyan, Color.Transparent),
+                    listOf(Transparent, AccentCyan, Transparent),
                     startX = 82f,
                     endX = 268f
                 ),
@@ -157,7 +159,7 @@ fun Slide1Visual(modifier: Modifier = Modifier) {
                 size = androidx.compose.ui.geometry.Size(186f, 4f)
             )
             drawRoundRect(
-                color = Color.White.copy(alpha = 0.14f),
+                color = PureWhite.copy(alpha = 0.14f),
                 topLeft = androidx.compose.ui.geometry.Offset(95f, 306f),
                 size = androidx.compose.ui.geometry.Size(160f, 14f),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(7f)
@@ -184,13 +186,13 @@ fun Slide1Visual(modifier: Modifier = Modifier) {
             modifier = Modifier.offset(215.dp, 28.dp).size(22.dp)
         )
         Box(Modifier.offset(243.dp, 29.dp).size(84.dp, 20.dp), contentAlignment = Alignment.CenterStart) {
-            Text("Sân khấu", color = TextPrimary, style = DamType.Tag.copy(fontSize = 12.sp))
+            Text("Sân khấu", color = TextPrimary, style = DamType.Tag12)
         }
         Box(Modifier.offset(12.dp, 338.dp).size(150.dp, 38.dp), contentAlignment = Alignment.Center) {
             Text(
                 "PIN 240826",
                 color = AccentCyan,
-                style = DamType.Mono.copy(fontSize = 16.sp, letterSpacing = 0.sp),
+                style = DamType.Mono16Tight,
                 textAlign = TextAlign.Center
             )
         }
@@ -206,7 +208,7 @@ fun Slide2Visual(modifier: Modifier = Modifier) {
             drawContext.transform.scale(sx, sy, androidx.compose.ui.geometry.Offset.Zero)
             drawCircle(
                 brush = Brush.radialGradient(
-                    listOf(AmberGlowIntro, Color.Transparent),
+                    listOf(AmberGlowIntro, Transparent),
                     center = androidx.compose.ui.geometry.Offset(175f, 100f),
                     radius = 140f
                 ),
@@ -276,7 +278,7 @@ fun Slide2Visual(modifier: Modifier = Modifier) {
                     .background(AmberChipBgIntro),
                 contentAlignment = Alignment.Center
             ) {
-                Text("-80%", color = AccentAmber, style = DamType.Tag.copy(fontSize = 11.sp))
+                Text("-80%", color = AccentAmber, style = DamType.Tag11)
             }
             Icon(
                 painter = painterResource(R.drawable.ic_vol),
@@ -314,17 +316,17 @@ fun Slide3Visual(modifier: Modifier = Modifier) {
             drawContext.transform.scale(sx, sy, androidx.compose.ui.geometry.Offset.Zero)
             drawCircle(
                 brush = Brush.radialGradient(
-                    listOf(BlueGlowIntro, Color.Transparent),
+                    listOf(BlueGlowIntro, Transparent),
                     center = androidx.compose.ui.geometry.Offset(175f, 200f),
                     radius = 170f
                 ),
                 radius = 170f,
                 center = androidx.compose.ui.geometry.Offset(175f, 200f)
             )
-            drawCircle(Color.White.copy(alpha = 0.22f), 62f, androidx.compose.ui.geometry.Offset(175f, 200f), style = Stroke(1.5f))
-            drawCircle(Color.White.copy(alpha = 0.22f), 108f, androidx.compose.ui.geometry.Offset(175f, 200f), style = Stroke(1.5f))
+            drawCircle(PureWhite.copy(alpha = 0.22f), 62f, androidx.compose.ui.geometry.Offset(175f, 200f), style = Stroke(1.5f))
+            drawCircle(PureWhite.copy(alpha = 0.22f), 108f, androidx.compose.ui.geometry.Offset(175f, 200f), style = Stroke(1.5f))
             drawCircle(
-                Color.White.copy(alpha = 0.22f),
+                PureWhite.copy(alpha = 0.22f),
                 152f,
                 androidx.compose.ui.geometry.Offset(175f, 200f),
                 style = Stroke(1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 7f)))
@@ -353,7 +355,7 @@ fun Slide3Visual(modifier: Modifier = Modifier) {
                     radius = radius,
                     center = androidx.compose.ui.geometry.Offset(x, y)
                 )
-                drawCircle(Color.White.copy(alpha = 0.4f), radius, androidx.compose.ui.geometry.Offset(x, y), style = Stroke(1.5f))
+                drawCircle(PureWhite.copy(alpha = 0.4f), radius, androidx.compose.ui.geometry.Offset(x, y), style = Stroke(1.5f))
             }
         }
         Icon(
@@ -373,16 +375,16 @@ fun Slide3Visual(modifier: Modifier = Modifier) {
             Text(
                 text = label,
                 color = AvatarInk,
-                style = DamType.Body.copy(fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+                style = DamType.Body10Bold,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.offset((x - 18).dp, (y - 11).dp).size(36.dp, 22.dp)
             )
         }
         Box(Modifier.offset(216.dp, 160.dp).size(78.dp, 22.dp), contentAlignment = Alignment.Center) {
-            Text("Sân khấu", color = TextPrimary, style = DamType.Tag.copy(fontSize = 11.sp))
+            Text("Sân khấu", color = TextPrimary, style = DamType.Tag11)
         }
         Box(Modifier.offset(51.dp, 280.dp).size(70.dp, 22.dp), contentAlignment = Alignment.Center) {
-            Text("Hậu cần", color = TextPrimary, style = DamType.Tag.copy(fontSize = 11.sp))
+            Text("Hậu cần", color = TextPrimary, style = DamType.Tag11)
         }
     }
 }

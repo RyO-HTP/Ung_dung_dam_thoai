@@ -44,6 +44,7 @@ sealed class AppRoute(val route: String, val title: String) {
     object Settings : AppRoute("settings", "Cài đặt")
     object MultiLevelConnection : AppRoute("multi_level_connection", "Kết nối đa tầng")
     object HandsFreeAudio : AppRoute("hands_free_audio", "Rảnh tay và âm thanh")
+    object PttDebug : AppRoute("ptt_debug", "Công cụ kiểm thử PTT")
     object UserProfile : AppRoute("user_profile", "Hồ sơ của bạn")
 
     // === NHÓM G: QUẢN TRỊ SỰ KIỆN (CẤP 1) ===

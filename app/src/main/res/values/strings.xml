@@ -70,5 +70,67 @@
     <string name="ptt_setting_vol_down_only">Chỉ phím Giảm âm lượng (Volume Down)</string>
     <string name="ptt_setting_vol_up_only">Chỉ phím Tăng âm lượng (Volume Up)</string>
 
-    <string name="ptt_note_foreground_limit">Lưu ý: Hiện tại phím cứng chỉ hoạt động khi màn hình sáng và ứng dụng ở Foreground. Tính năng bắt phím khi tắt màn hình sẽ sử dụng MediaSession ở Tuần 3.</string>
+    <string name="ptt_note_foreground_limit">Muốn dùng phím Volume Down khi tắt màn hình, hãy bật Trợ năng của Đàm Thoại trong Cài đặt Trợ năng.</string>
+
+    <string name="accessibility_service_label">Phím Volume Down cho PTT</string>
+    <string name="accessibility_service_description">Chỉ đọc phím Volume để làm PTT, không đọc nội dung màn hình.</string>
+
+    <!-- Cảnh báo khẩn cấp (TV4) -->
+    <string name="emergency_demo_title">Thử cảnh báo khẩn cấp</string>
+    <string name="emergency_demo_activate">Kích hoạt thử</string>
+    <string name="emergency_demo_stop">Dừng</string>
+    <string name="emergency_demo_sender_name">Lan Phương</string>
+    <string name="emergency_demo_sender_role">Tổng đạo diễn</string>
+    <string name="emergency_demo_vibrating">Đang rung</string>
+    <string name="emergency_demo_not_vibrating">Không rung</string>
+    <string name="emergency_demo_flashing">Đèn flash đang nháy</string>
+    <string name="emergency_demo_not_flashing">Đèn flash không nháy</string>
+    <string name="emergency_notification_channel">Cảnh báo khẩn cấp</string>
+    <string name="emergency_notification_channel_description">Thông báo và hành động cho cảnh báo khẩn cấp.</string>
+    <string name="emergency_notification_title">Cảnh báo khẩn cấp</string>
+    <string name="emergency_notification_message">%1$s · %2$s cần hỗ trợ</string>
+    <string name="emergency_action_answer">Trả lời</string>
+    <string name="emergency_action_snooze">Để sau</string>
+    <string name="emergency_vibration_reason_unavailable">Thiết bị không có bộ rung.</string>
+    <string name="emergency_vibration_reason_security">Không có quyền sử dụng bộ rung.</string>
+    <string name="emergency_vibration_reason_error">Không thể khởi động bộ rung.</string>
+    <string name="emergency_flash_reason_permission">Chưa cấp quyền Camera nên không thể nháy đèn flash.</string>
+    <string name="emergency_flash_reason_unavailable">Thiết bị không có đèn flash phía sau.</string>
+    <string name="emergency_flash_reason_in_use">Đèn flash đang được ứng dụng khác sử dụng.</string>
+    <string name="emergency_flash_reason_security">Không có quyền điều khiển đèn flash.</string>
+    <string name="emergency_flash_reason_camera_error">Không thể điều khiển camera hoặc đèn flash.</string>
+
+    <!-- Mô phỏng sự cố âm thanh (TV4) -->
+    <string name="audio_incident_demo_title">Mô phỏng sự cố âm thanh</string>
+    <string name="audio_incident_demo_headset">Mô phỏng rút tai nghe</string>
+    <string name="audio_incident_demo_focus">Mô phỏng mất audio focus</string>
+    <string name="audio_incident_demo_mic">Mô phỏng mic không khả dụng</string>
+    <string name="audio_incident_demo_focus_reason">Sự cố audio focus mô phỏng</string>
+    <string name="audio_incident_demo_mic_reason">Mic không khả dụng (mô phỏng)</string>
+    <string name="audio_incident_demo_recent">5 sự cố gần nhất</string>
+    <string name="audio_incident_headset_unplugged">Đã rút thiết bị âm thanh loại %1$d</string>
+    <string name="audio_incident_headset_reconnected">Tai nghe đã kết nối lại</string>
+    <string name="audio_incident_bluetooth_disconnected">Thiết bị Bluetooth đã ngắt kết nối</string>
+    <string name="audio_incident_focus_lost">Mất audio focus: %1$s</string>
+    <string name="audio_incident_focus_regained">Đã lấy lại audio focus (đầu ra vẫn mute)</string>
+    <string name="audio_incident_mic_unavailable">Mic không khả dụng: %1$s</string>
+    <string name="audio_incident_permission_revoked">Quyền audio bị thu hồi: %1$s</string>
+    <string name="audio_incident_route_failed">Chuyển tuyến audio thất bại: %1$s</string>
+    <string name="audio_incident_unknown">Sự cố audio không xác định: %1$s</string>
+
+    <!-- Công cụ test thực địa (TV4) -->
+    <string name="field_test_title">Test thực địa</string>
+    <string name="field_test_start_logging">Bắt đầu ghi log</string>
+    <string name="field_test_stop_logging">Dừng ghi log</string>
+    <string name="field_test_directory">Thư mục CSV (adb pull): %1$s</string>
+    <string name="field_test_csv_file">File hiện tại: %1$s</string>
+    <string name="field_test_play_tick">Phát tick đo trễ Bluetooth</string>
+    <string name="field_test_bluetooth_estimate">Ước lượng đầu ra Bluetooth: %1$d ms</string>
+    <string name="field_test_press_counts">Số lần PttPressed theo nguồn</string>
+    <string name="field_test_press_count_volume_up">Volume Up: %1$d</string>
+    <string name="field_test_press_count_volume_down">Volume Down: %1$d</string>
+    <string name="field_test_press_count_headset">Tai nghe: %1$d</string>
+    <string name="field_test_press_count_screen">Nút màn hình: %1$d</string>
+    <string name="field_test_duplicate_count">Phím trùng/bị lặp: %1$d</string>
+    <string name="field_test_ignored_count">Phím bị bỏ: %1$d</string>
 </resources>

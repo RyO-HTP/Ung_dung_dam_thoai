@@ -11,8 +11,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,9 +24,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
+import com.example.damthoai.ui.theme.AccentCyan
+import com.example.damthoai.ui.theme.DamThoaiTheme
+import com.example.damthoai.ui.theme.DamType
+import com.example.damthoai.ui.theme.GlassBg
+import com.example.damthoai.ui.theme.TextPrimary
+import com.example.damthoai.ui.theme.TextSecondary
 
 @Composable
 fun CreateEventScreen(
@@ -41,21 +47,21 @@ fun CreateEventScreen(
             .padding(16.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        Text(text = "TRƯỞNG BAN TỔ CHỨC", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-        Text(text = "Tạo sự kiện", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text(text = "TRƯỞNG BAN TỔ CHỨC", color = AccentCyan, style = DamType.Label)
+        Text(text = "Tạo sự kiện", color = TextPrimary, style = DamType.Title22)
 
         Spacer(modifier = Modifier.height(16.dp))
 
         OutlinedTextField(
             value = eventName,
             onValueChange = { eventName = it },
-            label = { Text("Tên sự kiện") },
+            label = { Text("Tên sự kiện", color = TextSecondary, style = DamType.Small) },
             modifier = Modifier.fillMaxWidth()
         )
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        Text(text = "KÊNH VÀ MÃ VÀO NHANH", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Text(text = "KÊNH VÀ MÃ VÀO NHANH", color = TextSecondary, style = DamType.Heading14)
         Spacer(modifier = Modifier.height(8.dp))
 
         val channelsList = listOf(
@@ -70,7 +76,8 @@ fun CreateEventScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp)
+                    .padding(vertical = 4.dp),
+                colors = CardDefaults.cardColors(containerColor = GlassBg)
             ) {
                 Row(
                     modifier = Modifier
@@ -79,12 +86,13 @@ fun CreateEventScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(text = name, fontWeight = FontWeight.Bold)
-                        Text(text = "$pin · $level", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(text = name, color = TextPrimary, style = DamType.Heading)
+                        Text(text = "$pin · $level", color = TextSecondary, style = DamType.Small12)
                     }
                     Icon(painter = painterResource(R.drawable.ic_qr), contentDescription = "Mã QR")
                 }
             }
+
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -95,7 +103,16 @@ fun CreateEventScreen(
                 .fillMaxWidth()
                 .height(50.dp)
         ) {
-            Text(text = "Tạo sự kiện & Sinh mã QR", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(text = "Tạo sự kiện & Sinh mã QR", style = DamType.Button)
         }
+    }
+
+}
+
+@Preview(widthDp = 390, heightDp = 844)
+@Composable
+private fun CreateEventScreenPreview() {
+    DamThoaiTheme {
+        CreateEventScreen(onEventCreated = {})
     }
 }

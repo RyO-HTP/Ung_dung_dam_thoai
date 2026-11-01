@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="288"
+    android:viewportHeight="288">
+    <group android:translateX="36" android:translateY="36" android:scaleX="2" android:scaleY="2">
+        <group android:pivotX="54" android:pivotY="54" android:scaleX="0.92" android:scaleY="0.92">
+            <!-- Quả cầu gradient -->
+            <path android:pathData="M54,54m-22,0a22,22 0 1,1 44,0a22,22 0 1,1 -44,0">
+                <aapt:attr name="android:fillColor">
+                    <gradient android:type="linear" android:startX="36" android:startY="34" android:endX="72" android:endY="74">
+                        <item android:offset="0" android:color="#3D7BFF"/>
+                        <item android:offset="1" android:color="#7A45FF"/>
+                    </gradient>
+                </aapt:attr>
+            </path>
+            <!-- Vệt sáng -->
+            <path android:pathData="M54,54m-22,0a22,22 0 1,1 44,0a22,22 0 1,1 -44,0">
+                <aapt:attr name="android:fillColor">
+                    <gradient android:type="radial" android:centerX="45" android:centerY="44" android:gradientRadius="17">
+                        <item android:offset="0" android:color="#4DFFFFFF"/>
+                        <item android:offset="1" android:color="#00FFFFFF"/>
+                    </gradient>
+                </aapt:attr>
+            </path>
+            <!-- Viền trong -->
+            <path android:pathData="M54,54m-21.5,0a21.5,21.5 0 1,1 43.0,0a21.5,21.5 0 1,1 -43.0,0" android:fillColor="#00000000" android:strokeColor="#2EFFFFFF" android:strokeWidth="1"/>
+            <!-- Sóng âm trong -->
+            <path android:pathData="M76.12,38.51A27,27 0 0,1 76.12,69.49" android:fillColor="#00000000" android:strokeColor="#5EE1FF" android:strokeWidth="2.6" android:strokeLineCap="round"/>
+            <path android:pathData="M31.88,69.49A27,27 0 0,1 31.88,38.51" android:fillColor="#00000000" android:strokeColor="#5EE1FF" android:strokeWidth="2.6" android:strokeLineCap="round"/>
+            <!-- Sóng âm ngoài -->
+            <path android:pathData="M80.21,35.65A32,32 0 0,1 80.21,72.35" android:fillColor="#00000000" android:strokeColor="#805EE1FF" android:strokeWidth="2" android:strokeLineCap="round"/>
+            <path android:pathData="M27.79,72.35A32,32 0 0,1 27.79,35.65" android:fillColor="#00000000" android:strokeColor="#805EE1FF" android:strokeWidth="2" android:strokeLineCap="round"/>
+            <!-- Thân mic -->
+            <path android:pathData="M49,43a5,5 0 0,1 5,-5a5,5 0 0,1 5,5v7a5,5 0 0,1 -5,5a5,5 0 0,1 -5,-5z">
+                <aapt:attr name="android:fillColor">
+                    <gradient android:type="linear" android:startX="0" android:startY="38" android:endX="0" android:endY="55">
+                        <item android:offset="0" android:color="#FFFFFF"/>
+                        <item android:offset="1" android:color="#D9E6FF"/>
+                    </gradient>
+                </aapt:attr>
+            </path>
+            <!-- Giá mic -->
+            <path android:pathData="M45.5,50.5A8.5,8.5 0 0,0 62.5,50.5" android:fillColor="#00000000" android:strokeColor="#FFFFFF" android:strokeWidth="2.2" android:strokeLineCap="round"/>
+            <path android:pathData="M54,59L54,63.5" android:fillColor="#00000000" android:strokeColor="#FFFFFF" android:strokeWidth="2.2" android:strokeLineCap="round"/>
+            <path android:pathData="M49.5,63.5L58.5,63.5" android:fillColor="#00000000" android:strokeColor="#FFFFFF" android:strokeWidth="2.2" android:strokeLineCap="round"/>
+        </group>
+    </group>
+</vector>

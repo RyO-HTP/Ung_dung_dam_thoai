@@ -24,35 +24,45 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.damthoai.R
 import com.example.damthoai.data.fake.FakeVolumeChannel
+import com.example.damthoai.hardware.HapticController
 import com.example.damthoai.ui.screens.CallUiState
 import com.example.damthoai.ui.screens.CallUiState.CallBusy
 import com.example.damthoai.ui.screens.CallUiState.CallCut
 import com.example.damthoai.ui.screens.CallUiState.CallOffline
-import com.example.damthoai.ui.theme.CallActionBg
-import com.example.damthoai.ui.theme.CallActionBorder
 import com.example.damthoai.ui.theme.CallPttEnd
 import com.example.damthoai.ui.theme.CallPttGlow
 import com.example.damthoai.ui.theme.CallPttHighlight
 import com.example.damthoai.ui.theme.CallPttMid
 import com.example.damthoai.ui.theme.CallPttRing
-import com.example.damthoai.ui.theme.CallStatusOffline
 import com.example.damthoai.ui.theme.CallVolumeEnd
 import com.example.damthoai.ui.theme.CallVolumeStart
-import com.example.damthoai.ui.theme.CallVolumeTrack
+import com.example.damthoai.ui.theme.AccentCyan
+import com.example.damthoai.ui.theme.AccentRed
 import com.example.damthoai.ui.theme.DamType
+import com.example.damthoai.ui.theme.DangerText
+import com.example.damthoai.ui.theme.GlassBg
+import com.example.damthoai.ui.theme.GlassBorder
+import com.example.damthoai.ui.theme.PrimaryEnd
+import com.example.damthoai.ui.theme.PrimaryStart
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
+import com.example.damthoai.ui.theme.PureWhite
+import com.example.damthoai.ui.theme.Transparent
 import com.example.damthoai.ui.theme.cssGradient
 
 @Composable
@@ -96,19 +106,14 @@ fun PttButton(
                 val diameter = size.toPx()
                 val center = Offset(this.size.width / 2f, this.size.height / 2f)
                 drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(CallPttGlow, Color.Transparent),
-                        center = center.copy(y = center.y + 12.dp.toPx()),
-                        radius = diameter / 2f + 30.dp.toPx()
-                    ),
+                    color = CallPttGlow,
                     radius = diameter / 2f + 30.dp.toPx(),
-                    center = center.copy(y = center.y + 12.dp.toPx())
+                    center = center
                 )
                 drawCircle(
                     color = CallPttRing,
-                    radius = diameter / 2f + 6.dp.toPx(),
-                    center = center,
-                    style = Stroke(width = 6.dp.toPx())
+                    radius = diameter / 2f + 14.dp.toPx(),
+                    center = center
                 )
             },
         contentAlignment = Alignment.Center
@@ -159,40 +164,38 @@ fun VolumeRow(
     onVolumeChange: (Float) -> Unit = {}
 ) {
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(CallActionBg)
-            .border(1.dp, CallActionBorder, RoundedCornerShape(16.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+        modifier = modifier.fillMaxWidth()
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 painter = painterResource(channel.iconRes),
                 contentDescription = null,
                 tint = TextSecondary,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(16.dp)
             )
             Spacer(Modifier.width(8.dp))
             Text(
                 text = channel.name,
                 modifier = Modifier.weight(1f),
                 color = TextPrimary,
-                style = DamType.Small
+                style = DamType.Body13.copy(fontWeight = FontWeight.SemiBold)
             )
             if (channel.tag != null) {
-                TagLabel(text = channel.tag)
+                TagLabel(text = channel.tag, color = AccentCyan)
             } else {
-                Text(channel.valueLabel, color = TextSecondary, style = DamType.Small)
+                Text(
+                    channel.valueLabel,
+                    color = TextSecondary,
+                    style = DamType.Muted
+                )
             }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(channel.speaker, color = channel.speakerColor, style = DamType.Small)
-        }
+        Text(
+            text = channel.speaker,
+            modifier = Modifier.padding(start = 22.dp, top = 2.dp, bottom = 8.dp),
+            color = channel.speakerColor,
+            style = DamType.Small
+        )
         VolumeSlider(
             value = channel.volume,
             onValueChange = onVolumeChange,
@@ -212,16 +215,26 @@ private fun VolumeSlider(
             .height(18.dp)
             .pointerInput(onValueChange) {
                 detectTapGestures { position ->
-                    onValueChange((position.x / size.width).coerceIn(0f, 1f))
+                    val inset = 8.dp.toPx()
+                    onValueChange(
+                        ((position.x - inset) / (size.width - inset * 2f)).coerceIn(0f, 1f)
+                    )
                 }
             }
             .pointerInput(Unit) {
                 detectDragGestures(
                     onDragStart = { position ->
-                        onValueChange((position.x / size.width).coerceIn(0f, 1f))
+                        val inset = 8.dp.toPx()
+                        onValueChange(
+                            ((position.x - inset) / (size.width - inset * 2f)).coerceIn(0f, 1f)
+                        )
                     },
                     onDrag = { change, _ ->
-                        onValueChange((change.position.x / size.width).coerceIn(0f, 1f))
+                        val inset = 8.dp.toPx()
+                        onValueChange(
+                            ((change.position.x - inset) / (size.width - inset * 2f))
+                                .coerceIn(0f, 1f)
+                        )
                         change.consume()
                     }
                 )
@@ -230,21 +243,17 @@ private fun VolumeSlider(
     ) {
         Canvas(Modifier.fillMaxWidth().height(18.dp)) {
             val centerY = size.height / 2f
-            val radius = 3.dp.toPx()
-            drawLine(
-                color = CallVolumeTrack,
-                start = Offset(radius, centerY),
-                end = Offset(size.width - radius, centerY),
-                strokeWidth = 6.dp.toPx()
-            )
-            val knobX = radius + (size.width - radius * 2f) * value.coerceIn(0f, 1f)
-            drawLine(
+            val inset = 8.dp.toPx()
+            val trackHeight = 6.dp.toPx()
+            val radius = trackHeight / 2f
+            drawRoundRect(
                 brush = cssGradient(90f, CallVolumeStart, CallVolumeEnd),
-                start = Offset(radius, centerY),
-                end = Offset(knobX, centerY),
-                strokeWidth = 6.dp.toPx()
+                topLeft = Offset(inset, centerY - radius),
+                size = androidx.compose.ui.geometry.Size(size.width - inset * 2f, trackHeight),
+                cornerRadius = CornerRadius(radius, radius)
             )
-            drawCircle(Color.White, radius = 8.dp.toPx(), center = Offset(knobX, centerY))
+            val knobX = inset + (size.width - inset * 2f) * value.coerceIn(0f, 1f)
+            drawCircle(PureWhite, radius = 8.dp.toPx(), center = Offset(knobX, centerY))
         }
     }
 }
@@ -292,29 +301,73 @@ fun CallStatusBanner(
 fun CallBottomActions(
     onNavigateToPocket: () -> Unit,
     onNavigateToEmergency: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    speakerSelected: Boolean = false,
+    headsetSelected: Boolean = false,
+    headsetEnabled: Boolean = true,
+    onSelectSpeaker: () -> Unit = {},
+    onSelectHeadset: () -> Unit = {}
 ) {
+    val view = LocalView.current
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.SpaceAround,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ActionItem(R.drawable.ic_vol, "Loa ngoài", onClick = {})
-        ActionItem(R.drawable.ic_head, "Tai nghe", onClick = {})
-        ActionItem(R.drawable.ic_phone, "Bỏ túi", onClick = onNavigateToPocket)
-        ActionItem(R.drawable.ic_alert, "Khẩn cấp", onClick = onNavigateToEmergency)
+        ActionItem(
+            R.drawable.ic_vol,
+            "Loa ngoài",
+            onClick = {
+                HapticController.tick(view)
+                onSelectSpeaker()
+            },
+            selected = speakerSelected
+        )
+        ActionItem(
+            R.drawable.ic_head,
+            "Tai nghe",
+            onClick = {
+                HapticController.tick(view)
+                onSelectHeadset()
+            },
+            selected = headsetSelected,
+            enabled = headsetEnabled
+        )
+        ActionItem(
+            R.drawable.ic_phone,
+            "Bỏ túi",
+            onClick = {
+                HapticController.tick(view)
+                onNavigateToPocket()
+            }
+        )
+        ActionItem(
+            R.drawable.ic_alert,
+            "Khẩn cấp",
+            onClick = {
+                HapticController.tick(view)
+                onNavigateToEmergency()
+            }
+        )
     }
 }
 
 @Composable
-private fun ActionItem(iconRes: Int, label: String, onClick: () -> Unit) {
+private fun ActionItem(
+    iconRes: Int,
+    label: String,
+    onClick: () -> Unit,
+    selected: Boolean = false,
+    enabled: Boolean = true
+) {
     // Tuần 3: sửa - nút tròn 54dp, nhãn DamType.Small có cỡ 11.5sp.
     Column(
         modifier = Modifier
             .width(78.dp)
             .height(78.dp)
-            .pointerInput(onClick) {
-                detectTapGestures(onTap = { onClick() })
+            .alpha(if (enabled) 1f else 0.38f)
+            .pointerInput(onClick, enabled) {
+                if (enabled) detectTapGestures(onTap = { onClick() })
             },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -322,18 +375,32 @@ private fun ActionItem(iconRes: Int, label: String, onClick: () -> Unit) {
             modifier = Modifier
                 .size(54.dp)
                 .clip(CircleShape)
-                .background(CallActionBg)
-                .border(1.dp, CallActionBorder, CircleShape),
+                .background(
+                    brush = when {
+                        selected -> cssGradient(135f, PrimaryStart, PrimaryEnd)
+                        label == "Khẩn cấp" -> SolidColor(AccentRed.copy(alpha = 0.25f))
+                        else -> SolidColor(GlassBg)
+                    }
+                )
+                .border(
+                    1.dp,
+                    if (selected || label == "Khẩn cấp") Transparent else GlassBorder,
+                    CircleShape
+                ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 painter = painterResource(iconRes),
                 contentDescription = label,
-                tint = if (label == "Khẩn cấp") CallStatusOffline else TextPrimary,
+                tint = when {
+                    label == "Khẩn cấp" -> DangerText
+                    selected -> TextPrimary
+                    else -> TextPrimary
+                },
                 modifier = Modifier.size(16.dp)
             )
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
             label,
             color = TextSecondary,

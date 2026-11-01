@@ -4,10 +4,11 @@ import android.content.Context
 import android.util.Log
 
 /**
- * Owns headset button routing for an active hands-free capture session.
+ * Quản lý định tuyến nút tai nghe trong phiên đàm thoại rảnh tay.
  *
- * ĐIỂM NỐI TV2: the Foreground Service should call [start] when its session begins and [stop]
- * when it ends. Capture-owner transitions also keep section A active until their capture ends.
+ * ĐIỂM NỐI TV2: Foreground Service gọi [start] khi phiên nền bắt đầu và [stop] khi kết thúc.
+ * Trước khi có Service, [PttController.acquireCapture] và [PttController.releaseCapture]
+ * tự đồng bộ trạng thái này để phiên MediaSession chỉ chạy trong lúc capture hoạt động.
  */
 object HandsFreeSession {
 
@@ -61,7 +62,7 @@ object HandsFreeSession {
                 return
             }
             HeadsetButtonManager.start(context)
-            running = true
+            running = HeadsetButtonManager.isRunning
         } else if (!shouldRun && running) {
             HeadsetButtonManager.stop()
             running = false

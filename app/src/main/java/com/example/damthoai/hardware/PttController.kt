@@ -1,5 +1,6 @@
 package com.example.damthoai.hardware
 
+import com.example.damthoai.hardware.diagnostics.FieldTestLogger
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -107,7 +108,7 @@ object PttController {
 
         _isPttActive.value = true
         _activeSource.value = source
-        _events.tryEmit(PttEvent.PttPressed(source))
+        emitEvent(PttEvent.PttPressed(source))
     }
 
     /**
@@ -120,7 +121,7 @@ object PttController {
         if (_isPttActive.value && _activeSource.value == source) {
             _isPttActive.value = false
             _activeSource.value = null
-            _events.tryEmit(PttEvent.PttReleased(source))
+            emitEvent(PttEvent.PttReleased(source))
         }
     }
 
@@ -134,8 +135,13 @@ object PttController {
             val lastSource = _activeSource.value ?: PttSource.VOLUME_DOWN
             _isPttActive.value = false
             _activeSource.value = null
-            _events.tryEmit(PttEvent.PttReleased(lastSource))
+            emitEvent(PttEvent.PttReleased(lastSource))
         }
+    }
+
+    private fun emitEvent(event: PttEvent) {
+        FieldTestLogger.recordPttEvent(event)
+        _events.tryEmit(event)
     }
 
     /**

@@ -22,8 +22,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -63,6 +65,7 @@ import com.example.damthoai.ui.theme.PillShape
 import com.example.damthoai.ui.theme.PrimaryBrush
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
+import com.example.damthoai.ui.theme.Transparent
 
 @Composable
 fun JoinChannelScreen(
@@ -102,6 +105,7 @@ private fun JoinChannelScreenContent(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
+                .navigationBarsPadding()
                 .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 16.dp)
         ) {
             Row(
@@ -110,7 +114,7 @@ private fun JoinChannelScreenContent(
             ) {
                 BackButton(onClick = onBack)
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    Text("Vào kênh", color = TextPrimary, style = DamType.Heading.copy(fontSize = 18.sp))
+                    Text("Vào kênh", color = TextPrimary, style = DamType.Heading18)
                 }
                 Spacer(Modifier.size(40.dp))
             }
@@ -141,13 +145,21 @@ private fun JoinChannelScreenContent(
             }
 
             Spacer(Modifier.height(10.dp))
-            Text(
-                text = "Muốn tạo sự kiện mới? Tạo sự kiện  ›",
-                color = AccentCyan,
-                style = DamType.Button,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onNavigateToCreateEvent).padding(6.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .clickable(onClick = onNavigateToCreateEvent)
+                    .padding(6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Muốn tạo sự kiện mới? Tạo sự kiện  ›",
+                    color = AccentCyan,
+                    style = DamType.Button,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }
@@ -187,7 +199,7 @@ private fun JoinTab(text: String, icon: Int, selected: Boolean, modifier: Modifi
     Row(
         modifier = modifier.fillMaxSize()
             .clip(PillShape)
-            .background(if (selected) PrimaryBrush else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
+            .background(if (selected) PrimaryBrush else Brush.linearGradient(listOf(Transparent, Transparent)))
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.Center,
@@ -237,14 +249,14 @@ private fun QrScanTab(
                     Text(
                         "Cần quyền Camera để quét QR",
                         color = TextPrimary,
-                        style = DamType.Title.copy(fontSize = 20.sp),
+                        style = DamType.Title20,
                         textAlign = TextAlign.Center
                     )
                     Spacer(Modifier.height(10.dp))
                     Text(
                         "Camera chỉ dùng để đọc mã QR của ban, app không ghi hình.",
                         color = TextSecondary,
-                        style = DamType.Body.copy(fontSize = 14.sp, lineHeight = 21.sp),
+                        style = DamType.Body14Line21,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(horizontal = 24.dp)
                     )
@@ -283,7 +295,7 @@ private fun QrScanTab(
             Text(
                 "Quét mã QR của ban. Tên, vai trò và kênh sẽ được gán tự động.",
                 color = TextSecondary,
-                style = DamType.Body.copy(fontSize = 13.sp, lineHeight = 19.sp),
+                style = DamType.Body13Line19,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
             )
@@ -320,7 +332,7 @@ private fun ScanLine(modifier: Modifier = Modifier) {
     )
     Box(
         modifier = modifier.offset(y = progress.dp).height(4.dp)
-            .background(Brush.horizontalGradient(listOf(Color.Transparent, AccentCyan, Color.Transparent)))
+            .background(Brush.horizontalGradient(listOf(Transparent, AccentCyan, Transparent)))
     )
 }
 
@@ -369,7 +381,7 @@ private fun PinInputTab(initialPin: String, onPinSubmit: (String) -> Unit) {
                 .border(1.dp, LcdBorder, RoundedCornerShape(22.dp))
                 .padding(horizontal = 18.dp, vertical = 12.dp)
         ) {
-            Text("TẦN SỐ ẢO · PIN 6 SỐ", color = AccentCyan, style = DamType.Label.copy(fontSize = 11.sp))
+            Text("TẦN SỐ ẢO · PIN 6 SỐ", color = AccentCyan, style = DamType.Label)
             Spacer(Modifier.height(8.dp))
             val formattedPin = buildString {
                 for (index in 0 until 6) {
@@ -415,7 +427,7 @@ private fun GlassKeypad(
                     Box(
                         Modifier.weight(1f).height(52.dp)
                             .clip(RoundedCornerShape(22.dp))
-                            .background(if (key.isNotEmpty()) GlassBg else Color.Transparent)
+                            .background(if (key.isNotEmpty()) GlassBg else Transparent)
                             .border(if (key.isNotEmpty()) 1.dp else 0.dp, GlassBorder, RoundedCornerShape(22.dp))
                             .clickable(enabled = key.isNotEmpty()) {
                                 if (key == "⌫") onDeleteClick() else onDigitClick(key)
@@ -430,7 +442,7 @@ private fun GlassKeypad(
                                 modifier = Modifier.size(24.dp)
                             )
                         } else {
-                            Text(key, color = TextPrimary, style = DamType.PinBig.copy(fontSize = 24.sp, lineHeight = 28.sp, letterSpacing = 0.sp))
+                            Text(key, color = TextPrimary, style = DamType.PinKey)
                         }
                     }
                 }

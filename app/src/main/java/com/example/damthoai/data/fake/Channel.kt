@@ -14,5 +14,9 @@ data class Channel(
     val isMuted: Boolean = false,
     val activeMembers: Int = 0,
     val currentSpeaker: String? = null,
-    val liveCueMessage: String? = null
+    val liveCueMessage: String? = null,
+    val isDefault: Boolean = false,
+    val pin: String = "",
+    val qrPayload: String = "",
+    val memberIds: Set<String> = emptySet()
 )
