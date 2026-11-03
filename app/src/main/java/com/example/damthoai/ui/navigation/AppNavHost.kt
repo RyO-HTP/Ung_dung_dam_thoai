@@ -72,15 +72,18 @@ fun AppNavHost(
     var selectedQrChannelId by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(navController) {
+        var previousAlert: EmergencyAlert? = null
         EmergencyAlertManager.currentAlert.collect { alert ->
             if (
                 alert != null &&
+                previousAlert == null &&
                 navController.currentDestination?.route != AppRoute.EmergencyAlertIncoming.route
             ) {
                 navController.navigate(AppRoute.EmergencyAlertIncoming.route) {
                     launchSingleTop = true
                 }
             }
+            previousAlert = alert
         }
     }
 

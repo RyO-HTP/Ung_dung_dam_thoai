@@ -75,6 +75,7 @@ import com.example.damthoai.data.fake.MemberLevel
 import com.example.damthoai.hardware.PttController
 import com.example.damthoai.hardware.PttSource
 import com.example.damthoai.hardware.emergency.EmergencyAlert
+import com.example.damthoai.hardware.emergency.EmergencyAlertManager
 import com.example.damthoai.ui.components.AvatarCircle
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.BgVariant
@@ -481,9 +482,9 @@ fun EmergencyAlertIncomingScreen(
     onAccept: () -> Unit,
     onDecline: () -> Unit,
     modifier: Modifier = Modifier,
-    alertFlow: StateFlow<EmergencyAlert?> = FakeEmergencyUiData.alert,
-    isVibratingFlow: StateFlow<Boolean> = FakeEmergencyUiData.isVibrating,
-    isFlashingFlow: StateFlow<Boolean> = FakeEmergencyUiData.isFlashing
+    alertFlow: StateFlow<EmergencyAlert?> = EmergencyAlertManager.currentAlert,
+    isVibratingFlow: StateFlow<Boolean> = EmergencyAlertManager.isVibrating,
+    isFlashingFlow: StateFlow<Boolean> = EmergencyAlertManager.isFlashing
 ) {
     val alert by alertFlow.collectAsState()
     val isVibrating by isVibratingFlow.collectAsState()
@@ -512,16 +513,15 @@ fun EmergencyAlertIncomingScreen(
             EmergencyAlertOrb()
             Spacer(Modifier.height(44.dp))
             Text(
-                text = "${alert?.fromName ?: FakeEmergencyUiData.sampleAlert.fromName} gọi khẩn cấp",
+                text = alert?.let { "${it.fromName} gọi khẩn cấp" }.orEmpty(),
                 color = TextPrimary,
                 style = DamType.Title26,
                 textAlign = TextAlign.Center
             )
-            val displayAlert = alert ?: FakeEmergencyUiData.sampleAlert
             Text(
-                text = "${displayAlert.fromRole} · ${
-                    if (displayAlert.isDirectCall) "gọi riêng bạn" else "gọi toàn kênh"
-                }",
+                text = alert?.let {
+                    "${it.fromRole} · ${if (it.isDirectCall) "gọi riêng bạn" else "gọi toàn kênh"}"
+                }.orEmpty(),
                 color = TextSecondary,
                 style = DamType.Body,
                 textAlign = TextAlign.Center,
@@ -941,19 +941,6 @@ private fun EmergencyCallSelectHalfHeldPreview() {
 private fun EmergencyAlertIncomingScreenPreview() {
     DamThoaiTheme {
         EmergencyAlertIncomingScreen(onAccept = {}, onDecline = {})
-    }
-}
-
-@Preview(widthDp = 390, heightDp = 844)
-@Composable
-private fun EmergencyAlertInactiveSignalsPreview() {
-    DamThoaiTheme {
-        EmergencyAlertIncomingScreen(
-            onAccept = {},
-            onDecline = {},
-            isVibratingFlow = FakeEmergencyUiData.inactiveSignal,
-            isFlashingFlow = FakeEmergencyUiData.inactiveSignal
-        )
     }
 }
 

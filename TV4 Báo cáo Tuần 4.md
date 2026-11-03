@@ -37,7 +37,7 @@ Các API hardware hiện được giao diện sử dụng gồm `EmergencyAlertM
 
 - `HandsFreeSettings` đã có StateFlow và setter cho bảy lựa chọn: nút tai nghe, giữ Volume Down, khử ồn, tự tăng gain microphone, hạ âm kênh phụ, beep/haptic và cảnh báo khẩn cấp.
 - Các switch hiện có trong `SettingsScreen` cho nút tai nghe và audio ducking được nối với StateFlow/setter tương ứng.
-- Đã xóa các comment `TODO(TV4)` được tìm thấy trong `ui/permission/PermissionUiState.kt` và `ui/permission/PermissionScreen.kt`.
+- Đã xóa các mục TODO của TV4 được tìm thấy trong `ui/permission/PermissionUiState.kt` và `ui/permission/PermissionScreen.kt`.
 - Không tìm thấy `HapticController` hoặc `RogerBeepPlayer` trong source đã kiểm tra để nối với `HandsFreeSettings.beepHapticEnabled` và `PttController.events`.
 
 ## 3. File và Điểm nối liên quan
@@ -59,7 +59,7 @@ Các API hardware hiện được giao diện sử dụng gồm `EmergencyAlertM
 
 - Sau khi sửa lỗi smart-cast, Problems không báo lỗi cho `RemainingScreens.kt`.
 - Các Kotlin file đã chỉnh trong lượt tích hợp được kiểm tra bằng Problems và không báo lỗi tại thời điểm kiểm tra.
-- Đã rà soát mã nguồn để tìm `TODO(TV4)` và marker xung đột; không còn kết quả tìm thấy trong `app/src/main/java`.
+- Đã rà soát mã nguồn để tìm các mục TODO của TV4 và marker xung đột; không còn kết quả tìm thấy trong `app/src/main/java`.
 - Chưa xác nhận bằng một lần Gradle build đầy đủ hoặc chạy ứng dụng trên máy thật.
 
 ### 4.2. Giới hạn cần ghi nhận
@@ -88,6 +88,5 @@ Các API hardware hiện được giao diện sử dụng gồm `EmergencyAlertM
 - **TV3:** thống nhất màn Rảnh tay và cảnh báo để bổ sung/nối các control còn thiếu; xác nhận nhãn và thao tác nút cảnh báo; nếu có HapticController/RogerBeepPlayer thì nối với `beepHapticEnabled` và collect `PttController.events`.
 - **TV1/TV5:** gọi `EmergencyAlertManager.trigger(context, alert)` khi nhận tín hiệu khẩn cấp.
 - **Kiểm thử:** chạy Gradle build đầy đủ và test trên các hãng Android khác nhau, đặc biệt khi màn hình khóa, tiết kiệm pin, tai nghe bị ngắt và quyền phần cứng bị từ chối.
-
 
 

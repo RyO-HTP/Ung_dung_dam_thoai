@@ -1,10 +1,5 @@
 package com.example.damthoai.data.fake
 
-import com.example.damthoai.hardware.emergency.EmergencyAlert
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-
 data class EmergencyCallParticipant(
     val member: Member,
     val status: String,
@@ -18,26 +13,6 @@ object FakeEmergencyUiData {
         Member("emergency_dl", "Đức Long", "Trưởng ban An ninh", "ĐL", MemberLevel.LEVEL_2),
         Member("emergency_ma", "Minh Anh", "CTV Hậu cần", "MA", MemberLevel.LEVEL_3)
     )
-
-    val sampleAlert = EmergencyAlert(
-        id = "preview-emergency",
-        fromName = "Lan Phương",
-        fromRole = "Tổng đạo diễn",
-        startedAtMs = 0L,
-        isDirectCall = true
-    )
-
-    private val _alert = MutableStateFlow<EmergencyAlert?>(sampleAlert)
-    val alert: StateFlow<EmergencyAlert?> = _alert.asStateFlow()
-
-    private val _isVibrating = MutableStateFlow(true)
-    val isVibrating: StateFlow<Boolean> = _isVibrating.asStateFlow()
-
-    private val _isFlashing = MutableStateFlow(true)
-    val isFlashing: StateFlow<Boolean> = _isFlashing.asStateFlow()
-
-    private val _inactiveSignal = MutableStateFlow(false)
-    val inactiveSignal: StateFlow<Boolean> = _inactiveSignal.asStateFlow()
 
     val callParticipants = listOf(
         EmergencyCallParticipant(
