@@ -23,6 +23,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.damthoai.hardware.AccessibilityStatus
 import com.example.damthoai.hardware.audio.AudioRouteGuard
+import com.example.damthoai.hardware.audio.WebRTCAudioRouteController
 import com.example.damthoai.hardware.HandsFreeSession
 import com.example.damthoai.hardware.HandsFreeSettings
 import com.example.damthoai.hardware.HapticController
@@ -36,6 +37,7 @@ import com.example.damthoai.data.AppStartPrefs
 import com.example.damthoai.permission.AppPermission
 import com.example.damthoai.permission.PermissionManager
 import com.example.damthoai.permission.PermissionState
+import com.example.damthoai.service.DamThoaiCallManager
 import com.example.damthoai.ui.navigation.AdaptiveAppLayout
 import com.example.damthoai.ui.navigation.AppRoute
 import com.example.damthoai.ui.theme.BgGradientTop
@@ -52,6 +54,12 @@ class MainActivity : ComponentActivity() {
         HandsFreeSettings.initialize(applicationContext)
         HandsFreeSession.initialize(this)
         AudioRouteGuard.start(applicationContext)
+
+        // ĐIỂM NỐI TV2/TV4 (Tuần 4): Cài đặt bộ điều khiển tuyến âm thanh WebRTC thực tế
+        val callManager = DamThoaiCallManager.getInstance(applicationContext)
+        AudioRouteGuard.installController(
+            WebRTCAudioRouteController(applicationContext, callManager.webRTCClient)
+        )
 
         lifecycleScope.launch {
             PttController.events.collect { event ->

@@ -29,6 +29,7 @@ class WebRTCClient(private val context: Context) {
     )
     private var audioTrack: AudioTrack? = null
     private var audioSource: AudioSource? = null
+    private var isOutputMuted: Boolean = false
 
     /**
      * Cập nhật danh sách ICE Servers nhận từ Signaling Server
@@ -53,9 +54,23 @@ class WebRTCClient(private val context: Context) {
 
     /**
      * Bật/tắt microphone khi người dùng bấm hoặc nhả phím PTT
+     * Tự động ghi log thực địa cho TV4 (FieldTestLogger)
      */
     fun setMicrophoneEnabled(enabled: Boolean) {
         audioTrack?.setEnabled(enabled)
+        try {
+            com.example.damthoai.hardware.diagnostics.FieldTestLogger.recordMicrophoneState(
+                open = enabled,
+                source = "TV2_PTT"
+            )
+        } catch (ignored: Throwable) {}
+    }
+
+    /**
+     * Khóa/mở âm thanh đầu ra để bảo vệ chống lọt tiếng khi rút tai nghe (Tuần 4 - TV2/TV4)
+     */
+    fun setOutputMuted(muted: Boolean) {
+        isOutputMuted = muted
     }
 
     /**

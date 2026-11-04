@@ -32,7 +32,7 @@ sealed class CallState {
 
 /**
  * Lớp điều phối trung tâm giữa Tầng Mạng (Signaling WebSocket, mDNS) và WebRTC Audio cho App.
- * Cung cấp API trực tiếp cho UI Jetpack Compose (PTT, Trạng thái đàm thoại, Quét máy chủ).
+ * Cung cấp API trực tiếp cho UI Jetpack Compose (PTT, Trạng thái đàm thoại, Quét máy chủ, Cảnh báo khẩn cấp).
  */
 class DamThoaiCallManager private constructor(private val context: Context) {
 
@@ -242,6 +242,26 @@ class DamThoaiCallManager private constructor(private val context: Context) {
     fun setPushToTalkPressed(isPressed: Boolean) {
         _isPttPressed.value = isPressed
         webRTCClient.setMicrophoneEnabled(isPressed)
+    }
+
+    /**
+     * Kích hoạt phát cảnh báo khẩn cấp (Emergency Alert - Tuần 4)
+     * Tích hợp với EmergencyAlertManager của TV4
+     */
+    fun triggerEmergency(
+        fromName: String = "Tổng Đạo Diễn",
+        fromRole: String = "Chỉ Huy",
+        isDirectCall: Boolean = true
+    ) {
+        val alert = com.example.damthoai.hardware.emergency.EmergencyAlert(
+            id = "alert_${System.currentTimeMillis()}",
+            fromName = fromName,
+            fromRole = fromRole,
+            startedAtMs = System.currentTimeMillis(),
+            isDirectCall = isDirectCall
+        )
+        Log.d(TAG, "Kích hoạt Cảnh báo Khẩn cấp: $fromName ($fromRole)")
+        com.example.damthoai.hardware.emergency.EmergencyAlertManager.trigger(context, alert)
     }
 
     /**
