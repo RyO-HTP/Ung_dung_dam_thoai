@@ -45,6 +45,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import com.example.damthoai.ui.theme.CallVolumeInactive
+import com.example.damthoai.ui.theme.CallDuckedFill
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -270,12 +273,12 @@ private fun ChannelCardItem(
         0.6f
     }
     val glowAlpha = speakingGlow * (0.35f + pulse * 0.65f)
-    val icon = when (item.channel.id) {
-        "ch_01" -> R.drawable.ic_crown
-        "ch_02" -> R.drawable.ic_stage
-        else -> R.drawable.ic_shield
+    val icon = when {
+        item.channel.isDefault || item.channel.id == "ch_01" || item.channel.name.contains("Toàn sự kiện", ignoreCase = true) -> R.drawable.ic_crown
+        item.channel.id == "ch_02" || item.channel.name.contains("Sân khấu", ignoreCase = true) -> R.drawable.ic_stage
+        else -> R.drawable.ic_radio
     }
-    val iconTint = if (item.channel.id == "ch_01") AccentAmber else AccentCyan
+    val iconTint = if (icon == R.drawable.ic_crown) AccentAmber else AccentCyan
     val cardModifier = Modifier
         .fillMaxWidth()
         .then(
@@ -306,8 +309,8 @@ private fun ChannelCardItem(
         borderColor = cardBorderColor,
         borderWidth = if (isSelectedMic || speakingGlow > 0.01f) 1.5.dp else 1.dp,
         contentPadding = PaddingValues(
-            horizontal = 14.dp,
-            vertical = 12.dp
+            horizontal = 12.dp,
+            vertical = 10.dp
         )
     ) {
         Column(Modifier.fillMaxWidth()) {
@@ -317,8 +320,8 @@ private fun ChannelCardItem(
             ) {
                 Box(
                     Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(12.dp))
                         .background(GlassBg),
                     contentAlignment = Alignment.Center
                 ) {
@@ -326,7 +329,7 @@ private fun ChannelCardItem(
                         painter = painterResource(icon),
                         contentDescription = null,
                         tint = iconTint,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
                 Spacer(Modifier.width(10.dp))
@@ -335,7 +338,10 @@ private fun ChannelCardItem(
                         Text(
                             item.channel.name,
                             color = TextPrimary,
-                            style = DamType.Heading16
+                            style = DamType.Heading,
+                            modifier = Modifier.weight(1f, fill = false),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         if (item.channel.isPriority) {
                             Spacer(Modifier.width(6.dp))
@@ -364,20 +370,20 @@ private fun ChannelCardItem(
                         )
                     }
                 }
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(6.dp))
                 Box(
                     Modifier.size(48.dp).clickable(onClick = onMicClick),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         Modifier
-                            .size(38.dp)
+                            .size(36.dp)
                             .then(
                                 if (isSelectedMic) {
                                     Modifier.outerGlow(
                                         color = AccentCyan,
-                                        corner = 19.dp,
-                                        spread = 10.dp,
+                                        corner = 18.dp,
+                                        spread = 8.dp,
                                         maxAlpha = 0.20f
                                     )
                                 } else {
@@ -405,7 +411,7 @@ private fun ChannelCardItem(
                             painter = painterResource(R.drawable.ic_mic),
                             contentDescription = "Mic phát",
                             tint = TextPrimary,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
@@ -417,12 +423,12 @@ private fun ChannelCardItem(
                         painter = painterResource(R.drawable.ic_dots),
                         contentDescription = "Menu",
                         tint = TextSecondary,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             Row(
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -431,57 +437,80 @@ private fun ChannelCardItem(
                     painter = painterResource(R.drawable.ic_vol),
                     contentDescription = null,
                     tint = TextSecondary,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(14.dp)
                 )
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(8.dp))
                 Slider(
                     value = item.volume,
                     onValueChange = onVolumeChange,
+                    enabled = !item.isDucked80,
                     modifier = Modifier.weight(1f),
                     thumb = {
                         Box(
                             Modifier
-                                .size(16.dp)
+                                .size(14.dp)
                                 .clip(CircleShape)
-                                .background(PureWhite)
+                                .background(if (item.isDucked80) PureWhite.copy(alpha = 0.75f) else PureWhite)
                         )
                     },
                     track = { sliderState ->
                         Canvas(
                             Modifier
                                 .fillMaxWidth()
-                                .height(6.dp)
+                                .height(4.dp)
                         ) {
                             val radius = CornerRadius(size.height / 2)
                             drawRoundRect(
-                                color = TrackBg,
+                                color = CallVolumeInactive,
                                 cornerRadius = radius
                             )
                             val fraction = sliderState.value.coerceIn(0f, 1f)
                             if (fraction > 0f) {
-                                drawRoundRect(
-                                    brush = cssGradient(90f, PrimaryStart, AccentCyan),
-                                    size = Size(size.width * fraction, size.height),
-                                    cornerRadius = radius
-                                )
+                                if (item.isDucked80) {
+                                    drawRoundRect(
+                                        color = CallDuckedFill,
+                                        size = Size(size.width * fraction, size.height),
+                                        cornerRadius = radius
+                                    )
+                                } else {
+                                    val alpha = (0.55f + 0.45f * fraction).coerceIn(0.55f, 1f)
+                                    drawRoundRect(
+                                        brush = cssGradient(90f, PrimaryStart, AccentCyan),
+                                        size = Size(size.width * fraction, size.height),
+                                        cornerRadius = radius,
+                                        alpha = alpha
+                                    )
+                                }
                             }
                         }
                     }
                 )
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(8.dp))
                 if (item.isDucked80) {
-                    TagLabel(
-                        "HẠ ÂM 80%",
-                        color = AccentAmber,
-                        backgroundColor = TagAmberBg
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_lock),
+                            contentDescription = "Khóa âm lượng",
+                            tint = AccentAmber,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(Modifier.width(3.dp))
+                        TagLabel(
+                            "HẠ ÂM 80%",
+                            color = AccentAmber,
+                            backgroundColor = TagAmberBg
+                        )
+                    }
                 } else {
+                    val isLowVolume = item.volume < 0.30f
                     Text(
                         "${(item.volume * 100).toInt()}%",
-                        modifier = Modifier.width(36.dp),
-                        color = TextSecondary,
-                        style = DamType.Muted.copy(fontWeight = FontWeight.Bold),
-                        textAlign = TextAlign.End
+                        modifier = Modifier.width(38.dp),
+                        color = if (isLowVolume) TextSecondary.copy(alpha = 0.6f) else TextSecondary,
+                        style = DamType.Small,
+                        textAlign = TextAlign.End,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }

@@ -1,13 +1,13 @@
 package com.example.damthoai.ui.screens
 
 import android.app.Activity
-import android.content.pm.ApplicationInfo
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,19 +34,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.damthoai.R
 import com.example.damthoai.data.fake.Event
 import com.example.damthoai.data.fake.FakeEventRepository
-import com.example.damthoai.data.fake.FakeNetworkStatus
 import com.example.damthoai.data.fake.FakeRemainingUiData
+import com.example.damthoai.data.fake.MemberLevel
+import com.example.damthoai.data.fake.FakeNetworkStatus
 import com.example.damthoai.data.fake.NetworkStatus
 import com.example.damthoai.permission.PermissionManager
 import com.example.damthoai.ui.components.AvatarCircle
@@ -54,15 +53,13 @@ import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.GlassCard
 import com.example.damthoai.ui.components.KitDialog
 import com.example.damthoai.ui.components.SectionLabel
-import com.example.damthoai.ui.components.TagLabel
+import com.example.damthoai.ui.theme.AccentCyan
+import com.example.damthoai.ui.theme.AccentMint
 import com.example.damthoai.ui.theme.DamThoaiTheme
 import com.example.damthoai.ui.theme.DamType
-import com.example.damthoai.ui.theme.AccentMint
-import com.example.damthoai.ui.theme.AccentAmber
 import com.example.damthoai.ui.theme.DangerText
 import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.GlassBorder
-import com.example.damthoai.ui.theme.PrimaryBrush
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
 
@@ -73,14 +70,8 @@ fun SettingsScreen(
     onLeaveEvent: () -> Unit,
     onMultiLevel: () -> Unit,
     onHandsFree: () -> Unit,
-    onPttDebug: () -> Unit,
-    modifier: Modifier = Modifier,
-    onReviewOnboarding: () -> Unit
+    modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val isDebug = remember(context) {
-        context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
-    }
     val networkStatus by FakeNetworkStatus.status.collectAsState()
     val currentEvent by FakeEventRepository.currentEvent.collectAsStateWithLifecycle()
     val networkDescription = when (val status = networkStatus) {
@@ -95,10 +86,7 @@ fun SettingsScreen(
         onLeaveEvent = onLeaveEvent,
         onMultiLevel = onMultiLevel,
         onHandsFree = onHandsFree,
-        onPttDebug = onPttDebug,
-        onReviewOnboarding = onReviewOnboarding,
         modifier = modifier,
-        isDebug = isDebug,
         event = currentEvent ?: FakeRemainingUiData.event,
         networkDescription = networkDescription
     )
@@ -111,15 +99,11 @@ private fun SettingsContent(
     onLeaveEvent: () -> Unit,
     onMultiLevel: () -> Unit,
     onHandsFree: () -> Unit,
-    onPttDebug: () -> Unit,
-    onReviewOnboarding: () -> Unit,
     modifier: Modifier = Modifier,
-    isDebug: Boolean,
     event: Event,
     networkDescription: String
 ) {
     var showLeaveEventDialog by remember { mutableStateOf(false) }
-    var showOnboardingDialog by remember { mutableStateOf(false) }
 
     DamThoaiBackground(modifier = modifier) {
         Column(
@@ -139,25 +123,25 @@ private fun SettingsContent(
             )
             GlassCard(
                 modifier = Modifier.fillMaxWidth(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    horizontal = 14.dp,
-                    vertical = 12.dp
+                contentPadding = PaddingValues(
+                    horizontal = 12.dp,
+                    vertical = 10.dp
                 )
             ) {
                 Row(
                     modifier = Modifier.clickable(onClick = onProfile),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    AvatarCircle("LP", size = 48.dp)
-                    Spacer(Modifier.width(12.dp))
+                    AvatarCircle("LP", size = 40.dp)
+                    Spacer(Modifier.width(10.dp))
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         Text(
                             text = "Lan Phương",
                             color = TextPrimary,
-                            style = DamType.Heading16
+                            style = DamType.Heading
                         )
                         Text(
                             text = "Tổng đạo diễn · Cấp 1 · Chủ sự kiện",
@@ -169,19 +153,23 @@ private fun SettingsContent(
                         painter = painterResource(R.drawable.ic_chev),
                         contentDescription = "Sửa hồ sơ",
                         tint = TextSecondary,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
             SectionLabel("SỰ KIỆN HIỆN TẠI")
             GlassCard(
                 modifier = Modifier.fillMaxWidth(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    horizontal = 14.dp,
-                    vertical = 12.dp
+                contentPadding = PaddingValues(
+                    horizontal = 12.dp,
+                    vertical = 10.dp
                 )
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val currentMember = event.members.firstOrNull { it.id == event.ownerId }
+                    ?: FakeRemainingUiData.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
+                val isLevel1 = currentMember.level == MemberLevel.LEVEL_1
+
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
                         text = event.name,
                         color = TextPrimary,
@@ -200,31 +188,33 @@ private fun SettingsContent(
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = if (isLevel1) Arrangement.SpaceBetween else Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .heightIn(min = 48.dp)
-                                .clickable(onClick = onManageEvent),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_cal),
-                                contentDescription = null,
-                                tint = com.example.damthoai.ui.theme.AccentCyan,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = "Quản lý sự kiện",
-                                color = com.example.damthoai.ui.theme.AccentCyan,
-                                style = DamType.Body14Bold
-                            )
+                        if (isLevel1) {
+                            Row(
+                                modifier = Modifier
+                                    .heightIn(min = 40.dp)
+                                    .clickable(onClick = onManageEvent),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_cal),
+                                    contentDescription = null,
+                                    tint = AccentCyan,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = "Quản lý sự kiện",
+                                    color = AccentCyan,
+                                    style = DamType.Body14Bold
+                                )
+                            }
                         }
                         Box(
                             modifier = Modifier
-                                .heightIn(min = 48.dp)
+                                .heightIn(min = 40.dp)
                                 .clickable { showLeaveEventDialog = true },
                             contentAlignment = Alignment.CenterEnd
                         ) {
@@ -250,39 +240,7 @@ private fun SettingsContent(
                 subtitle = "Tai nghe, phím âm lượng, lọc ồn",
                 onClick = onHandsFree
             )
-            if (isDebug) {
-                Spacer(Modifier.height(4.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SectionLabel("CÔNG CỤ KIỂM THỬ")
-                    TagLabel("DEBUG", color = AccentAmber)
-                }
-                GlassCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .alpha(0.8f),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp)
-                ) {
-                    Column {
-                        SettingsDebugActionRow(
-                            iconRes = R.drawable.ic_home,
-                            title = "Xem lại phần giới thiệu",
-                            subtitle = "Quay về màn Giới thiệu, không xoá dữ liệu sự kiện",
-                            onClick = { showOnboardingDialog = true }
-                        )
-                        SettingsDebugActionRow(
-                            iconRes = R.drawable.ic_mic,
-                            title = "Thử phím cứng và công cụ debug",
-                            subtitle = "Kiểm tra phím âm lượng, PTT và log",
-                            onClick = onPttDebug
-                        )
-                    }
-                }
-                Spacer(Modifier.height(100.dp))
-            }
+            Spacer(Modifier.height(100.dp))
         }
     }
 
@@ -299,75 +257,6 @@ private fun SettingsContent(
             onDismissRequest = { showLeaveEventDialog = false }
         )
     }
-    if (showOnboardingDialog) {
-        ReviewOnboardingDialog(
-            onConfirm = {
-                showOnboardingDialog = false
-                onReviewOnboarding()
-            },
-            onDismiss = { showOnboardingDialog = false }
-        )
-    }
-}
-
-@Composable
-private fun SettingsDebugActionRow(
-    iconRes: Int,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier.size(32.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                tint = com.example.damthoai.ui.theme.AccentCyan,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-        Spacer(Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                color = TextPrimary,
-                style = DamType.Body13.copy(fontWeight = FontWeight.SemiBold)
-            )
-            Text(text = subtitle, color = TextSecondary, style = DamType.Small)
-        }
-        Icon(
-            painter = painterResource(R.drawable.ic_chev),
-            contentDescription = null,
-            tint = TextSecondary,
-            modifier = Modifier.size(18.dp)
-        )
-    }
-}
-
-@Composable
-private fun ReviewOnboardingDialog(
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    KitDialog(
-        title = "Xem lại phần giới thiệu?",
-        description = "Ứng dụng sẽ quay về màn Giới thiệu. Dữ liệu sự kiện không bị xoá.",
-        primaryButtonText = "Xem lại",
-        secondaryButtonText = "Hủy",
-        onPrimaryClick = onConfirm,
-        onDismissRequest = onDismiss,
-        primaryBrush = PrimaryBrush
-    )
 }
 
 @Composable
@@ -377,7 +266,7 @@ private fun SettingsActionRow(
     subtitle: String,
     onClick: () -> Unit
 ) {
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(16.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -385,21 +274,21 @@ private fun SettingsActionRow(
             .background(GlassBg)
             .border(1.dp, GlassBorder, shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            modifier = Modifier.size(40.dp),
+            modifier = Modifier.size(36.dp),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 painter = painterResource(iconRes),
                 contentDescription = null,
-                tint = com.example.damthoai.ui.theme.AccentCyan,
-                modifier = Modifier.size(20.dp)
+                tint = AccentCyan,
+                modifier = Modifier.size(18.dp)
             )
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(title, color = TextPrimary, style = DamType.Heading)
             Text(subtitle, color = TextSecondary, style = DamType.Small)
@@ -408,7 +297,7 @@ private fun SettingsActionRow(
             painter = painterResource(R.drawable.ic_chev),
             contentDescription = null,
             tint = TextSecondary,
-            modifier = Modifier.size(18.dp)
+            modifier = Modifier.size(16.dp)
         )
     }
 }
@@ -478,38 +367,8 @@ private fun SettingsReleasePreview() {
             onLeaveEvent = {},
             onMultiLevel = {},
             onHandsFree = {},
-            onPttDebug = {},
-            onReviewOnboarding = {},
-            isDebug = false,
             event = FakeEventRepository.sampleEvent,
             networkDescription = "Internet đang dùng · 42 ms"
         )
-    }
-}
-
-@Preview(widthDp = 390, heightDp = 844)
-@Composable
-private fun SettingsDebugPreview() {
-    DamThoaiTheme {
-        SettingsContent(
-            onProfile = {},
-            onManageEvent = {},
-            onLeaveEvent = {},
-            onMultiLevel = {},
-            onHandsFree = {},
-            onPttDebug = {},
-            onReviewOnboarding = {},
-            isDebug = true,
-            event = FakeEventRepository.sampleEvent,
-            networkDescription = "Internet đang dùng · 42 ms"
-        )
-    }
-}
-
-@Preview(widthDp = 390, heightDp = 844)
-@Composable
-private fun ReviewOnboardingDialogPreview() {
-    DamThoaiTheme {
-        ReviewOnboardingDialog(onConfirm = {}, onDismiss = {})
     }
 }

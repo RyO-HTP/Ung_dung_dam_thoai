@@ -39,7 +39,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -510,7 +512,8 @@ fun ManageEventScreen(
     modifier: Modifier = Modifier,
     event: Event = FakeEventRepository.sampleEvent,
     channels: List<Channel> = FakeEventRepository.sampleEvent.channels,
-    onChannelQrCode: (String) -> Unit = { onQrCode() }
+    onChannelQrCode: (String) -> Unit = { onQrCode() },
+    onNavigateToActiveCall: () -> Unit = {}
 ) {
     val repositoryEvent by FakeEventRepository.currentEvent.collectAsStateWithLifecycle()
     val displayedEvent = repositoryEvent ?: event
@@ -524,7 +527,8 @@ fun ManageEventScreen(
         onEndEvent = onEndEvent,
         event = displayedEvent,
         channels = displayedChannels,
-        modifier = modifier
+        modifier = modifier,
+        onNavigateToActiveCall = onNavigateToActiveCall
     )
 }
 
@@ -538,8 +542,11 @@ private fun ManageEventContent(
     onEndEvent: () -> Unit,
     event: Event,
     channels: List<Channel>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onNavigateToActiveCall: () -> Unit = {}
 ) {
+    val clipboardManager = LocalClipboardManager.current
+    var showAdminCode by rememberSaveable { mutableStateOf(false) }
     var showEndEventDialog by rememberSaveable { mutableStateOf(false) }
     var showAddChannelSheet by rememberSaveable { mutableStateOf(false) }
     var channelMenuId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -569,6 +576,63 @@ private fun ManageEventContent(
                     color = TextSecondary,
                     style = DamType.Small
                 )
+                val code = event.adminCode
+                if (!code.isNullOrBlank()) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(GlassBorder.copy(alpha = 0.5f))
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Mã quản trị: ",
+                                color = TextSecondary,
+                                style = DamType.Small
+                            )
+                            Text(
+                                text = if (showAdminCode) code else "••••••••",
+                                color = AccentCyan,
+                                style = DamType.Mono.copy(fontSize = 13.sp)
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clickable { showAdminCode = !showAdminCode },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(if (showAdminCode) R.drawable.ic_x else R.drawable.ic_eye),
+                                    contentDescription = if (showAdminCode) "Ẩn mã" else "Hiện mã",
+                                    tint = TextSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clickable {
+                                        clipboardManager.setText(AnnotatedString(code))
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_copy),
+                                    contentDescription = "Sao chép mã",
+                                    tint = TextSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
         SectionLabel("KÊNH VÀ MÃ VÀO NHANH")
@@ -579,7 +643,7 @@ private fun ManageEventContent(
                     .clip(RoundedCornerShape(16.dp))
                     .background(GlassBg)
                     .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
-                    .clickable { onChannelQrCode(channel.id) }
+                    .clickable { onNavigateToActiveCall() }
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {

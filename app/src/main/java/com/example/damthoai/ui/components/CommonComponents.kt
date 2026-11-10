@@ -28,7 +28,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -175,12 +179,37 @@ fun GlassTextField(
     label: String? = null,
     placeholder: String = "",
     autoCapitalize: Boolean = false,
-    autoFocus: Boolean = false
+    autoFocus: Boolean = false,
+    textStyle: TextStyle = DamType.Input.copy(color = TextPrimary),
+    singleLine: Boolean = true
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
     val focusRequester = remember { FocusRequester() }
     val shape = RoundedCornerShape(18.dp)
+
+    var textFieldValue by remember {
+        mutableStateOf(TextFieldValue(text = value, selection = TextRange(value.length)))
+    }
+
+    LaunchedEffect(value) {
+        if (textFieldValue.text != value) {
+            textFieldValue = TextFieldValue(
+                text = value,
+                selection = TextRange(value.length)
+            )
+        }
+    }
+
+    var wasFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(isFocused) {
+        if (isFocused && !wasFocused) {
+            textFieldValue = textFieldValue.copy(
+                selection = TextRange(textFieldValue.text.length)
+            )
+        }
+        wasFocused = isFocused
+    }
 
     LaunchedEffect(autoFocus) {
         if (autoFocus) focusRequester.requestFocus()
@@ -221,14 +250,23 @@ fun GlassTextField(
             verticalAlignment = Alignment.CenterVertically
         ) {
             BasicTextField(
-                value = value,
-                onValueChange = { input ->
-                    onValueChange(if (autoCapitalize) input.uppercase() else input)
+                value = textFieldValue,
+                onValueChange = { newValue ->
+                    val transformedText = if (autoCapitalize) newValue.text.uppercase() else newValue.text
+                    val adjustedSelection = if (autoCapitalize && transformedText != newValue.text) {
+                        newValue.selection
+                    } else {
+                        newValue.selection
+                    }
+                    textFieldValue = newValue.copy(text = transformedText, selection = adjustedSelection)
+                    if (transformedText != value) {
+                        onValueChange(transformedText)
+                    }
                 },
                 modifier = Modifier
                     .weight(1f)
                     .focusRequester(focusRequester),
-                singleLine = true,
+                singleLine = singleLine,
                 interactionSource = interactionSource,
                 keyboardOptions = KeyboardOptions(
                     capitalization = if (autoCapitalize) {
@@ -237,15 +275,15 @@ fun GlassTextField(
                         KeyboardCapitalization.None
                     }
                 ),
-                textStyle = DamType.Input.copy(color = TextPrimary),
+                textStyle = textStyle,
                 cursorBrush = SolidColor(AccentCyan),
                 decorationBox = { innerTextField ->
                     Box {
-                        if (value.isEmpty() && placeholder.isNotEmpty()) {
+                        if (textFieldValue.text.isEmpty() && placeholder.isNotEmpty()) {
                             Text(
                                 text = placeholder,
                                 color = TextPlaceholder,
-                                style = DamType.InputHint
+                                style = textStyle.copy(color = TextPlaceholder)
                             )
                         }
                         innerTextField()
@@ -254,6 +292,19 @@ fun GlassTextField(
             )
         }
     }
+}
+
+@Composable
+fun rememberEndCursorState(value: String): androidx.compose.runtime.MutableState<TextFieldValue> {
+    val state = remember {
+        mutableStateOf(TextFieldValue(text = value, selection = TextRange(value.length)))
+    }
+    LaunchedEffect(value) {
+        if (state.value.text != value) {
+            state.value = TextFieldValue(text = value, selection = TextRange(value.length))
+        }
+    }
+    return state
 }
 
 @Composable
@@ -283,7 +334,8 @@ fun PrimaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    height: Dp = 54.dp
+    height: Dp = 54.dp,
+    iconRes: Int? = null
 ) {
     val gradient = if (enabled) {
         PrimaryBrush
@@ -311,7 +363,21 @@ fun PrimaryButton(
                 .padding(horizontal = 24.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(text, style = DamType.Button, color = TextPrimary, textAlign = TextAlign.Center)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                if (iconRes != null) {
+                    Icon(
+                        painter = painterResource(iconRes),
+                        contentDescription = null,
+                        tint = TextPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(text, style = DamType.Button, color = TextPrimary, textAlign = TextAlign.Center)
+            }
         }
     }
 }
@@ -323,7 +389,8 @@ fun SecondaryButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     height: Dp = 54.dp,
-    textColor: Color = TextPrimary
+    textColor: Color = TextPrimary,
+    iconRes: Int? = null
 ) {
     Box(
         modifier = modifier
@@ -335,7 +402,21 @@ fun SecondaryButton(
             .padding(horizontal = 24.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(text, style = DamType.Button, color = textColor, textAlign = TextAlign.Center)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            if (iconRes != null) {
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = null,
+                    tint = textColor,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+            }
+            Text(text, style = DamType.Button, color = textColor, textAlign = TextAlign.Center)
+        }
     }
 }
 

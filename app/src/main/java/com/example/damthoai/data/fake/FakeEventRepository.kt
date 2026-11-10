@@ -43,29 +43,39 @@ object FakeEventRepository {
     private val _currentEvent = MutableStateFlow<Event?>(seedEvent)
     val currentEvent: StateFlow<Event?> = _currentEvent.asStateFlow()
 
-    fun createEvent(name: String): Event {
+    /**
+     * Tạo sự kiện mới.
+     * Mã chỉ lưu trong bộ nhớ giả, ĐIỂM NỐI TV5: lưu và xác thực mã ở máy chủ để khôi phục được trên máy khác.
+     */
+    fun createEvent(name: String, adminCode: String? = null): Event {
         require(name.isNotBlank()) { "Tên sự kiện không được để trống." }
 
         val owner = FakeRemainingUiData.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
         val eventId = UUID.randomUUID().toString()
-        val channelId = UUID.randomUUID().toString()
-        val pin = generatePin()
-        val defaultChannel = Channel(
-            id = channelId,
-            name = "Toàn sự kiện",
-            isDefault = true,
-            pin = pin,
-            qrPayload = createQrPayload(eventId, channelId, pin),
-            memberIds = setOf(owner.id)
-        )
+        val defaultChannelNames = listOf("Toàn sự kiện", "Sân khấu", "Kỹ thuật", "Hậu cần – An ninh", "Đón tiếp")
+        val channels = defaultChannelNames.mapIndexed { index, chName ->
+            val channelId = UUID.randomUUID().toString()
+            val pin = generatePin()
+            Channel(
+                id = channelId,
+                name = chName,
+                isDefault = index == 0,
+                pin = pin,
+                qrPayload = createQrPayload(eventId, channelId, pin),
+                memberIds = setOf(owner.id)
+            )
+        }
+        val codeToSave = if (!adminCode.isNullOrBlank()) {
+            adminCode.trim().uppercase()
+        } else {
+            "ADM-" + UUID.randomUUID().toString().replace("-", "").take(6).uppercase()
+        }
         return Event(
             id = eventId,
             name = name.trim(),
-            pinCode = pin,
-            adminCode = UUID.randomUUID().toString().replace("-", "")
-                .take(8)
-                .uppercase(),
-            channels = listOf(defaultChannel),
+            pinCode = channels.first().pin,
+            adminCode = codeToSave,
+            channels = channels,
             members = listOf(owner),
             ownerId = owner.id,
             isOwner = true

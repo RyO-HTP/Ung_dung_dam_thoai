@@ -6,7 +6,7 @@
     android:viewportWidth="288"
     android:viewportHeight="288">
     <group android:translateX="36" android:translateY="36" android:scaleX="2" android:scaleY="2">
-        <group android:pivotX="54" android:pivotY="54" android:scaleX="0.92" android:scaleY="0.92">
+        <group android:pivotX="54" android:pivotY="54" android:scaleX="1.0" android:scaleY="1.0">
             <!-- Quả cầu gradient -->
             <path android:pathData="M54,54m-22,0a22,22 0 1,1 44,0a22,22 0 1,1 -44,0">
                 <aapt:attr name="android:fillColor">

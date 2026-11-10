@@ -29,6 +29,7 @@ import com.example.damthoai.hardware.emergency.EmergencyAlertManager
 import com.example.damthoai.hardware.emergency.EmergencyAlert
 import com.example.damthoai.data.fake.FakeRemainingUiData
 import com.example.damthoai.data.fake.FakeEventRepository
+import com.example.damthoai.data.fake.MemberLevel
 import com.example.damthoai.permission.PermissionScreen
 import com.example.damthoai.ui.channels.ChannelListScreen
 import com.example.damthoai.permission.MicDeniedScreen
@@ -223,14 +224,28 @@ fun AppNavHost(
 
         // === NHÓM E: KHẨN CẤP ===
         composable(AppRoute.EmergencyCallSelect.route) {
-            EmergencyCallSelectScreen(
-                onBack = { navController.popBackStack() },
-                onCall = { selectedIds ->
-                    selectedEmergencyMemberIds = selectedIds
-                    activeEmergencyAlert = null
-                    navController.navigate(AppRoute.EmergencyActiveCall.route)
+            val currentEvent = FakeEventRepository.currentEvent.value
+            val currentMember = currentEvent?.members?.firstOrNull { it.id == currentEvent.ownerId }
+                ?: FakeRemainingUiData.eventMembers.first { it.level == com.example.damthoai.data.fake.MemberLevel.LEVEL_1 }
+            if (currentMember.level != com.example.damthoai.data.fake.MemberLevel.LEVEL_1) {
+                LaunchedEffect(Unit) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Chỉ Cấp 1 (Tổng đạo diễn) mới được phát cảnh báo khẩn cấp.",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                    navController.popBackStack()
                 }
-            )
+            } else {
+                EmergencyCallSelectScreen(
+                    onBack = { navController.popBackStack() },
+                    onCall = { selectedIds ->
+                        selectedEmergencyMemberIds = selectedIds
+                        activeEmergencyAlert = null
+                        navController.navigate(AppRoute.EmergencyActiveCall.route)
+                    }
+                )
+            }
         }
         composable(AppRoute.EmergencyAlertIncoming.route) {
             EmergencyAlertIncomingScreen(
@@ -276,15 +291,7 @@ fun AppNavHost(
                     }
                 },
                 onMultiLevel = { navController.navigate(AppRoute.MultiLevelConnection.route) },
-                onHandsFree = { navController.navigate(AppRoute.HandsFreeAudio.route) },
-                onPttDebug = { navController.navigate(AppRoute.PttDebug.route) },
-                onReviewOnboarding = {
-                    AppStartPrefs.setOnboardingDone(context, false)
-                    navController.navigate(AppRoute.Onboarding.route) {
-                        popUpTo(navController.graph.id) { inclusive = true }
-                        launchSingleTop = true
-                    }
-                }
+                onHandsFree = { navController.navigate(AppRoute.HandsFreeAudio.route) }
             )
         }
         composable(AppRoute.MultiLevelConnection.route) {
@@ -312,8 +319,8 @@ fun AppNavHost(
             CreateEventScreen(
                 onBack = { navController.popBackStack() },
                 onEventCreated = {
-                    navController.navigate(AppRoute.ManageEvent.route) {
-                        popUpTo(AppRoute.CreateEvent.route) { inclusive = true }
+                    navController.navigate(AppRoute.ChannelList.route) {
+                        popUpTo(navController.graph.id) { inclusive = true }
                         launchSingleTop = true
                     }
                 },
@@ -323,33 +330,51 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.ManageEvent.route) {
-            ManageEventScreen(
-                onBack = { navController.popBackStack() },
-                onQrCode = {
-                    selectedQrChannelId = FakeEventRepository.currentEvent.value
-                        ?.channels
-                        ?.firstOrNull { it.isDefault }
-                        ?.id
-                    navController.navigate(AppRoute.MyQrCode.route)
-                },
-                onChannelQrCode = { channelId ->
-                    selectedQrChannelId = channelId
-                    navController.navigate(AppRoute.MyQrCode.route)
-                },
-                onMembers = { navController.navigate(AppRoute.EventMembers.route) },
-                onLiveCue = { navController.navigate(AppRoute.LiveCueDraft.route) },
-                onEndEvent = {
-                    AppStartPrefs.setHasJoinedEvent(context, false)
-                    navController.navigate(AppRoute.EventEnded.route)
+            val currentEvent = FakeEventRepository.currentEvent.value
+            val currentMember = currentEvent?.members?.firstOrNull { it.id == currentEvent.ownerId }
+                ?: FakeRemainingUiData.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
+            if (currentMember.level != MemberLevel.LEVEL_1) {
+                LaunchedEffect(Unit) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Chỉ Cấp 1 (Tổng đạo diễn) mới được quản lý sự kiện.",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                    navController.popBackStack()
                 }
-            )
+            } else {
+                ManageEventScreen(
+                    onBack = { navController.popBackStack() },
+                    onQrCode = {
+                        selectedQrChannelId = FakeEventRepository.currentEvent.value
+                            ?.channels
+                            ?.firstOrNull { it.isDefault }
+                            ?.id
+                        navController.navigate(AppRoute.MyQrCode.route)
+                    },
+                    onChannelQrCode = { channelId ->
+                        selectedQrChannelId = channelId
+                        navController.navigate(AppRoute.MyQrCode.route)
+                    },
+                    onMembers = { navController.navigate(AppRoute.EventMembers.route) },
+                    onLiveCue = { navController.navigate(AppRoute.LiveCueDraft.route) },
+                    onEndEvent = {
+                        AppStartPrefs.setHasJoinedEvent(context, false)
+                        navController.navigate(AppRoute.EventEnded.route)
+                    },
+                    onNavigateToActiveCall = {
+                        navController.navigate(AppRoute.ActiveCall.route)
+                    }
+                )
+            }
         }
         composable(AppRoute.RestoreEvent.route) {
             RestoreEventScreen(
                 onBack = { navController.popBackStack() },
                 onRestore = {
-                    navController.navigate(AppRoute.ManageEvent.route) {
-                        popUpTo(AppRoute.RestoreEvent.route) { inclusive = true }
+                    AppStartPrefs.setHasJoinedEvent(context, true)
+                    navController.navigate(AppRoute.ChannelList.route) {
+                        popUpTo(navController.graph.id) { inclusive = true }
                         launchSingleTop = true
                     }
                 }
@@ -383,13 +408,27 @@ fun AppNavHost(
             EventMembersScreen(onBack = { navController.popBackStack() })
         }
         composable(AppRoute.LiveCueDraft.route) {
-            LiveCueDraftScreen(
-                onBack = { navController.popBackStack() },
-                onSendCue = { cue ->
-                    FakeRemainingUiData.sendLiveCue(cue)
+            val currentEvent = FakeEventRepository.currentEvent.value
+            val currentMember = currentEvent?.members?.firstOrNull { it.id == currentEvent.ownerId }
+                ?: FakeRemainingUiData.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
+            if (currentMember.level != MemberLevel.LEVEL_1) {
+                LaunchedEffect(Unit) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Chỉ Cấp 1 (Tổng đạo diễn) mới được gửi Live Cue.",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
                     navController.popBackStack()
                 }
-            )
+            } else {
+                LiveCueDraftScreen(
+                    onBack = { navController.popBackStack() },
+                    onSendCue = { cue ->
+                        FakeRemainingUiData.sendLiveCue(cue)
+                        navController.popBackStack()
+                    }
+                )
+            }
         }
         composable(AppRoute.EventEnded.route) {
             LaunchedEffect(Unit) {

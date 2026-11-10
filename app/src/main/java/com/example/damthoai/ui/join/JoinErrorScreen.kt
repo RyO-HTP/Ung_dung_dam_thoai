@@ -112,15 +112,13 @@ fun JoinErrorScreen(
                 modifier = Modifier.fillMaxWidth(),
                 height = 54.dp
             )
-            Text(
-                "Muốn tạo sự kiện mới? Tạo sự kiện",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onNavigateToCreateEvent)
-                    .padding(top = 10.dp),
-                color = AccentCyan,
-                style = DamType.Small,
-                textAlign = TextAlign.Center
+            Spacer(Modifier.height(10.dp))
+            SecondaryButton(
+                text = "Tạo sự kiện mới",
+                onClick = onNavigateToCreateEvent,
+                iconRes = R.drawable.ic_plus,
+                modifier = Modifier.fillMaxWidth(),
+                height = 48.dp
             )
         }
     }

@@ -33,6 +33,10 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -163,6 +167,10 @@ fun VolumeRow(
     modifier: Modifier = Modifier,
     onVolumeChange: (Float) -> Unit = {}
 ) {
+    val isLowVolume = channel.volume < 0.30f
+    val percentColor = if (isLowVolume) TextSecondary.copy(alpha = 0.6f) else TextSecondary
+    val isDucked = channel.isDucked || channel.tag?.contains("HẠ ÂM") == true
+
     Column(
         modifier = modifier.fillMaxWidth()
     ) {
@@ -181,24 +189,36 @@ fun VolumeRow(
                 style = DamType.Body13.copy(fontWeight = FontWeight.SemiBold)
             )
             if (channel.tag != null) {
-                TagLabel(text = channel.tag, color = AccentCyan)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isDucked) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_lock),
+                            contentDescription = "Khóa âm lượng",
+                            tint = AccentCyan,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    TagLabel(text = channel.tag, color = AccentCyan)
+                }
             } else {
                 Text(
-                    channel.valueLabel,
-                    color = TextSecondary,
+                    text = "${(channel.volume * 100).toInt()}%",
+                    color = percentColor,
                     style = DamType.Muted
                 )
             }
         }
         Text(
             text = channel.speaker,
-            modifier = Modifier.padding(start = 22.dp, top = 2.dp, bottom = 8.dp),
+            modifier = Modifier.padding(start = 24.dp, top = 2.dp, bottom = 6.dp),
             color = channel.speakerColor,
             style = DamType.Small
         )
         VolumeSlider(
             value = channel.volume,
             onValueChange = onVolumeChange,
+            isLocked = isDucked,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -208,11 +228,12 @@ fun VolumeRow(
 private fun VolumeSlider(
     value: Float,
     onValueChange: (Float) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isLocked: Boolean = false
 ) {
-    Box(
-        modifier = modifier
-            .height(18.dp)
+    val clampedValue = value.coerceIn(0f, 1f)
+    val gestureModifier = if (!isLocked) {
+        Modifier
             .pointerInput(onValueChange) {
                 detectTapGestures { position ->
                     val inset = 8.dp.toPx()
@@ -238,22 +259,64 @@ private fun VolumeSlider(
                         change.consume()
                     }
                 )
-            },
+            }
+    } else {
+        Modifier
+    }
+
+    Box(
+        modifier = modifier
+            .height(40.dp)
+            .semantics(mergeDescendants = true) {
+                stateDescription = "âm lượng ${(clampedValue * 100).toInt()} phần trăm"
+                progressBarRangeInfo = androidx.compose.ui.semantics.ProgressBarRangeInfo(clampedValue, 0f..1f)
+            }
+            .then(gestureModifier),
         contentAlignment = Alignment.CenterStart
     ) {
-        Canvas(Modifier.fillMaxWidth().height(18.dp)) {
+        Canvas(Modifier.fillMaxWidth().height(40.dp)) {
             val centerY = size.height / 2f
             val inset = 8.dp.toPx()
             val trackHeight = 6.dp.toPx()
             val radius = trackHeight / 2f
+            val totalTrackWidth = size.width - inset * 2f
+
+            // Unfilled background track
             drawRoundRect(
-                brush = cssGradient(90f, CallVolumeStart, CallVolumeEnd),
+                color = com.example.damthoai.ui.theme.CallVolumeInactive,
                 topLeft = Offset(inset, centerY - radius),
-                size = androidx.compose.ui.geometry.Size(size.width - inset * 2f, trackHeight),
+                size = androidx.compose.ui.geometry.Size(totalTrackWidth, trackHeight),
                 cornerRadius = CornerRadius(radius, radius)
             )
-            val knobX = inset + (size.width - inset * 2f) * value.coerceIn(0f, 1f)
-            drawCircle(PureWhite, radius = 8.dp.toPx(), center = Offset(knobX, centerY))
+
+            // Filled track from start to knob position
+            val filledWidth = totalTrackWidth * clampedValue
+            if (filledWidth > 0f) {
+                val alpha = (0.55f + 0.45f * clampedValue).coerceIn(0.55f, 1.0f)
+                if (isLocked) {
+                    drawRoundRect(
+                        color = com.example.damthoai.ui.theme.CallDuckedFill,
+                        topLeft = Offset(inset, centerY - radius),
+                        size = androidx.compose.ui.geometry.Size(filledWidth, trackHeight),
+                        cornerRadius = CornerRadius(radius, radius)
+                    )
+                } else {
+                    drawRoundRect(
+                        brush = cssGradient(90f, CallVolumeStart, CallVolumeEnd),
+                        topLeft = Offset(inset, centerY - radius),
+                        size = androidx.compose.ui.geometry.Size(filledWidth, trackHeight),
+                        cornerRadius = CornerRadius(radius, radius),
+                        alpha = alpha
+                    )
+                }
+            }
+
+            val knobX = inset + filledWidth
+            drawCircle(
+                color = if (isLocked) PureWhite.copy(alpha = 0.75f) else PureWhite,
+                radius = 8.dp.toPx(),
+                center = Offset(knobX, centerY)
+            )
         }
     }
 }
@@ -305,6 +368,7 @@ fun CallBottomActions(
     speakerSelected: Boolean = false,
     headsetSelected: Boolean = false,
     headsetEnabled: Boolean = true,
+    emergencyEnabled: Boolean = true,
     onSelectSpeaker: () -> Unit = {},
     onSelectHeadset: () -> Unit = {}
 ) {
@@ -347,7 +411,8 @@ fun CallBottomActions(
             onClick = {
                 HapticController.tick(view)
                 onNavigateToEmergency()
-            }
+            },
+            enabled = emergencyEnabled
         )
     }
 }

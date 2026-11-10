@@ -50,11 +50,22 @@ object EmergencyAlertManager {
     private val _vibrationUnavailableReason = MutableStateFlow<String?>(null)
     val vibrationUnavailableReason: StateFlow<String?> = _vibrationUnavailableReason.asStateFlow()
 
+    fun canInitiateAlert(level: com.example.damthoai.data.fake.MemberLevel): Boolean =
+        level == com.example.damthoai.data.fake.MemberLevel.LEVEL_1
+
     /**
      * Bắt đầu cảnh báo mới; cảnh báo đang chạy được thay thế mà không chồng vòng lặp phần cứng.
-     * Cài đặt tắt cảnh báo vẫn cập nhật [currentAlert] để TV3 hiển thị màn cảnh báo.
+     * Chỉ Cấp 1 (Tổng đạo diễn) mới có quyền phát cảnh báo khẩn cấp (Mục 3.4.8).
      */
-    fun trigger(context: Context, alert: EmergencyAlert) {
+    fun trigger(
+        context: Context,
+        alert: EmergencyAlert,
+        callerLevel: com.example.damthoai.data.fake.MemberLevel = com.example.damthoai.data.fake.MemberLevel.LEVEL_1
+    ) {
+        if (callerLevel != com.example.damthoai.data.fake.MemberLevel.LEVEL_1) {
+            Log.w(TAG, "Từ chối phát khẩn cấp: Thành viên cấp $callerLevel không phải Cấp 1")
+            return
+        }
         val appContext = context.applicationContext
         val enabled = HandsFreeSettings.emergencyAlertEnabled.value
         val scheduledJob: Job

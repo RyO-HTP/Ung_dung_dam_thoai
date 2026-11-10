@@ -27,7 +27,9 @@ data class FakeVolumeChannel(
     val volume: Float,
     val speaker: String,
     val speakerColor: Color,
-    val tag: String? = null
+    val tag: String? = null,
+    val isDucked: Boolean = tag?.contains("HẠ ÂM") == true,
+    val userVolume: Float = volume
 )
 
 data class FakeCallContent(
