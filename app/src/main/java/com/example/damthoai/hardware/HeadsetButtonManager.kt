@@ -238,7 +238,7 @@ object HeadsetButtonManager {
                     headsetPttMode.value == HeadsetPttMode.TOGGLE &&
                     PttController.activeSource.value == PttSource.HEADSET
                 ) {
-                    PttController.onKeyReleased(PttSource.HEADSET)
+                    PttController.forceReleasePtt()
                     Log.w(TAG, "Headset PTT tự thả sau 60 giây")
                 }
                 autoReleaseJob = null

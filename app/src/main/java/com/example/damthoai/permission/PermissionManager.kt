@@ -166,20 +166,26 @@ object PermissionManager {
         }
 
         val wasRequested = wasRequested(context, appPermission)
-
-        // ActivityCompat cần Activity để phân biệt lần từ chối thông thường với từ chối vĩnh viễn.
-        if (activity != null) {
-            val showRationale = manifestPermissions.any { perm ->
+        val showRationale = if (activity != null) {
+            manifestPermissions.any { perm ->
                 ActivityCompat.shouldShowRequestPermissionRationale(activity, perm)
             }
-            return if (!showRationale && wasRequested) {
-                PermissionState.PERMANENTLY_DENIED
-            } else {
-                PermissionState.DENIED
-            }
-        }
+        } else false
 
-        return if (wasRequested) PermissionState.PERMANENTLY_DENIED else PermissionState.DENIED
+        return resolvePermissionState(allGranted, wasRequested, showRationale)
+    }
+
+    internal fun resolvePermissionState(
+        allGranted: Boolean,
+        wasRequested: Boolean,
+        showRationale: Boolean
+    ): PermissionState {
+        if (allGranted) return PermissionState.GRANTED
+        return if (wasRequested && !showRationale) {
+            PermissionState.PERMANENTLY_DENIED
+        } else {
+            PermissionState.DENIED
+        }
     }
 
     /**

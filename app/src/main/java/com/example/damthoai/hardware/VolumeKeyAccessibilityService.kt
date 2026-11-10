@@ -1,6 +1,7 @@
 package com.example.damthoai.hardware
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Intent
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
@@ -12,9 +13,13 @@ import android.view.accessibility.AccessibilityEvent
  */
 class VolumeKeyAccessibilityService : AccessibilityService() {
 
+    private var isVolDownPressedByService = false
+
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode != KeyEvent.KEYCODE_VOLUME_DOWN ||
             !HandsFreeSettings.volumeDownHoldEnabled.value ||
+            !PttController.isPttModeEnabled.value ||
+            !PttController.isVolumeKeyAllowed(PttSource.VOLUME_DOWN) ||
             (!PttController.backgroundSessionActive.value && !PttController.isCaptureActive.value)
         ) {
             return false
@@ -25,12 +30,17 @@ class VolumeKeyAccessibilityService : AccessibilityService() {
                 KeyEvent.ACTION_DOWN -> {
                     if (event.repeatCount == 0) {
                         PttController.onKeyPressed(PttSource.VOLUME_DOWN)
+                        isVolDownPressedByService =
+                            PttController.activeSource.value == PttSource.VOLUME_DOWN
                     }
                     true
                 }
 
                 KeyEvent.ACTION_UP -> {
-                    PttController.onKeyReleased(PttSource.VOLUME_DOWN)
+                    if (isVolDownPressedByService) {
+                        isVolDownPressedByService = false
+                        PttController.onKeyReleased(PttSource.VOLUME_DOWN)
+                    }
                     true
                 }
 
@@ -53,10 +63,27 @@ class VolumeKeyAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Dịch vụ chỉ đọc phím Volume, không xử lý sự kiện giao diện nên để trống.
+     * Xóa trạng thái và giải phóng PTT nếu dịch vụ bị ngắt khi đang giữ phím.
      */
     override fun onInterrupt() {
-        /* không dùng */
+        clearServicePressState()
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        clearServicePressState()
+        return super.onUnbind(intent)
+    }
+
+    override fun onDestroy() {
+        clearServicePressState()
+        super.onDestroy()
+    }
+
+    private fun clearServicePressState() {
+        if (isVolDownPressedByService) {
+            isVolDownPressedByService = false
+            PttController.forceReleasePtt()
+        }
     }
 
     private companion object {

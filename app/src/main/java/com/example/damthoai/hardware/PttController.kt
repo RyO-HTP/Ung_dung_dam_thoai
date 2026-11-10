@@ -121,22 +121,33 @@ object PttController {
         if (_isPttActive.value && _activeSource.value == source) {
             _isPttActive.value = false
             _activeSource.value = null
-            emitEvent(PttEvent.PttReleased(source))
+            emitEvent(PttEvent.PttReleased(source, forced = false))
         }
     }
 
     /**
      * LỆNH AN TOÀN HỆ THỐNG: Cưỡng chế ngắt Micro đàm thoại.
-     * Gọi khi Activity tạm dừng hoặc app bị mất focus để tránh mic bị kẹt mở,
-     * trừ khi có phiên chạy nền đang hoạt động.
+     * Gọi khi Activity tạm dừng, mất tiêu điểm, hết timeout, rút tai nghe hoặc giải phóng capture
+     * để tránh mic bị kẹt mở. Phát sự kiện PttReleased với [PttEvent.PttReleased.forced] = true.
      */
     fun forceReleasePtt() {
         if (_isPttActive.value) {
             val lastSource = _activeSource.value ?: PttSource.VOLUME_DOWN
             _isPttActive.value = false
             _activeSource.value = null
-            emitEvent(PttEvent.PttReleased(lastSource))
+            emitEvent(PttEvent.PttReleased(lastSource, forced = true))
         }
+    }
+
+    @Synchronized
+    internal fun resetForTest() {
+        captureOwners.clear()
+        _isCaptureActive.value = false
+        _backgroundSessionActive.value = false
+        _isPttActive.value = false
+        _activeSource.value = null
+        _isPttModeEnabled.value = true
+        _volumeKeySetting.value = VolumeKeySetting.BOTH
     }
 
     private fun emitEvent(event: PttEvent) {

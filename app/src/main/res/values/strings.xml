@@ -73,7 +73,7 @@
     <string name="ptt_note_foreground_limit">Muốn dùng phím Volume Down khi tắt màn hình, hãy bật Trợ năng của Đàm Thoại trong Cài đặt Trợ năng.</string>
 
     <string name="accessibility_service_label">Phím Volume Down cho PTT</string>
-    <string name="accessibility_service_description">Chỉ đọc phím Volume để làm PTT, không đọc nội dung màn hình.</string>
+    <string name="accessibility_service_description">Chỉ đọc phím Âm lượng để dùng làm nút Push-to-Talk. Không đọc nội dung màn hình.</string>
 
     <!-- Cảnh báo khẩn cấp (TV4) -->
     <string name="emergency_demo_title">Thử cảnh báo khẩn cấp</string>

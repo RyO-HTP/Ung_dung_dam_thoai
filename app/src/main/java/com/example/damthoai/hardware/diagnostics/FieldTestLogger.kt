@@ -426,6 +426,7 @@ object FieldTestLogger {
     fun recordPttEvent(event: PttEvent) {
         if (!isDebuggable() || !_loggingActive.value) return
         val source = event.source
+        val forced = (event as? PttEvent.PttReleased)?.forced ?: false
         val eventType = when (event) {
             is PttEvent.PttPressed -> {
                 synchronized(lock) {
@@ -450,7 +451,7 @@ object FieldTestLogger {
         mark(
             eventType = "app_to_ptt_event",
             source = source.name,
-            extra = "event=$eventType;latencyMs=${latencyMs ?: "not_key_event"}"
+            extra = "event=$eventType;forced=$forced;latencyMs=${latencyMs ?: "not_key_event"}"
         )
     }
 
