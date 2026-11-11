@@ -89,6 +89,7 @@ fun AdaptiveAppLayout(
     if (isCompact) {
         // --- BỐ CỤC ĐIỆN THOẠI (COMPACT) ---
         Scaffold(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             bottomBar = {
                 AnimatedVisibility(

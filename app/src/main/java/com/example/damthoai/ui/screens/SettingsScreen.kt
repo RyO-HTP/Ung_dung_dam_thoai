@@ -113,7 +113,7 @@ private fun SettingsContent(
                 .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
-                .padding(top = 16.dp, bottom = 16.dp),
+                .padding(top = 16.dp, bottom = 90.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(

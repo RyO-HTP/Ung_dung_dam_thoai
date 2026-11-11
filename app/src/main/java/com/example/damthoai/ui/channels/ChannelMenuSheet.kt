@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -72,7 +73,8 @@ fun ChannelMenuSheet(
                 .background(SheetBg)
                 .border(1.dp, GlassBorder, GlassSheetShape)
                 .clickable {}
-                .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 30.dp)
+                .navigationBarsPadding()
+                .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 20.dp)
         ) {
             Box(
                 Modifier

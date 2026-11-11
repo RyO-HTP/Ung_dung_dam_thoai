@@ -20,6 +20,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -171,56 +175,63 @@ fun VolumeRow(
     val percentColor = if (isLowVolume) TextSecondary.copy(alpha = 0.6f) else TextSecondary
     val isDucked = channel.isDucked || channel.tag?.contains("HẠ ÂM") == true
 
-    Column(
-        modifier = modifier.fillMaxWidth()
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                painter = painterResource(channel.iconRes),
-                contentDescription = null,
-                tint = TextSecondary,
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = channel.name,
-                modifier = Modifier.weight(1f),
-                color = TextPrimary,
-                style = DamType.Body13.copy(fontWeight = FontWeight.SemiBold)
-            )
-            if (channel.tag != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isDucked) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_lock),
-                            contentDescription = "Khóa âm lượng",
-                            tint = AccentCyan,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    TagLabel(text = channel.tag, color = AccentCyan)
-                }
-            } else {
-                Text(
-                    text = "${(channel.volume * 100).toInt()}%",
-                    color = percentColor,
-                    style = DamType.Muted
+    val currentDensity = LocalDensity.current
+    val cappedDensity = remember(currentDensity) {
+        Density(density = currentDensity.density, fontScale = currentDensity.fontScale.coerceAtMost(1.15f))
+    }
+
+    CompositionLocalProvider(LocalDensity provides cappedDensity) {
+        Column(
+            modifier = modifier.fillMaxWidth()
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    painter = painterResource(channel.iconRes),
+                    contentDescription = null,
+                    tint = TextSecondary,
+                    modifier = Modifier.size(16.dp)
                 )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = channel.name,
+                    modifier = Modifier.weight(1f),
+                    color = TextPrimary,
+                    style = DamType.Body13.copy(fontWeight = FontWeight.SemiBold)
+                )
+                if (channel.tag != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isDucked) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_lock),
+                                contentDescription = "Khóa âm lượng",
+                                tint = AccentCyan,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                        }
+                        TagLabel(text = channel.tag, color = AccentCyan)
+                    }
+                } else {
+                    Text(
+                        text = "${(channel.volume * 100).toInt()}%",
+                        color = percentColor,
+                        style = DamType.Muted
+                    )
+                }
             }
+            Text(
+                text = channel.speaker,
+                modifier = Modifier.padding(start = 24.dp, top = 1.dp, bottom = 2.dp),
+                color = channel.speakerColor,
+                style = DamType.Small
+            )
+            VolumeSlider(
+                value = channel.volume,
+                onValueChange = onVolumeChange,
+                isLocked = isDucked,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
-        Text(
-            text = channel.speaker,
-            modifier = Modifier.padding(start = 24.dp, top = 2.dp, bottom = 6.dp),
-            color = channel.speakerColor,
-            style = DamType.Small
-        )
-        VolumeSlider(
-            value = channel.volume,
-            onValueChange = onVolumeChange,
-            isLocked = isDucked,
-            modifier = Modifier.fillMaxWidth()
-        )
     }
 }
 
@@ -266,7 +277,7 @@ private fun VolumeSlider(
 
     Box(
         modifier = modifier
-            .height(40.dp)
+            .height(24.dp)
             .semantics(mergeDescendants = true) {
                 stateDescription = "âm lượng ${(clampedValue * 100).toInt()} phần trăm"
                 progressBarRangeInfo = androidx.compose.ui.semantics.ProgressBarRangeInfo(clampedValue, 0f..1f)
@@ -274,7 +285,7 @@ private fun VolumeSlider(
             .then(gestureModifier),
         contentAlignment = Alignment.CenterStart
     ) {
-        Canvas(Modifier.fillMaxWidth().height(40.dp)) {
+        Canvas(Modifier.fillMaxWidth().height(24.dp)) {
             val centerY = size.height / 2f
             val inset = 8.dp.toPx()
             val trackHeight = 6.dp.toPx()

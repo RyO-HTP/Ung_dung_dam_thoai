@@ -319,8 +319,8 @@ fun AppNavHost(
             CreateEventScreen(
                 onBack = { navController.popBackStack() },
                 onEventCreated = {
-                    navController.navigate(AppRoute.ChannelList.route) {
-                        popUpTo(navController.graph.id) { inclusive = true }
+                    navController.navigate("${AppRoute.ManageEvent.route}?fromCreate=true") {
+                        popUpTo(AppRoute.CreateEvent.route) { inclusive = true }
                         launchSingleTop = true
                     }
                 },
@@ -329,7 +329,11 @@ fun AppNavHost(
                 }
             )
         }
-        composable(AppRoute.ManageEvent.route) {
+        composable(
+            route = "${AppRoute.ManageEvent.route}?fromCreate={fromCreate}",
+            arguments = listOf(androidx.navigation.navArgument("fromCreate") { defaultValue = false })
+        ) { backStackEntry ->
+            val fromCreate = backStackEntry.arguments?.getBoolean("fromCreate") ?: false
             val currentEvent = FakeEventRepository.currentEvent.value
             val currentMember = currentEvent?.members?.firstOrNull { it.id == currentEvent.ownerId }
                 ?: FakeRemainingUiData.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
@@ -344,7 +348,15 @@ fun AppNavHost(
                 }
             } else {
                 ManageEventScreen(
-                    onBack = { navController.popBackStack() },
+                    onBack = {
+                        if (fromCreate) {
+                            navController.navigate(AppRoute.ChannelList.route) {
+                                popUpTo(AppRoute.ManageEvent.route) { inclusive = true }
+                            }
+                        } else {
+                            navController.popBackStack()
+                        }
+                    },
                     onQrCode = {
                         selectedQrChannelId = FakeEventRepository.currentEvent.value
                             ?.channels

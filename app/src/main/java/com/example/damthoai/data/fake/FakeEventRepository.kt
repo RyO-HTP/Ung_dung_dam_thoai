@@ -170,6 +170,42 @@ object FakeEventRepository {
         )
     }
 
+    fun applyQrJoin(payload: com.example.damthoai.data.qr.QrTokenPayload, displayName: String) {
+        val eventIdStr = payload.eventId.toString()
+        val level = when (payload.userLevel) {
+            1 -> MemberLevel.LEVEL_1
+            2 -> MemberLevel.LEVEL_2
+            else -> MemberLevel.LEVEL_3
+        }
+        val memberId = "mem_" + UUID.randomUUID().toString().take(6)
+        val newMember = Member(
+            id = memberId,
+            name = displayName.ifBlank { "Thành viên" },
+            roleTitle = payload.roleTitle,
+            initials = displayName.take(2).uppercase(),
+            level = level
+        )
+        val defaultChannel = Channel(
+            id = payload.primaryCh.toString(),
+            name = payload.eventName + " - " + payload.primaryChCode,
+            isDefault = true,
+            pin = payload.pinCode,
+            qrPayload = "damthoai://event/$eventIdStr/channel/${payload.primaryCh}?pin=${payload.pinCode}",
+            memberIds = setOf(memberId)
+        )
+        val event = Event(
+            id = eventIdStr,
+            name = payload.eventName,
+            pinCode = payload.pinCode,
+            adminCode = "ADM-" + UUID.randomUUID().toString().take(6).uppercase(),
+            channels = listOf(defaultChannel),
+            members = listOf(newMember),
+            ownerId = if (level == MemberLevel.LEVEL_1) memberId else "",
+            isOwner = level == MemberLevel.LEVEL_1
+        )
+        _currentEvent.value = event
+    }
+
     private fun generatePin(): String =
         Random.nextInt(0, 1_000_000).toString().padStart(6, '0')
 

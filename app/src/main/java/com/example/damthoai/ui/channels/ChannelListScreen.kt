@@ -197,7 +197,7 @@ fun ChannelListScreen(
                         onMenuClick = { viewModel.openChannelMenu(item) },
                         onVolumeChange = { viewModel.updateChannelVolume(item.channel.id, it) }
                     )
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(8.dp))
                 }
 
                 Box(
@@ -309,19 +309,19 @@ private fun ChannelCardItem(
         borderColor = cardBorderColor,
         borderWidth = if (isSelectedMic || speakingGlow > 0.01f) 1.5.dp else 1.dp,
         contentPadding = PaddingValues(
-            horizontal = 12.dp,
-            vertical = 10.dp
+            horizontal = 10.dp,
+            vertical = 8.dp
         )
     ) {
-        Column(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(10.dp))
                         .background(GlassBg),
                     contentAlignment = Alignment.Center
                 ) {
@@ -329,22 +329,22 @@ private fun ChannelCardItem(
                         painter = painterResource(icon),
                         contentDescription = null,
                         tint = iconTint,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 }
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             item.channel.name,
                             color = TextPrimary,
-                            style = DamType.Heading,
+                            style = DamType.Heading.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold),
                             modifier = Modifier.weight(1f, fill = false),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         if (item.channel.isPriority) {
-                            Spacer(Modifier.width(6.dp))
+                            Spacer(Modifier.width(4.dp))
                             TagLabel(
                                 "ƯU TIÊN",
                                 color = AccentAmber,
@@ -357,33 +357,33 @@ private fun ChannelCardItem(
                             Text(
                                 item.channel.currentSpeaker?.let { "$it đang nói" } ?: "Đang nói",
                                 color = AccentCyan,
-                                style = DamType.Small.copy(fontWeight = FontWeight.SemiBold)
+                                style = DamType.Small.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                             )
-                            Spacer(Modifier.width(6.dp))
+                            Spacer(Modifier.width(4.dp))
                             SpeakingWaveform()
                         }
                     } else {
                         Text(
                             "Không ai đang nói",
                             color = TextSecondary,
-                            style = DamType.Small
+                            style = DamType.Small.copy(fontSize = 11.sp)
                         )
                     }
                 }
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(4.dp))
                 Box(
-                    Modifier.size(48.dp).clickable(onClick = onMicClick),
+                    Modifier.size(44.dp).clickable(onClick = onMicClick),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         Modifier
-                            .size(36.dp)
+                            .size(32.dp)
                             .then(
                                 if (isSelectedMic) {
                                     Modifier.outerGlow(
                                         color = AccentCyan,
-                                        corner = 18.dp,
-                                        spread = 8.dp,
+                                        corner = 16.dp,
+                                        spread = 6.dp,
                                         maxAlpha = 0.20f
                                     )
                                 } else {
@@ -411,26 +411,35 @@ private fun ChannelCardItem(
                             painter = painterResource(R.drawable.ic_mic),
                             contentDescription = "Mic phát",
                             tint = TextPrimary,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(14.dp)
                         )
                     }
                 }
                 Box(
-                    Modifier.size(48.dp).clickable(onClick = onMenuClick),
+                    Modifier.size(44.dp).clickable(onClick = onMenuClick),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_dots),
-                        contentDescription = "Menu",
-                        tint = TextSecondary,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Box(
+                        Modifier
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(GlassBg),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_dots),
+                            contentDescription = "Menu",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier
+                    .fillMaxWidth()
+                    .height(20.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(

@@ -47,8 +47,18 @@ fun JoinErrorScreen(
     onRetryQr: () -> Unit,
     onSwitchPin: () -> Unit,
     onNavigateToCreateEvent: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    reason: com.example.damthoai.data.qr.QrJoinFailure? = null,
+    customMessage: String? = null
 ) {
+    val errorSubtitle = when (reason) {
+        com.example.damthoai.data.qr.QrJoinFailure.EXPIRED -> "Mã QR đã hết hạn"
+        com.example.damthoai.data.qr.QrJoinFailure.MALFORMED -> "Mã QR không đúng định dạng"
+        com.example.damthoai.data.qr.QrJoinFailure.NOT_DAM_THOAI -> "Đây không phải mã của Đàm Thoại"
+        com.example.damthoai.data.qr.QrJoinFailure.SERVER_REJECTED -> customMessage ?: "Máy chủ từ chối mã"
+        com.example.damthoai.data.qr.QrJoinFailure.NETWORK -> "Không kết nối được máy chủ"
+        null -> "Hãy kiểm tra lại các nguyên nhân thường gặp"
+    }
     DamThoaiBackground(modifier = modifier) {
         Column(
             Modifier
@@ -81,8 +91,8 @@ fun JoinErrorScreen(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Hãy kiểm tra lại các nguyên nhân thường gặp",
-                color = TextSecondary,
+                text = errorSubtitle,
+                color = AccentAmber,
                 style = DamType.Body,
                 textAlign = TextAlign.Center
             )

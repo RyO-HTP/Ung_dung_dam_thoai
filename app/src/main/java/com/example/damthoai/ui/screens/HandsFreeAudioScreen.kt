@@ -248,7 +248,7 @@ private fun HandsFreeAudioContent(
                         HandsFreeSettingRow(
                             iconRes = R.drawable.ic_mic,
                             title = "Lọc ồn, khử vọng",
-                            description = "Noise suppression, echo cancellation",
+                            description = "Giảm tiếng ồn nền và tiếng vọng",
                             checked = noiseSuppressionEnabled,
                             onCheckedChange = onNoiseSuppressionChange
                         )
@@ -272,7 +272,7 @@ private fun HandsFreeAudioContent(
                         HandsFreeSettingRow(
                             iconRes = R.drawable.ic_bell,
                             title = "Bíp và rung khi thao tác",
-                            description = "Roger beep, phản hồi xúc giác",
+                            description = "Tiếng bíp khi thả nút nói, rung phản hồi",
                             checked = beepHapticEnabled,
                             onCheckedChange = onBeepHapticChange
                         )

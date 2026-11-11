@@ -104,13 +104,12 @@ fun CreateEventScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     var eventName by rememberSaveable { mutableStateOf("Đêm nhạc Chào Tân sinh viên") }
-    var adminCode by rememberSaveable { mutableStateOf(generateSuggestedAdminCode()) }
+    var adminCode by rememberSaveable { mutableStateOf("") }
     var showSuccessSheet by rememberSaveable { mutableStateOf(false) }
     val creator = remember {
         FakeRemainingUiData.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
     }
-    val codeError = validateAdminCode(adminCode)
-    val isFormValid = eventName.isNotBlank() && codeError == null
+    val isFormValid = eventName.isNotBlank()
 
     DamThoaiBackground(modifier = modifier) {
         Column(
@@ -156,14 +155,6 @@ fun CreateEventScreen(
                 EventFieldLabel("Chức vụ")
                 StaticEventField(creator.roleTitle)
 
-                EventFieldLabel("Mã quản trị")
-                AdminCodeSection(
-                    code = adminCode,
-                    onCodeChange = { adminCode = it.uppercase() },
-                    onRegenerate = { adminCode = generateSuggestedAdminCode() },
-                    errorMessage = codeError
-                )
-
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -200,7 +191,9 @@ fun CreateEventScreen(
             PrimaryButton(
                 text = "Tạo sự kiện",
                 onClick = {
-                    FakeEventRepository.createEvent(eventName.trim(), adminCode.trim().uppercase())
+                    val code = generateSuggestedAdminCode()
+                    adminCode = code
+                    FakeEventRepository.createEvent(eventName.trim(), code)
                     showSuccessSheet = true
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -236,14 +229,14 @@ fun CreateEventScreen(
                     style = DamType.Title24,
                     textAlign = TextAlign.Center
                 )
-                Spacer(Modifier.height(5.dp))
+                Spacer(Modifier.height(4.dp))
                 Text(
                     text = "Mã quản trị của bạn:",
                     color = TextSecondary.copy(alpha = 0.7f),
                     style = DamType.Body13,
                     textAlign = TextAlign.Center
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
 
                 var copied by remember { mutableStateOf(false) }
                 LaunchedEffect(copied) {
@@ -260,14 +253,14 @@ fun CreateEventScreen(
                             .clip(RoundedCornerShape(18.dp))
                             .background(TagCyanBg)
                             .border(1.5.dp, AccentCyan, RoundedCornerShape(18.dp))
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = adminCode,
                             color = AccentCyan,
                             style = DamType.MonoInput.copy(
-                                fontSize = 18.sp,
+                                fontSize = 15.sp,
                                 letterSpacing = 2.sp,
                                 fontWeight = FontWeight.Bold
                             ),
@@ -296,7 +289,7 @@ fun CreateEventScreen(
                         }
                     }
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
                 Text(
                     text = "Hãy lưu mã này để khôi phục quyền khi đổi máy hoặc cài lại app.",
                     color = TextSecondary,
@@ -304,9 +297,9 @@ fun CreateEventScreen(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(0.9f)
                 )
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(16.dp))
                 PrimaryButton(
-                    text = "Vào sự kiện",
+                    text = "Tiếp tục",
                     onClick = {
                         AppStartPrefs.setHasJoinedEvent(context, true)
                         showSuccessSheet = false
@@ -317,82 +310,6 @@ fun CreateEventScreen(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun AdminCodeSection(
-    code: String,
-    onCodeChange: (String) -> Unit,
-    onRegenerate: () -> Unit,
-    errorMessage: String?
-) {
-    val shape = RoundedCornerShape(18.dp)
-    val hasError = errorMessage != null
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(
-                    if (hasError) {
-                        Modifier.outerGlow(AccentRed, corner = 18.dp, spread = 16.dp, maxAlpha = 0.25f)
-                    } else {
-                        Modifier.outerGlow(AccentCyan, corner = 18.dp, spread = 16.dp, maxAlpha = 0.18f)
-                    }
-                )
-                .clip(shape)
-                .background(GlassBg)
-                .border(1.5.dp, if (hasError) AccentRed else AccentCyan, shape)
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            BasicTextField(
-                value = code,
-                onValueChange = onCodeChange,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(end = 40.dp),
-                singleLine = true,
-                textStyle = DamType.MonoInput.copy(color = TextPrimary),
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Characters,
-                    autoCorrect = false
-                ),
-                cursorBrush = SolidColor(AccentCyan)
-            )
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .align(Alignment.CenterEnd)
-                    .clip(CircleShape)
-                    .clickable(onClick = onRegenerate),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_refresh),
-                    contentDescription = "Tạo mã khác",
-                    tint = if (hasError) AccentRed else AccentCyan,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-        if (errorMessage != null) {
-            Text(
-                text = errorMessage,
-                modifier = Modifier.padding(start = 4.dp, top = 4.dp),
-                color = AccentRed,
-                style = DamType.Small
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = "Hãy lưu mã này để khôi phục quyền khi đổi máy.",
-            modifier = Modifier.padding(start = 4.dp),
-            color = TextSecondary,
-            style = DamType.Small,
-            maxLines = 1
-        )
     }
 }
 

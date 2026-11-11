@@ -145,7 +145,7 @@ fun RestoreEventScreen(
                     .clip(shape)
                     .background(GlassBg)
                     .border(1.5.dp, if (hasError) AccentRed else AccentCyan, shape)
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
                 BasicTextField(
@@ -183,15 +183,16 @@ fun RestoreEventScreen(
                         .align(Alignment.CenterEnd)
                         .clip(CircleShape)
                         .clickable {
-                            clipboardManager.getText()?.text?.let { text ->
-                                adminCode = text.trim().uppercase()
+                            val clipText = clipboardManager.getText()?.text
+                            if (!clipText.isNullOrBlank()) {
+                                adminCode = clipText.toString().trim().uppercase()
                                 errorMessage = null
                             }
                         },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.ic_copy),
+                        painter = painterResource(R.drawable.ic_paste),
                         contentDescription = "Dán mã",
                         tint = if (hasError) AccentRed else AccentCyan,
                         modifier = Modifier.size(20.dp)

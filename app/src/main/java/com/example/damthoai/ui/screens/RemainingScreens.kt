@@ -1,12 +1,16 @@
 package com.example.damthoai.ui.screens
 
+import com.example.damthoai.ui.components.BackButton
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +30,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,14 +45,18 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.damthoai.ui.components.QrCodeImage
+import com.example.damthoai.ui.theme.PrimaryBrush
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.damthoai.R
@@ -888,14 +897,72 @@ fun MyQrCodeScreen(
     onBack: () -> Unit,
     onShare: () -> Unit,
     modifier: Modifier = Modifier,
-    event: Event = FakeRemainingUiData.event,
+    event: Event = FakeEventRepository.currentEvent.value ?: FakeRemainingUiData.event,
     channel: Channel? = null
 ) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    val currentEvent = FakeEventRepository.currentEvent.value ?: event
+    val currentMember = currentEvent.members.firstOrNull { it.id == currentEvent.ownerId }
+        ?: currentEvent.members.firstOrNull()
+        ?: FakeRemainingUiData.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
+    val userLevel = currentMember.level
+
+    if (userLevel == MemberLevel.LEVEL_3) {
+        LaunchedEffect(Unit) {
+            android.widget.Toast.makeText(context, "Cấp 3 không được phép truy cập màn hình này.", android.widget.Toast.LENGTH_SHORT).show()
+            onBack()
+        }
+        return
+    }
+
+    val allChannels = currentEvent.channels.ifEmpty { FakeRemainingUiData.event.channels }
+    val channels = when (userLevel) {
+        MemberLevel.LEVEL_1 -> allChannels
+        MemberLevel.LEVEL_2 -> allChannels.filter { it.name.contains(currentMember.roleTitle, ignoreCase = true) || it.isDefault }
+        else -> emptyList()
+    }.ifEmpty { allChannels }
+
+    var selectedChannelId by rememberSaveable { mutableStateOf(channel?.id ?: channels.firstOrNull()?.id ?: "") }
+    val selectedChannel = channels.firstOrNull { it.id == selectedChannelId } ?: channels.firstOrNull() ?: allChannels.first()
+
     ScreenFrame("Mã QR của ban", onBack, modifier) {
+        if (channels.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                channels.forEach { ch ->
+                    val selected = ch.id == selectedChannel.id
+                    Box(
+                        modifier = Modifier
+                            .height(34.dp)
+                            .clip(CircleShape)
+                            .background(if (selected) AccentCyan else GlassBg)
+                            .border(1.dp, if (selected) AccentCyan else GlassBorder, CircleShape)
+                            .clickable { selectedChannelId = ch.id }
+                            .padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = ch.name,
+                            color = if (selected) TextPrimary else TextSecondary,
+                            style = DamType.Small.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+
         GlassCard(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(20.dp)
+            contentPadding = PaddingValues(20.dp)
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -903,40 +970,119 @@ fun MyQrCodeScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    channel?.name ?: event.name,
+                    text = "Mã vào kênh ${selectedChannel.name}",
                     color = TextPrimary,
-                    style = DamType.Heading,
-                    textAlign = TextAlign.Center
+                    style = DamType.Heading.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                Box(
-                    modifier = Modifier
-                        .size(200.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(TextPrimary),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_qr),
-                        contentDescription = channel?.qrPayload ?: "Mã QR",
-                        tint = PrimaryStart,
-                        modifier = Modifier.size(140.dp)
-                    )
-                }
-                SectionLabel(if (channel == null) "MÃ PIN CỦA SỰ KIỆN" else "MÃ PIN CỦA KÊNH")
-                Text(channel?.pin ?: event.pinCode, color = AccentCyan, style = DamType.PinBig)
+
+                val qrContent = selectedChannel.qrPayload.ifBlank { "damthoai://join?channel=${selectedChannel.id}&pin=${selectedChannel.pin}" }
+                QrCodeImage(
+                    content = qrContent,
+                    size = 200.dp,
+                    contentDescription = "Mã QR kênh ${selectedChannel.name}"
+                )
+
                 Text(
-                    "Quét mã QR của ban hoặc nhập PIN để vào sự kiện.",
+                    text = "MÃ PIN",
+                    color = TextSecondary,
+                    style = DamType.Small.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                )
+                Text(
+                    text = selectedChannel.pin.ifBlank { currentEvent.pinCode },
+                    color = AccentCyan,
+                    style = DamType.PinBig
+                )
+                Text(
+                    text = "Quét mã QR hoặc nhập PIN để tham gia kênh ${selectedChannel.name}.",
                     color = TextSecondary,
                     style = DamType.Body,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
-        SecondaryButton(
-            text = "Chia sẻ mã",
-            onClick = onShare,
-            modifier = Modifier.fillMaxWidth()
-        )
+
+        Spacer(Modifier.height(16.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(GlassBg)
+                    .border(1.5.dp, AccentCyan, RoundedCornerShape(18.dp))
+                    .clickable {
+                        val link = selectedChannel.qrPayload.ifBlank { "damthoai://join?channel=${selectedChannel.id}&pin=${selectedChannel.pin}" }
+                        clipboardManager.setText(AnnotatedString(link))
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_copy),
+                        contentDescription = "Sao chép liên kết",
+                        tint = AccentCyan,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Sao chép",
+                        color = AccentCyan,
+                        style = DamType.Button.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold),
+                        maxLines = 1
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(PrimaryBrush)
+                    .clickable {
+                        val link = selectedChannel.qrPayload.ifBlank { "damthoai://join?channel=${selectedChannel.id}&pin=${selectedChannel.pin}" }
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, link)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Chia sẻ mã QR kênh"))
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_share),
+                        contentDescription = "Chia sẻ",
+                        tint = TextPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Chia sẻ",
+                        color = TextPrimary,
+                        style = DamType.Button.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold),
+                        maxLines = 1
+                    )
+                }
+            }
+        }
     }
 }
 
