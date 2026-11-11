@@ -30,6 +30,7 @@ class WebRTCClient(private val context: Context) {
     private var audioTrack: AudioTrack? = null
     private var audioSource: AudioSource? = null
     private var isOutputMuted: Boolean = false
+    private val remoteAudioTracks = mutableListOf<AudioTrack>()
 
     /**
      * Cập nhật danh sách ICE Servers nhận từ Signaling Server
@@ -67,10 +68,38 @@ class WebRTCClient(private val context: Context) {
     }
 
     /**
-     * Khóa/mở âm thanh đầu ra để bảo vệ chống lọt tiếng khi rút tai nghe (Tuần 4 - TV2/TV4)
+     * Khóa/mở âm thanh đầu ra để bảo vệ chống lọt tiếng khi rút tai nghe (Dùng cho AudioRouteGuard - Tuần 5).
+     * Bật/tắt trạng thái phát của tất cả AudioTrack nhận từ phía đối tác.
      */
+    @Synchronized
     fun setOutputMuted(muted: Boolean) {
         isOutputMuted = muted
+        remoteAudioTracks.forEach { track ->
+            try {
+                track.setEnabled(!muted)
+            } catch (ignored: Throwable) {}
+        }
+    }
+
+    @Synchronized
+    fun handleRemoteStreamAdded(stream: MediaStream?) {
+        stream?.audioTracks?.forEach { track ->
+            if (track != null && !remoteAudioTracks.contains(track)) {
+                remoteAudioTracks.add(track)
+                try {
+                    track.setEnabled(!isOutputMuted)
+                } catch (ignored: Throwable) {}
+            }
+        }
+    }
+
+    @Synchronized
+    fun handleRemoteStreamRemoved(stream: MediaStream?) {
+        stream?.audioTracks?.forEach { track ->
+            if (track != null) {
+                remoteAudioTracks.remove(track)
+            }
+        }
     }
 
     /**
@@ -155,7 +184,9 @@ class WebRTCClient(private val context: Context) {
     /**
      * Đóng và giải phóng tài nguyên WebRTC
      */
+    @Synchronized
     fun close() {
+        remoteAudioTracks.clear()
         audioTrack?.dispose()
         audioSource?.dispose()
         audioTrack = null
@@ -178,15 +209,21 @@ open class SimpleSdpObserver : SdpObserver {
 }
 
 // Lớp phụ trợ cho PeerConnection.Observer
-open class CustomPeerConnectionObserver : PeerConnection.Observer {
+open class CustomPeerConnectionObserver(
+    private val webRTCClient: WebRTCClient? = null
+) : PeerConnection.Observer {
     override fun onSignalingChange(p0: PeerConnection.SignalingState?) {}
     override fun onIceConnectionChange(p0: PeerConnection.IceConnectionState?) {}
     override fun onIceConnectionReceivingChange(p0: Boolean) {}
     override fun onIceGatheringChange(p0: PeerConnection.IceGatheringState?) {}
     override fun onIceCandidate(p0: org.webrtc.IceCandidate?) {}
     override fun onIceCandidatesRemoved(p0: Array<out org.webrtc.IceCandidate>?) {}
-    override fun onAddStream(p0: org.webrtc.MediaStream?) {}
-    override fun onRemoveStream(p0: org.webrtc.MediaStream?) {}
+    override fun onAddStream(p0: org.webrtc.MediaStream?) {
+        webRTCClient?.handleRemoteStreamAdded(p0)
+    }
+    override fun onRemoveStream(p0: org.webrtc.MediaStream?) {
+        webRTCClient?.handleRemoteStreamRemoved(p0)
+    }
     override fun onDataChannel(p0: org.webrtc.DataChannel?) {}
     override fun onRenegotiationNeeded() {}
 }

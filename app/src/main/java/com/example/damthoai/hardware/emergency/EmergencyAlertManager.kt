@@ -71,6 +71,10 @@ object EmergencyAlertManager {
         val scheduledJob: Job
 
         synchronized(lock) {
+            if (_currentAlert.value?.id == alert.id) {
+                // Idempotent: Cùng alert.id đang chạy thì không kích hoạt lại chồng vòng lặp
+                return
+            }
             generation += 1
             val token = generation
             val previousJob = alertJob

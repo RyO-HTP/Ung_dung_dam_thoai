@@ -169,9 +169,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Cập nhật lại trạng thái quyền khi ứng dụng quay lại foreground
+        // Cập nhật lại trạng thái quyền và khôi phục MediaSession tai nghe khi ứng dụng quay lại foreground
         PermissionManager.refreshPermissionStates(this, this)
         AccessibilityStatus.refresh(this)
+        HandsFreeSession.onResume(this)
     }
 
     override fun onDestroy() {

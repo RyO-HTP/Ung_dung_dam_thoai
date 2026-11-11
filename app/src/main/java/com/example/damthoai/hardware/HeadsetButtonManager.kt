@@ -109,6 +109,17 @@ object HeadsetButtonManager {
         timeoutScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     }
 
+    @Synchronized
+    fun reactivateSession() {
+        try {
+            mediaSession?.setActive(true)
+        } catch (exception: SecurityException) {
+            Log.e(TAG, "Không có quyền kích hoạt lại MediaSession tai nghe", exception)
+        } catch (exception: IllegalStateException) {
+            Log.e(TAG, "MediaSession tai nghe không thể kích hoạt lại ở trạng thái hiện tại", exception)
+        }
+    }
+
     private fun releaseAfterStartFailure(session: MediaSession) {
         try {
             session.release()

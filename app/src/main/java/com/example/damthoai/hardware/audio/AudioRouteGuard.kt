@@ -17,6 +17,34 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+internal data class RouteDecision(
+    val shouldMuteOutput: Boolean,
+    val shouldForceReleaseMic: Boolean,
+    val targetRoute: AudioRoute,
+    val incident: AudioIncident?
+)
+
+internal fun decideOnOutputRemoved(
+    userChoseSpeaker: Boolean,
+    hadMicOpen: Boolean,
+    deviceType: Int = 0
+): RouteDecision {
+    if (userChoseSpeaker) {
+        return RouteDecision(
+            shouldMuteOutput = false,
+            shouldForceReleaseMic = false,
+            targetRoute = AudioRoute.SPEAKER,
+            incident = null
+        )
+    }
+    return RouteDecision(
+        shouldMuteOutput = true,
+        shouldForceReleaseMic = hadMicOpen,
+        targetRoute = AudioRoute.EARPIECE,
+        incident = AudioIncident.HeadsetUnplugged(deviceType)
+    )
+}
+
 /**
  * Theo dõi tuyến đầu ra và ngăn tự chuyển âm thanh ra loa ngoài khi tai nghe bị ngắt.
  *
@@ -26,9 +54,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * - TV2 cài [AudioRouteController] qua [installController] để mute/unmute pipeline thật.
  *
  * Khi tai nghe rời, guard mute trước rồi chọn earpiece làm tuyến an toàn nếu có; nếu không,
- * đầu ra phải tiếp tục im lặng. Android có thể tự đổi tuyến media khi phát bằng STREAM_MUSIC,
- * còn MODE_IN_COMMUNICATION có thể ưu tiên earpiece. Vì vậy muteOutput của TV2 là hàng rào chính;
- * stub hiện tại chỉ log, chưa thể tự bảo đảm âm thanh vật lý im lặng.
+ * đầu ra phải tiếp tục im lặng. Chỉ unmute khi người dùng chủ động chọn tuyến qua [userSelectRoute].
  */
 object AudioRouteGuard {
 
@@ -71,7 +97,7 @@ object AudioRouteGuard {
                         _currentRoute.value = route
                     }
                 }
-                AudioIncidentBus.report(AudioIncident.HeadsetReconnected)
+                AudioIncidentBus.report(AudioIncident.HeadsetReconnected(newlyConnected.first().type))
             }
         }
 
@@ -298,14 +324,35 @@ object AudioRouteGuard {
 
     private fun handleDeviceRemoved(device: AudioDeviceInfo) {
         val route = routeForDevice(device.type) ?: return
-        val shouldProtectOutput = synchronized(lock) {
-            selectedRoute != AudioRoute.SPEAKER &&
-                (selectedRoute == null ||
-                    route == selectedRoute ||
-                    route == _currentRoute.value)
+        val (userChoseSpeaker, hadMicOpen) = synchronized(lock) {
+            Pair(selectedRoute == AudioRoute.SPEAKER, PttController.isPttActive.value)
         }
 
-        if (shouldProtectOutput) protectOutputAfterDisconnect()
+        val decision = decideOnOutputRemoved(userChoseSpeaker, hadMicOpen, device.type)
+
+        if (decision.shouldMuteOutput) {
+            val routeController = synchronized(lock) { controller }
+            runSafely(onError = { false }) {
+                routeController.muteOutput()
+                true
+            }
+            synchronized(lock) { _outputMuted.value = true }
+        }
+
+        if (decision.shouldForceReleaseMic) {
+            PttController.forceReleasePtt()
+        }
+
+        val manager = synchronized(lock) { audioManager }
+        if (decision.targetRoute == AudioRoute.EARPIECE && availableRoutes.value.contains(AudioRoute.EARPIECE)) {
+            applySafeNonSpeakerRoute(manager)
+            val routeController = synchronized(lock) { controller }
+            runSafely(onError = { false }) {
+                routeController.routeTo(AudioRoute.EARPIECE)
+                true
+            }
+            synchronized(lock) { _currentRoute.value = AudioRoute.EARPIECE }
+        }
 
         val key = "${device.type}:${device.id}"
         val now = System.currentTimeMillis()
@@ -320,36 +367,10 @@ object AudioRouteGuard {
         }
         if (!shouldReport) return
 
-        when (route) {
-            AudioRoute.BLUETOOTH -> AudioIncidentBus.report(AudioIncident.BluetoothDisconnected)
-            AudioRoute.HEADSET -> AudioIncidentBus.report(
-                AudioIncident.HeadsetUnplugged(device.type)
-            )
-            else -> Unit
-        }
-    }
-
-    private fun protectOutputAfterDisconnect() {
-        val routeController = synchronized(lock) { controller }
-        runSafely(onError = { false }) {
-            routeController.muteOutput()
-            true
-        }
-        synchronized(lock) { _outputMuted.value = true }
-
-        if (PttController.isPttActive.value) {
-            PttController.forceReleasePtt()
-        }
-
-        val manager = synchronized(lock) { audioManager }
-        applySafeNonSpeakerRoute(manager)
-
-        if (availableRoutes.value.contains(AudioRoute.EARPIECE)) {
-            runSafely(onError = { false }) {
-                routeController.routeTo(AudioRoute.EARPIECE)
-                true
-            }
-            synchronized(lock) { _currentRoute.value = AudioRoute.EARPIECE }
+        if (decision.incident != null) {
+            AudioIncidentBus.report(decision.incident)
+        } else if (route == AudioRoute.BLUETOOTH) {
+            AudioIncidentBus.report(AudioIncident.BluetoothDisconnected())
         }
     }
 
@@ -401,7 +422,6 @@ object AudioRouteGuard {
             if (route == AudioRoute.EARPIECE || route == AudioRoute.SPEAKER) {
                 manager.clearCommunicationDevice()
             }
-            // Wired/A2DP and some built-in routes are managed by the TV2 audio pipeline.
             return true
         }
 

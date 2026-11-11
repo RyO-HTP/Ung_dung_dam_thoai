@@ -33,7 +33,7 @@ object AudioFocusGuard {
                     focusWasLost = false
                     hadLostFocus
                 }
-                if (regained) AudioIncidentBus.report(AudioIncident.AudioFocusRegained)
+                if (regained) AudioIncidentBus.report(AudioIncident.AudioFocusRegained())
             }
 
             AudioManager.AUDIOFOCUS_LOSS,

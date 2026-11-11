@@ -783,10 +783,10 @@ object FieldTestLogger {
 
     private fun incidentSource(incident: AudioIncident): String = when (incident) {
         is AudioIncident.HeadsetUnplugged -> "HeadsetUnplugged"
-        AudioIncident.HeadsetReconnected -> "HeadsetReconnected"
-        AudioIncident.BluetoothDisconnected -> "BluetoothDisconnected"
+        is AudioIncident.HeadsetReconnected -> "HeadsetReconnected"
+        is AudioIncident.BluetoothDisconnected -> "BluetoothDisconnected"
         is AudioIncident.AudioFocusLost -> "AudioFocusLost"
-        AudioIncident.AudioFocusRegained -> "AudioFocusRegained"
+        is AudioIncident.AudioFocusRegained -> "AudioFocusRegained"
         is AudioIncident.MicUnavailable -> "MicUnavailable"
         is AudioIncident.AudioPermissionRevoked -> "AudioPermissionRevoked"
         is AudioIncident.AudioRouteFailed -> "AudioRouteFailed"
@@ -795,10 +795,10 @@ object FieldTestLogger {
 
     private fun AudioIncident.toLogText(): String = when (this) {
         is AudioIncident.HeadsetUnplugged -> "deviceType=$deviceType"
-        AudioIncident.HeadsetReconnected -> "headset reconnected"
-        AudioIncident.BluetoothDisconnected -> "Bluetooth disconnected"
+        is AudioIncident.HeadsetReconnected -> "headset reconnected"
+        is AudioIncident.BluetoothDisconnected -> "Bluetooth disconnected"
         is AudioIncident.AudioFocusLost -> reason
-        AudioIncident.AudioFocusRegained -> "focus regained"
+        is AudioIncident.AudioFocusRegained -> "focus regained"
         is AudioIncident.MicUnavailable -> reason
         is AudioIncident.AudioPermissionRevoked -> permission
         is AudioIncident.AudioRouteFailed -> reason

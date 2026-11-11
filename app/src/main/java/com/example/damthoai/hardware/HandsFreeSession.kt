@@ -6,9 +6,11 @@ import android.util.Log
 /**
  * Quản lý định tuyến nút tai nghe trong phiên đàm thoại rảnh tay.
  *
- * ĐIỂM NỐI TV2: Foreground Service gọi [start] khi phiên nền bắt đầu và [stop] khi kết thúc.
- * Trước khi có Service, [PttController.acquireCapture] và [PttController.releaseCapture]
- * tự đồng bộ trạng thái này để phiên MediaSession chỉ chạy trong lúc capture hoạt động.
+ * ĐIỂM NỐI TV2:
+ * - Foreground Service của TV2 sẽ gọi [start] khi bắt đầu phiên thoại nền và [stop] khi kết thúc.
+ * - KHÔNG tự tạo Foreground Service trong module phần cứng.
+ * - Trước khi có Service, [PttController.acquireCapture] và [PttController.releaseCapture]
+ *   tự đồng bộ trạng thái này để phiên MediaSession chỉ chạy trong lúc capture hoạt động.
  */
 object HandsFreeSession {
 
@@ -46,10 +48,22 @@ object HandsFreeSession {
         }
     }
 
+    fun onResume(context: Context) {
+        synchronized(lock) {
+            applicationContext = context.applicationContext
+            if (running) {
+                HeadsetButtonManager.reactivateSession()
+            }
+        }
+    }
+
     internal fun onCaptureActiveChanged(active: Boolean) {
         synchronized(lock) {
             captureActive = active
             reconcile()
+            if (active && running) {
+                HeadsetButtonManager.reactivateSession()
+            }
         }
     }
 

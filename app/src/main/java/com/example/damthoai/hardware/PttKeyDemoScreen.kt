@@ -526,13 +526,13 @@ private fun AudioIncident.toDisplayText(context: android.content.Context): Strin
     when (this) {
         is AudioIncident.HeadsetUnplugged ->
             context.getString(R.string.audio_incident_headset_unplugged, deviceType)
-        AudioIncident.HeadsetReconnected ->
+        is AudioIncident.HeadsetReconnected ->
             context.getString(R.string.audio_incident_headset_reconnected)
-        AudioIncident.BluetoothDisconnected ->
+        is AudioIncident.BluetoothDisconnected ->
             context.getString(R.string.audio_incident_bluetooth_disconnected)
         is AudioIncident.AudioFocusLost ->
             context.getString(R.string.audio_incident_focus_lost, reason)
-        AudioIncident.AudioFocusRegained ->
+        is AudioIncident.AudioFocusRegained ->
             context.getString(R.string.audio_incident_focus_regained)
         is AudioIncident.MicUnavailable ->
             context.getString(R.string.audio_incident_mic_unavailable, reason)
