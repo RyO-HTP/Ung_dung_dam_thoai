@@ -28,7 +28,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
-import com.example.damthoai.data.fake.FakeRepositories
+import com.example.damthoai.data.Channel
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.KitSwitch
 import com.example.damthoai.ui.theme.AccentAmber
@@ -183,11 +183,12 @@ fun ChannelMenuSheet(
 @Preview(widthDp = 390, heightDp = 844)
 @Composable
 private fun ChannelMenuSheetPreview() {
-    val channel = FakeRepositories.sampleChannels[1]
     DamThoaiTheme {
         DamThoaiBackground {
             ChannelMenuSheet(
-                channelItem = ChannelItemUiState(channel = channel),
+                channelItem = ChannelItemUiState(
+                    channel = Channel(id = "ch_01", name = "Toàn sự kiện", isDefault = true)
+                ),
                 onDismiss = {},
                 onToggleMute = {},
                 onLeaveChannel = {}

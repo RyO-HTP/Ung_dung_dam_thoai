@@ -83,6 +83,17 @@ class SignalingClient(
     val events: SharedFlow<SignalingEvent> = _events.asSharedFlow()
 
     /**
+     * Kiểm tra xem WebSocket đã thực sự kết nối và sẵn sàng truyền dữ liệu chưa
+     */
+    fun isConnected(): Boolean {
+        return when (_connectionState.value) {
+            is SignalingConnectionState.Connected,
+            is SignalingConnectionState.Registered -> true
+            else -> false
+        }
+    }
+
+    /**
      * Bắt đầu kết nối tới máy chủ Signaling và tự động gửi Handshake đăng ký
      * @param serverUrl URL dạng ws://[IP]:8765
      * @param userId Định danh người dùng (vd: "Tong_Dao_Dien")

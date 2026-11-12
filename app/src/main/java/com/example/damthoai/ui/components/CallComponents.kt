@@ -22,36 +22,38 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+
 import com.example.damthoai.R
-import com.example.damthoai.data.fake.FakeVolumeChannel
+import com.example.damthoai.data.Channel
 import com.example.damthoai.hardware.HapticController
 import com.example.damthoai.ui.screens.CallUiState
 import com.example.damthoai.ui.screens.CallUiState.CallBusy
 import com.example.damthoai.ui.screens.CallUiState.CallCut
 import com.example.damthoai.ui.screens.CallUiState.CallOffline
+import com.example.damthoai.ui.theme.AccentCyan
+import com.example.damthoai.ui.theme.AccentRed
 import com.example.damthoai.ui.theme.CallPttEnd
 import com.example.damthoai.ui.theme.CallPttGlow
 import com.example.damthoai.ui.theme.CallPttHighlight
@@ -59,25 +61,23 @@ import com.example.damthoai.ui.theme.CallPttMid
 import com.example.damthoai.ui.theme.CallPttRing
 import com.example.damthoai.ui.theme.CallVolumeEnd
 import com.example.damthoai.ui.theme.CallVolumeStart
-import com.example.damthoai.ui.theme.AccentCyan
-import com.example.damthoai.ui.theme.AccentRed
 import com.example.damthoai.ui.theme.DamType
 import com.example.damthoai.ui.theme.DangerText
 import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.GlassBorder
 import com.example.damthoai.ui.theme.PrimaryEnd
 import com.example.damthoai.ui.theme.PrimaryStart
+import com.example.damthoai.ui.theme.PureWhite
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
-import com.example.damthoai.ui.theme.PureWhite
 import com.example.damthoai.ui.theme.Transparent
 import com.example.damthoai.ui.theme.cssGradient
 
 @Composable
 fun PttButton(
-    size: Dp,
     state: CallUiState,
     modifier: Modifier = Modifier,
+    size: Dp = 100.dp,
     onPress: () -> Unit = {},
     onRelease: (Boolean) -> Unit = {}
 ) {
@@ -154,7 +154,6 @@ fun PttButton(
                 modifier = Modifier.size(36.dp)
             )
             Spacer(Modifier.height(6.dp))
-            // Tuần 3: sửa - dùng cỡ chữ đầy đủ từ DamType.Button.
             Text(
                 text = label,
                 style = DamType.Button,
@@ -167,13 +166,17 @@ fun PttButton(
 
 @Composable
 fun VolumeRow(
-    channel: FakeVolumeChannel,
+    channel: Channel,
+    volume: Float,
     modifier: Modifier = Modifier,
+    isAudioDucked: Boolean = false,
+    tag: String? = null,
+    iconRes: Int = R.drawable.ic_vol,
     onVolumeChange: (Float) -> Unit = {}
 ) {
-    val isLowVolume = channel.volume < 0.30f
+    val isLowVolume = volume < 0.30f
     val percentColor = if (isLowVolume) TextSecondary.copy(alpha = 0.6f) else TextSecondary
-    val isDucked = channel.isDucked || channel.tag?.contains("HẠ ÂM") == true
+    val isDucked = isAudioDucked || tag?.contains(other = "HẠ ÂM") == true
 
     val currentDensity = LocalDensity.current
     val cappedDensity = remember(currentDensity) {
@@ -186,7 +189,7 @@ fun VolumeRow(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    painter = painterResource(channel.iconRes),
+                    painter = painterResource(iconRes),
                     contentDescription = null,
                     tint = TextSecondary,
                     modifier = Modifier.size(16.dp)
@@ -198,7 +201,7 @@ fun VolumeRow(
                     color = TextPrimary,
                     style = DamType.Body13.copy(fontWeight = FontWeight.SemiBold)
                 )
-                if (channel.tag != null) {
+                if (tag != null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (isDucked) {
                             Icon(
@@ -209,24 +212,28 @@ fun VolumeRow(
                             )
                             Spacer(Modifier.width(4.dp))
                         }
-                        TagLabel(text = channel.tag, color = AccentCyan)
+                        // Nếu TagLabel báo lỗi, hãy đảm bảo bạn đã import hoặc khai báo nó ở file khác
+                        TagLabel(text = tag, color = AccentCyan)
                     }
                 } else {
                     Text(
-                        text = "${(channel.volume * 100).toInt()}%",
+                        text = "${(volume * 100).toInt()}%",
                         color = percentColor,
                         style = DamType.Muted
                     )
                 }
             }
-            Text(
-                text = channel.speaker,
-                modifier = Modifier.padding(start = 24.dp, top = 1.dp, bottom = 2.dp),
-                color = channel.speakerColor,
-                style = DamType.Small
-            )
+
+            // Xóa phần channel.speaker nếu data class Channel thật không có, hoặc giữ lại nếu có.
+            // Text(
+            //     text = channel.speaker,
+            //     modifier = Modifier.padding(start = 24.dp, top = 1.dp, bottom = 2.dp),
+            //     color = channel.speakerColor,
+            //     style = DamType.Small
+            // )
+
             VolumeSlider(
-                value = channel.volume,
+                value = volume,
                 onValueChange = onVolumeChange,
                 isLocked = isDucked,
                 modifier = Modifier.fillMaxWidth()
@@ -264,8 +271,7 @@ private fun VolumeSlider(
                     onDrag = { change, _ ->
                         val inset = 8.dp.toPx()
                         onValueChange(
-                            ((change.position.x - inset) / (size.width - inset * 2f))
-                                .coerceIn(0f, 1f)
+                            ((change.position.x - inset) / (size.width - inset * 2f)).coerceIn(0f, 1f)
                         )
                         change.consume()
                     }
@@ -292,7 +298,6 @@ private fun VolumeSlider(
             val radius = trackHeight / 2f
             val totalTrackWidth = size.width - inset * 2f
 
-            // Unfilled background track
             drawRoundRect(
                 color = com.example.damthoai.ui.theme.CallVolumeInactive,
                 topLeft = Offset(inset, centerY - radius),
@@ -300,7 +305,6 @@ private fun VolumeSlider(
                 cornerRadius = CornerRadius(radius, radius)
             )
 
-            // Filled track from start to knob position
             val filledWidth = totalTrackWidth * clampedValue
             if (filledWidth > 0f) {
                 val alpha = (0.55f + 0.45f * clampedValue).coerceIn(0.55f, 1.0f)
@@ -343,7 +347,6 @@ fun CallStatusBanner(
     queuedCount: Int = 1,
     modifier: Modifier = Modifier
 ) {
-    // Tuần 3: sửa - dùng typography DamType thay cho cỡ chữ thu nhỏ.
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -436,7 +439,6 @@ private fun ActionItem(
     selected: Boolean = false,
     enabled: Boolean = true
 ) {
-    // Tuần 3: sửa - nút tròn 54dp, nhãn DamType.Small có cỡ 11.5sp.
     Column(
         modifier = Modifier
             .width(78.dp)
@@ -470,7 +472,6 @@ private fun ActionItem(
                 contentDescription = label,
                 tint = when {
                     label == "Khẩn cấp" -> DangerText
-                    selected -> TextPrimary
                     else -> TextPrimary
                 },
                 modifier = Modifier.size(16.dp)

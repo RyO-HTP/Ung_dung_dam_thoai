@@ -6,7 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -58,10 +57,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.LaunchedEffect
 import com.example.damthoai.R
-import com.example.damthoai.data.fake.MemberLevel
+import com.example.damthoai.data.MemberLevel
 import com.example.damthoai.ui.theme.AccentAmber
 import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.AccentMint

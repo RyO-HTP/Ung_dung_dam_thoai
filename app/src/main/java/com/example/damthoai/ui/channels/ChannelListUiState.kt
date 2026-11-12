@@ -1,12 +1,10 @@
 /**
  * Path: app/src/main/java/com/example/damthoai/ui/channels/ChannelListUiState.kt
- *
- * Khối KDoc tiếng Việt:
  * Định nghĩa Trạng thái UI (UiState) cho màn hình Danh sách Kênh.
  */
 package com.example.damthoai.ui.channels
 
-import com.example.damthoai.data.fake.Channel
+import com.example.damthoai.data.Channel
 
 data class ChannelItemUiState(
     val channel: Channel,
@@ -27,7 +25,12 @@ data class ChannelListUiState(
     val roleChangedNotification: RoleChangedUiState? = null
 )
 
+// Cấu trúc trạng thái thông báo động thực tế, tích hợp sẵn chuỗi hiển thị
 data class RoleChangedUiState(
-    val title: String = "Lan Phương đã đổi chức vụ của bạn",
-    val subtitle: String = "Trưởng ban Hậu cần · Cấp 2"
-)
+    val changedByName: String,   // Tên người thực hiện đổi (Ví dụ: Tổng đạo diễn)
+    val newRoleTitle: String,    // Chức vụ mới (Ví dụ: Trưởng ban Hậu cần)
+    val newLevelCode: Int        // Cấp bậc mới (1, 2, 3)
+) {
+    val title: String get() = "$changedByName đã đổi chức vụ của bạn"
+    val subtitle: String get() = "$newRoleTitle · Cấp $newLevelCode"
+}

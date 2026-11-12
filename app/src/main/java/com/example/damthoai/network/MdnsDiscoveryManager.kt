@@ -3,6 +3,7 @@ package com.example.damthoai.network
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.net.wifi.WifiManager
 import android.util.Log
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,8 +36,14 @@ class MdnsDiscoveryManager(context: Context) {
 
     private val nsdManager: NsdManager =
         context.applicationContext.getSystemService(Context.NSD_SERVICE) as NsdManager
-
+    private val wifiManager = 
+        context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+    
+    // Cần thiết để duy trì luồng UDP mDNS khi ứng dụng chạy nền
+    private var multicastLock: WifiManager.MulticastLock? = null
+    
     private var discoveryListener: NsdManager.DiscoveryListener? = null
+    private var registrationListener: NsdManager.RegistrationListener? = null
     private var isDiscovering: Boolean = false
 
     private val _isSearching = MutableStateFlow(false)
@@ -46,10 +53,17 @@ class MdnsDiscoveryManager(context: Context) {
     val serverFound: SharedFlow<DiscoveredSignalingServer> = _serverFound.asSharedFlow()
 
     /**
-     * Bắt đầu quét mạng tìm máy chủ bộ đàm
+     * Bắt đầu quét mạng tìm máy chủ bộ đàm (Client Mode)
      */
     fun startDiscovery() {
         if (isDiscovering) return
+
+        // Khởi tạo và cấp quyền giữ Multicast Lock để không bị HĐH cắt sóng mDNS
+        if (multicastLock == null) {
+            multicastLock = wifiManager.createMulticastLock("DamThoai_mDNS_Lock")
+            multicastLock?.setReferenceCounted(true)
+        }
+        multicastLock?.acquire()
 
         discoveryListener = object : NsdManager.DiscoveryListener {
             override fun onStartDiscoveryFailed(serviceType: String?, errorCode: Int) {
@@ -94,6 +108,7 @@ class MdnsDiscoveryManager(context: Context) {
             Log.e(TAG, "Lỗi khi gọi discoverServices: ${e.message}", e)
             _isSearching.value = false
             isDiscovering = false
+            multicastLock?.release()
         }
     }
 
@@ -132,18 +147,69 @@ class MdnsDiscoveryManager(context: Context) {
     }
 
     /**
-     * Dừng quét dịch vụ mDNS
+     * Kích hoạt điện thoại này trở thành Host mDNS phát sóng trong mạng LAN (Host Mode)
+     * Dùng cho cơ chế thiết bị Android tự làm Signaling Server
+     * @param port Cổng dịch vụ (vd: 8080)
+     */
+    fun registerLocalService(port: Int) {
+        val serviceInfo = NsdServiceInfo().apply {
+            serviceName = "BoDam_Local_Host"
+            serviceType = SERVICE_TYPE
+            setPort(port)
+        }
+
+        registrationListener = object : NsdManager.RegistrationListener {
+            override fun onServiceRegistered(registeredService: NsdServiceInfo) {
+                Log.d(TAG, "Đã phát sóng mDNS thành công. Tên dịch vụ: ${registeredService.serviceName}")
+            }
+            override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                Log.e(TAG, "Lỗi phát sóng mDNS: mã lỗi $errorCode")
+            }
+            override fun onServiceUnregistered(arg0: NsdServiceInfo) {
+                Log.d(TAG, "Đã dừng phát sóng mDNS.")
+            }
+            override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                Log.e(TAG, "Lỗi dừng phát sóng mDNS: mã lỗi $errorCode")
+            }
+        }
+        
+        try {
+            nsdManager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
+        } catch (e: Exception) {
+            Log.e(TAG, "Lỗi khi gọi registerService: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Dừng mọi dịch vụ dò tìm và phát sóng mDNS
      */
     fun stopDiscovery() {
-        if (!isDiscovering) return
+        // 1. Dừng chế độ phát Host (nếu có)
         try {
-            discoveryListener?.let { nsdManager.stopServiceDiscovery(it) }
+            registrationListener?.let { 
+                nsdManager.unregisterService(it) 
+                registrationListener = null
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Lỗi khi dừng NsdManager: ${e.message}", e)
-        } finally {
-            discoveryListener = null
-            isDiscovering = false
-            _isSearching.value = false
+            Log.e(TAG, "Lỗi khi hủy đăng ký mDNS Host: ${e.message}")
+        }
+        
+        // 2. Dừng chế độ quét Client
+        if (isDiscovering) {
+            try {
+                discoveryListener?.let { nsdManager.stopServiceDiscovery(it) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Lỗi khi dừng NsdManager: ${e.message}", e)
+            } finally {
+                discoveryListener = null
+                isDiscovering = false
+                _isSearching.value = false
+            }
+        }
+        
+        // 3. Hủy bỏ Multicast Lock
+        if (multicastLock?.isHeld == true) {
+            multicastLock?.release()
         }
     }
 }

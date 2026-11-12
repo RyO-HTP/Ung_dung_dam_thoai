@@ -20,7 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
-import com.example.damthoai.data.fake.LiveCue
+import com.example.damthoai.data.LiveCue
 import com.example.damthoai.ui.theme.AccentAmber
 import com.example.damthoai.ui.theme.CueBorder
 import com.example.damthoai.ui.theme.CueGradientEnd

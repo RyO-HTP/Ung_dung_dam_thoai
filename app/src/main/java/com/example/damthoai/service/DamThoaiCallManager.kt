@@ -88,7 +88,7 @@ class DamThoaiCallManager private constructor(private val context: Context) {
     fun autoDiscoverAndConnect(userId: String) {
         scope.launch {
             mdnsDiscovery.serverFound.collect { server ->
-                Log.d(TAG, "Tự động phát hiện server: ${server.wsUrl}, tiến hành kết nối...")
+                Log.d(TAG, "Tự động phát hiện server qua mDNS: ${server.wsUrl}, tiến hành kết nối...")
                 signalingClient.connect(server.wsUrl, userId)
                 mdnsDiscovery.stopDiscovery()
             }
@@ -156,9 +156,9 @@ class DamThoaiCallManager private constructor(private val context: Context) {
 
         setupPeerConnection(targetUserId)
         
-        // Kích hoạt theo dõi chuyển mạng và micro Bluetooth
+        // Kích hoạt theo dõi chuyển mạng và định tuyến âm thanh thông minh
         startNetworkMonitoring()
-        enableBluetoothScoAudio()
+        setupSmartAudioRouting()
 
         webRTCClient.createOffer(
             onSuccess = { sdp ->
@@ -184,9 +184,9 @@ class DamThoaiCallManager private constructor(private val context: Context) {
 
         setupPeerConnection(senderUserId)
         
-        // Kích hoạt theo dõi chuyển mạng và micro Bluetooth
+        // Kích hoạt theo dõi chuyển mạng và định tuyến âm thanh thông minh
         startNetworkMonitoring()
-        enableBluetoothScoAudio()
+        setupSmartAudioRouting()
 
         val offerSdp = SessionDescription(SessionDescription.Type.OFFER, offerSdpStr)
         webRTCClient.setRemoteDescription(offerSdp, onSuccess = {
@@ -278,10 +278,11 @@ class DamThoaiCallManager private constructor(private val context: Context) {
         com.example.damthoai.hardware.PttController.setPttModeEnabled(false)
         PttController.forceReleasePtt()
         
-        // Dọn dẹp tài nguyên mạng và Bluetooth
+        // Dọn dẹp tài nguyên mạng, mDNS và đưa âm thanh về mặc định
         networkChangeReceiver?.stop()
         networkChangeReceiver = null
-        disableBluetoothScoAudio()
+        releaseAudioRouting()
+        mdnsDiscovery.stopDiscovery()
     }
 
     /**
@@ -293,7 +294,7 @@ class DamThoaiCallManager private constructor(private val context: Context) {
         mdnsDiscovery.stopDiscovery()
     }
     
-    // --- CÁC HÀM XỬ LÝ NGOẠI VI (MẠNG & BLUETOOTH) ---
+    // --- CÁC HÀM XỬ LÝ NGOẠI VI (MẠNG & ÂM THANH) ---
 
     private fun startNetworkMonitoring() {
         if (networkChangeReceiver == null) {
@@ -308,6 +309,14 @@ class DamThoaiCallManager private constructor(private val context: Context) {
         val targetId = activePeerUserId ?: return
         Log.d(TAG, "Bắt đầu Seamless Handover tới $targetId...")
         
+        // TUẦN 5: NẾU MẤT KẾT NỐI INTERNET CLOUD -> TỰ ĐỘNG BẬT mDNS FALLBACK QUÉT LAN
+        if (!signalingClient.isConnected()) {
+            Log.w(TAG, "Mất kết nối Internet diện rộng! Đang kích hoạt mDNS Local LAN Fallback...")
+            autoDiscoverAndConnect(targetId)
+            return
+        }
+
+        // Nếu vẫn có mạng bình thường thì chạy ICE Restart của Tuần 4
         webRTCClient.restartIce(
             onSuccess = { sdp ->
                 Log.d(TAG, "Gửi Offer mới qua Signaling để nối lại cuộc gọi")
@@ -319,19 +328,48 @@ class DamThoaiCallManager private constructor(private val context: Context) {
         )
     }
 
-    private fun enableBluetoothScoAudio() {
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        if (audioManager.isBluetoothScoAvailableOffCall) {
-            audioManager.startBluetoothSco()
-            audioManager.isBluetoothScoOn = true
+    /**
+     * Định tuyến âm thanh thông minh: 
+     * Ưu tiên Tai nghe Bluetooth, nếu không có/lỗi thì tự động bật Loa ngoài (Speakerphone).
+     * Được bọc try-catch an toàn để chống crash SIGABRT trên máy ảo.
+     */
+    private fun setupSmartAudioRouting() {
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+
+            // Thử kết nối Bluetooth SCO nếu thiết bị hỗ trợ
+            if (audioManager.isBluetoothScoAvailableOffCall) {
+                try {
+                    audioManager.startBluetoothSco()
+                    audioManager.isBluetoothScoOn = true
+                    audioManager.isSpeakerphoneOn = false
+                    Log.d(TAG, "Đã định tuyến âm thanh sang: Tai nghe Bluetooth")
+                    return
+                } catch (e: Exception) {
+                    Log.e(TAG, "Lỗi kích hoạt Bluetooth SCO (bỏ qua): ${e.message}")
+                }
+            }
+
+            // Mặc định ép phát ra Loa ngoài to rõ cho ứng dụng bộ đàm
+            audioManager.isBluetoothScoOn = false
+            audioManager.isSpeakerphoneOn = true
+            Log.d(TAG, "Đã định tuyến âm thanh sang: Loa ngoài (Speakerphone)")
+        } catch (e: Exception) {
+            Log.e(TAG, "Lỗi thiết lập audio routing: ${e.message}")
         }
     }
 
-    private fun disableBluetoothScoAudio() {
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioManager.stopBluetoothSco()
-        audioManager.isBluetoothScoOn = false
-        audioManager.mode = AudioManager.MODE_NORMAL
+    private fun releaseAudioRouting() {
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            audioManager.stopBluetoothSco()
+            audioManager.isBluetoothScoOn = false
+            audioManager.isSpeakerphoneOn = false
+            audioManager.mode = AudioManager.MODE_NORMAL
+            Log.d(TAG, "Đã giải phóng tài nguyên Audio về mặc định")
+        } catch (e: Exception) {
+            Log.e(TAG, "Lỗi khi dọn dẹp audio: ${e.message}")
+        }
     }
 }

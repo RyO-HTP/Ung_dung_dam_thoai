@@ -25,7 +25,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.outerGlow
@@ -39,10 +38,11 @@ import com.example.damthoai.ui.theme.TextSecondary
 @Composable
 fun RoleChangedBanner(
     visible: Boolean,
-    title: String,
-    subtitle: String,
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    changedByName: String, // Tên người thực hiện đổi chức vụ (động)
+    newRoleTitle: String,   // Chức vụ mới được đổi
+    newLevelCode: Int,      // Cấp bậc mới (ví dụ: 1, 2, 3)
+    onDismiss: () -> Unit
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -72,12 +72,12 @@ fun RoleChangedBanner(
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    title,
+                    text = "$changedByName đã đổi chức vụ của bạn",
                     color = TextPrimary,
                     style = DamType.Heading13_5
                 )
                 Text(
-                    subtitle,
+                    text = "$newRoleTitle · Cấp $newLevelCode",
                     color = TextSecondary,
                     style = DamType.Small
                 )
@@ -94,8 +94,9 @@ private fun RoleChangedBannerPreview() {
             Box(Modifier.fillMaxSize()) {
                 RoleChangedBanner(
                     visible = true,
-                    title = "Lan Phương đã đổi chức vụ của bạn",
-                    subtitle = "Trưởng ban Hậu cần · Cấp 2",
+                    changedByName = "Tổng đạo diễn", // Có thể truyền tên bất kỳ ở đây
+                    newRoleTitle = "Trưởng ban Hậu cần",
+                    newLevelCode = 2,
                     onDismiss = {}
                 )
             }

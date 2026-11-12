@@ -4,11 +4,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -23,14 +23,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.example.damthoai.R
-import com.example.damthoai.data.fake.FakeCallData
-import com.example.damthoai.data.fake.FakeNetworkStatus
-import com.example.damthoai.data.fake.FakeRemainingUiData
-import com.example.damthoai.data.fake.NetworkStatus
+import com.example.damthoai.data.CallContent
+import com.example.damthoai.data.LiveCue
+import com.example.damthoai.data.NetworkStatus
 import com.example.damthoai.hardware.PttController
 import com.example.damthoai.hardware.PttSource
 import com.example.damthoai.hardware.audio.AudioRoute
@@ -73,16 +70,22 @@ fun ActiveCallScreen(
     onNavigateToEmergency: () -> Unit = {},
     networkStatusOverride: NetworkStatus? = null
 ) {
-    val observedNetworkStatus by FakeNetworkStatus.status.collectAsState()
+    val observedNetworkStatus = NetworkStatus.CONNECTED
     val networkStatus = networkStatusOverride ?: observedNetworkStatus
-    val liveCue by FakeRemainingUiData.liveCueState.collectAsState()
-    var isScreenPttPressed by remember(state) { mutableStateOf(false) }
-    val displayState = if (state == CallUiState.CallIdle && isScreenPttPressed) {
+
+    val liveCue: LiveCue? = null
+
+    val isScreenPttPressed = remember { mutableStateOf(false) }
+    val displayState = if (state == CallUiState.CallIdle && isScreenPttPressed.value) {
         CallUiState.CallTalk
     } else {
         state
     }
-    val content = FakeCallData.contentFor(displayState)
+
+    val content = CallContent(
+        title = "Kênh đàm thoại",
+        channels = emptyList()
+    )
     val currentAudioRoute by AudioRouteGuard.currentRoute.collectAsState()
     val availableAudioRoutes by AudioRouteGuard.availableRoutes.collectAsState()
     val headsetRoute = when {
@@ -92,7 +95,7 @@ fun ActiveCallScreen(
     }
     var queuedCount by remember { mutableStateOf(1) }
     var volumes by remember(state) {
-        mutableStateOf(content.channels.map { channel -> channel.volume })
+        mutableStateOf(content.channels.map { 1.0f })
     }
 
     DamThoaiBackground(modifier = modifier, variant = BgVariant.Default) {
@@ -109,7 +112,7 @@ fun ActiveCallScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-            ) {
+            )  {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -142,7 +145,8 @@ fun ActiveCallScreen(
                                 )
                                 content.channels.forEachIndexed { index, channel ->
                                     VolumeRow(
-                                        channel = channel.copy(volume = volumes[index]),
+                                        channel = channel,
+                                        volume = volumes.getOrElse(index) { 1.0f },
                                         onVolumeChange = { newValue ->
                                             volumes = volumes.toMutableList().also {
                                                 it[index] = newValue
@@ -165,12 +169,12 @@ fun ActiveCallScreen(
                             modifier = Modifier.heightIn(min = 120.dp),
                             onPress = {
                                 PttController.onKeyPressed(PttSource.SCREEN_BUTTON)
-                                isScreenPttPressed =
-                                    PttController.activeSource.value == PttSource.SCREEN_BUTTON
+                                isScreenPttPressed.value = (PttController.activeSource.value == PttSource.SCREEN_BUTTON)
                             },
                             onRelease = { wasReleased ->
                                 PttController.onKeyReleased(PttSource.SCREEN_BUTTON)
-                                isScreenPttPressed = false
+                                // SỬA TRIỆT ĐỂ: Dùng .value để gán thay vì gán trực tiếp biến val
+                                isScreenPttPressed.value = false
                                 if (wasReleased && state == CallUiState.CallOffline) queuedCount += 1
                             }
                         )
@@ -182,7 +186,7 @@ fun ActiveCallScreen(
                 onNavigateToEmergency = onNavigateToEmergency,
                 speakerSelected = currentAudioRoute == AudioRoute.SPEAKER,
                 headsetSelected = currentAudioRoute == AudioRoute.HEADSET ||
-                    currentAudioRoute == AudioRoute.BLUETOOTH,
+                        currentAudioRoute == AudioRoute.BLUETOOTH,
                 headsetEnabled = headsetRoute != null,
                 onSelectSpeaker = { AudioRouteGuard.userSelectRoute(AudioRoute.SPEAKER) },
                 onSelectHeadset = {
@@ -231,7 +235,6 @@ private fun CallHeader(onBack: () -> Unit, networkStatus: NetworkStatus) {
     }
 }
 
-// Tuần 3: sửa - preview kích thước màn hình thấp để kiểm tra hàng nút dưới.
 @Preview(widthDp = 360, heightDp = 740, showBackground = true)
 @Composable
 private fun ActiveCallSmallScreenPreview() {

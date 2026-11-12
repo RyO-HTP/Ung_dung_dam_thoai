@@ -1,57 +1,50 @@
 /**
  * Path: app/src/main/java/com/example/damthoai/ui/navigation/AppNavHost.kt
- *
- * Khối KDoc tiếng Việt:
  * Quản lý Sơ đồ Điều hướng (Navigation Host) chính cho ứng dụng Đàm Thoại.
- * Tích hợp các Màn hình thật: Onboarding, GrantPermission (PermissionScreen),
- * JoinChannelScreen (Quét QR / Nhập PIN), UserInfoScreen, và ChannelListScreen.
  */
 package com.example.damthoai.ui.navigation
 
-import android.content.Intent
-import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import kotlinx.coroutines.flow.collect
 import com.example.damthoai.data.AppStartPrefs
+import com.example.damthoai.data.LiveCue
 import com.example.damthoai.hardware.PttKeyDemoScreen
-import com.example.damthoai.hardware.emergency.EmergencyAlertManager
 import com.example.damthoai.hardware.emergency.EmergencyAlert
-import com.example.damthoai.data.fake.FakeRemainingUiData
-import com.example.damthoai.data.fake.FakeEventRepository
-import com.example.damthoai.data.fake.MemberLevel
+import com.example.damthoai.hardware.emergency.EmergencyAlertManager
+import com.example.damthoai.permission.MicDeniedScreen
 import com.example.damthoai.permission.PermissionScreen
 import com.example.damthoai.ui.channels.ChannelListScreen
-import com.example.damthoai.permission.MicDeniedScreen
+import com.example.damthoai.ui.event.CreateEventScreen
+import com.example.damthoai.ui.event.RestoreEventScreen
 import com.example.damthoai.ui.join.JoinChannelScreen
 import com.example.damthoai.ui.join.JoinErrorScreen
 import com.example.damthoai.ui.join.UserInfoScreen
-import com.example.damthoai.ui.event.CreateEventScreen
-import com.example.damthoai.ui.event.RestoreEventScreen
+import com.example.damthoai.ui.livecue.LiveCueViewModel
 import com.example.damthoai.ui.onboarding.OnboardingScreen
 import com.example.damthoai.ui.screens.ActiveCallScreen
-import com.example.damthoai.ui.screens.EmergencyActiveCallScreen
-import com.example.damthoai.ui.screens.EmergencyCallSelectScreen
-import com.example.damthoai.ui.screens.EmergencyAlertIncomingScreen
-import com.example.damthoai.ui.screens.PocketModeScreen
-import com.example.damthoai.ui.screens.EventMembersScreen
 import com.example.damthoai.ui.screens.ChannelMenuRouteScreen
+import com.example.damthoai.ui.screens.EmergencyActiveCallScreen
+import com.example.damthoai.ui.screens.EmergencyAlertIncomingScreen
 import com.example.damthoai.ui.screens.EventEndedScreen
+import com.example.damthoai.ui.screens.EventMembersScreen
 import com.example.damthoai.ui.screens.HandsFreeAudioScreen
 import com.example.damthoai.ui.screens.LiveCueDraftScreen
 import com.example.damthoai.ui.screens.ManageEventScreen
 import com.example.damthoai.ui.screens.MultiLevelConnectionScreen
 import com.example.damthoai.ui.screens.MyQrCodeScreen
+import com.example.damthoai.ui.screens.PocketModeScreen
 import com.example.damthoai.ui.screens.RemovedFromEventScreen
 import com.example.damthoai.ui.screens.SettingsScreen
 import com.example.damthoai.ui.screens.UserProfileScreen
@@ -64,12 +57,8 @@ fun AppNavHost(
 ) {
     val context = LocalContext.current
     var channelMenuMuted by rememberSaveable { mutableStateOf(false) }
-    var selectedEmergencyMemberIds by remember {
-        mutableStateOf<Set<String>?>(null)
-    }
-    var activeEmergencyAlert by remember {
-        mutableStateOf<EmergencyAlert?>(null)
-    }
+    var selectedEmergencyMemberIds by remember { mutableStateOf<Set<String>?>(null) }
+    var activeEmergencyAlert by remember { mutableStateOf<EmergencyAlert?>(null) }
     var selectedQrChannelId by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(navController) {
@@ -194,7 +183,7 @@ fun AppNavHost(
             ChannelMenuRouteScreen(
                 isMuted = channelMenuMuted,
                 onDismiss = { navController.popBackStack() },
-                onToggleMute = { channelMenuMuted = it },
+                onToggleMute = { muted: Boolean -> channelMenuMuted = muted },
                 onLeaveChannel = {
                     navController.navigate(AppRoute.ScanQr.route) {
                         popUpTo(AppRoute.ChannelMenuSheet.route) { inclusive = true }
@@ -222,30 +211,21 @@ fun AppNavHost(
             )
         }
 
-        // === NHÓM E: KHẨN CẤP ===
-        composable(AppRoute.EmergencyCallSelect.route) {
-            val currentEvent = FakeEventRepository.currentEvent.value
-            val currentMember = currentEvent?.members?.firstOrNull { it.id == currentEvent.ownerId }
-                ?: FakeRemainingUiData.eventMembers.first { it.level == com.example.damthoai.data.fake.MemberLevel.LEVEL_1 }
-            if (currentMember.level != com.example.damthoai.data.fake.MemberLevel.LEVEL_1) {
-                LaunchedEffect(Unit) {
+        // === NHÓM E: KHẨN CẤP & LIVE CUE ===
+        composable(AppRoute.LiveCueDraft.route) {
+            val liveCueViewModel: LiveCueViewModel = viewModel()
+            LiveCueDraftScreen(
+                onBack = { navController.popBackStack() },
+                onSendCue = { cue: LiveCue ->
+                    liveCueViewModel.sendLiveCue(cueContent = cue.message)
                     android.widget.Toast.makeText(
                         context,
-                        "Chỉ Cấp 1 (Tổng đạo diễn) mới được phát cảnh báo khẩn cấp.",
+                        "Đã gửi LiveCue thành công",
                         android.widget.Toast.LENGTH_SHORT
                     ).show()
                     navController.popBackStack()
                 }
-            } else {
-                EmergencyCallSelectScreen(
-                    onBack = { navController.popBackStack() },
-                    onCall = { selectedIds ->
-                        selectedEmergencyMemberIds = selectedIds
-                        activeEmergencyAlert = null
-                        navController.navigate(AppRoute.EmergencyActiveCall.route)
-                    }
-                )
-            }
+            )
         }
         composable(AppRoute.EmergencyAlertIncoming.route) {
             EmergencyAlertIncomingScreen(
@@ -271,7 +251,7 @@ fun AppNavHost(
                     activeEmergencyAlert = null
                     navController.popBackStack()
                 },
-                selectedMemberIds = selectedEmergencyMemberIds,
+                activeParticipants = emptyList(),
                 caller = activeEmergencyAlert
             )
         }
@@ -314,7 +294,7 @@ fun AppNavHost(
             )
         }
 
-        // === NHÓM G: QUẢN TRỊ SỰ KIỆN (CẤP 1) ===
+        // === NHÓM G: QUẢN TRỊ SỰ KIỆN ===
         composable(AppRoute.CreateEvent.route) {
             CreateEventScreen(
                 onBack = { navController.popBackStack() },
@@ -331,54 +311,31 @@ fun AppNavHost(
         }
         composable(
             route = "${AppRoute.ManageEvent.route}?fromCreate={fromCreate}",
-            arguments = listOf(androidx.navigation.navArgument("fromCreate") { defaultValue = false })
+            arguments = listOf(androidx.navigation.navArgument(name = "fromCreate") { defaultValue = false })
         ) { backStackEntry ->
             val fromCreate = backStackEntry.arguments?.getBoolean("fromCreate") ?: false
-            val currentEvent = FakeEventRepository.currentEvent.value
-            val currentMember = currentEvent?.members?.firstOrNull { it.id == currentEvent.ownerId }
-                ?: FakeRemainingUiData.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
-            if (currentMember.level != MemberLevel.LEVEL_1) {
-                LaunchedEffect(Unit) {
-                    android.widget.Toast.makeText(
-                        context,
-                        "Chỉ Cấp 1 (Tổng đạo diễn) mới được quản lý sự kiện.",
-                        android.widget.Toast.LENGTH_SHORT
-                    ).show()
-                    navController.popBackStack()
-                }
-            } else {
-                ManageEventScreen(
-                    onBack = {
-                        if (fromCreate) {
-                            navController.navigate(AppRoute.ChannelList.route) {
-                                popUpTo(AppRoute.ManageEvent.route) { inclusive = true }
-                            }
-                        } else {
-                            navController.popBackStack()
+            ManageEventScreen(
+                onBack = {
+                    if (fromCreate) {
+                        navController.navigate(AppRoute.ChannelList.route) {
+                            popUpTo(AppRoute.ManageEvent.route) { inclusive = true }
                         }
-                    },
-                    onQrCode = {
-                        selectedQrChannelId = FakeEventRepository.currentEvent.value
-                            ?.channels
-                            ?.firstOrNull { it.isDefault }
-                            ?.id
-                        navController.navigate(AppRoute.MyQrCode.route)
-                    },
-                    onChannelQrCode = { channelId ->
-                        selectedQrChannelId = channelId
-                        navController.navigate(AppRoute.MyQrCode.route)
-                    },
-                    onMembers = { navController.navigate(AppRoute.EventMembers.route) },
-                    onLiveCue = { navController.navigate(AppRoute.LiveCueDraft.route) },
-                    onEndEvent = {
-                        AppStartPrefs.setHasJoinedEvent(context, false)
-                        navController.navigate(AppRoute.EventEnded.route)
-                    },
-                    onNavigateToActiveCall = {
-                        navController.navigate(AppRoute.ActiveCall.route)
+                    } else {
+                        navController.popBackStack()
                     }
-                )
-            }
+                },
+                onQrCode = { navController.navigate(AppRoute.MyQrCode.route) },
+                onChannelQrCode = { _ -> navController.navigate(AppRoute.MyQrCode.route) },
+                onMembers = { navController.navigate(AppRoute.EventMembers.route) },
+                onLiveCue = { navController.navigate(AppRoute.LiveCueDraft.route) },
+                onEndEvent = {
+                    AppStartPrefs.setHasJoinedEvent(context, false)
+                    navController.navigate(AppRoute.EventEnded.route)
+                },
+                onNavigateToActiveCall = {
+                    navController.navigate(AppRoute.ActiveCall.route)
+                }
+            )
         }
         composable(AppRoute.RestoreEvent.route) {
             RestoreEventScreen(
@@ -387,65 +344,20 @@ fun AppNavHost(
                     AppStartPrefs.setHasJoinedEvent(context, true)
                     navController.navigate(AppRoute.ChannelList.route) {
                         popUpTo(navController.graph.id) { inclusive = true }
-                        launchSingleTop = true
                     }
                 }
             )
         }
         composable(AppRoute.MyQrCode.route) {
-            val event = FakeEventRepository.currentEvent.value ?: FakeRemainingUiData.event
-            val channel = FakeEventRepository.findChannel(selectedQrChannelId)
-                ?: event.channels.firstOrNull { it.isDefault }
             MyQrCodeScreen(
                 onBack = { navController.popBackStack() },
-                event = event,
-                channel = channel,
-                onShare = {
-                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(
-                            Intent.EXTRA_TEXT,
-                            "${event.name}\n${channel?.name ?: "Sự kiện"}\n" +
-                                "Mã PIN: ${channel?.pin ?: event.pinCode}\n" +
-                                "QR: ${channel?.qrPayload.orEmpty()}"
-                        )
-                    }
-                    context.startActivity(
-                        Intent.createChooser(shareIntent, "Chia sẻ mã sự kiện")
-                    )
-                }
+                onShare = {}
             )
         }
         composable(AppRoute.EventMembers.route) {
             EventMembersScreen(onBack = { navController.popBackStack() })
         }
-        composable(AppRoute.LiveCueDraft.route) {
-            val currentEvent = FakeEventRepository.currentEvent.value
-            val currentMember = currentEvent?.members?.firstOrNull { it.id == currentEvent.ownerId }
-                ?: FakeRemainingUiData.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
-            if (currentMember.level != MemberLevel.LEVEL_1) {
-                LaunchedEffect(Unit) {
-                    android.widget.Toast.makeText(
-                        context,
-                        "Chỉ Cấp 1 (Tổng đạo diễn) mới được gửi Live Cue.",
-                        android.widget.Toast.LENGTH_SHORT
-                    ).show()
-                    navController.popBackStack()
-                }
-            } else {
-                LiveCueDraftScreen(
-                    onBack = { navController.popBackStack() },
-                    onSendCue = { cue ->
-                        FakeRemainingUiData.sendLiveCue(cue)
-                        navController.popBackStack()
-                    }
-                )
-            }
-        }
         composable(AppRoute.EventEnded.route) {
-            LaunchedEffect(Unit) {
-                AppStartPrefs.setHasJoinedEvent(context, false)
-            }
             EventEndedScreen(
                 onReturn = {
                     AppStartPrefs.setHasJoinedEvent(context, false)
@@ -459,9 +371,6 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.RemovedFromEvent.route) {
-            LaunchedEffect(Unit) {
-                AppStartPrefs.setHasJoinedEvent(context, false)
-            }
             RemovedFromEventScreen(
                 onReturn = {
                     AppStartPrefs.setHasJoinedEvent(context, false)

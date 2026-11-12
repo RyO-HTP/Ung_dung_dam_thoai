@@ -18,5 +18,6 @@ data class Channel(
     val isDefault: Boolean = false,
     val pin: String = "",
     val qrPayload: String = "",
-    val memberIds: Set<String> = emptySet()
+    val memberIds: Set<String> = emptySet(),
+    val volume: Float = 1.0f
 )

@@ -4,7 +4,7 @@
  * Khối KDoc tiếng Việt:
  * Data class đại diện cho Thành viên trong ekip sự kiện.
  */
-package com.example.damthoai.data.fake
+package com.example.damthoai.data
 
 data class Member(
     val id: String,

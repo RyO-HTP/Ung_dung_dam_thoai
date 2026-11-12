@@ -2,7 +2,6 @@ package com.example.damthoai.ui.join
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,8 +10,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
@@ -27,20 +26,16 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.PrimaryButton
 import com.example.damthoai.ui.components.SecondaryButton
-import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.AccentAmber
-import com.example.damthoai.ui.theme.DamType
 import com.example.damthoai.ui.theme.DamThoaiTheme
+import com.example.damthoai.ui.theme.DamType
 import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.GlassBorder
 import com.example.damthoai.ui.theme.TextPrimary
-import com.example.damthoai.ui.theme.TextSecondary
-import com.example.damthoai.ui.theme.Transparent
 
 @Composable
 fun JoinErrorScreen(

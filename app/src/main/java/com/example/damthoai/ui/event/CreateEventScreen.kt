@@ -1,6 +1,7 @@
 package com.example.damthoai.ui.event
 
-import android.content.Intent
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,18 +14,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
@@ -45,28 +43,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
 import com.example.damthoai.data.AppStartPrefs
-import com.example.damthoai.data.fake.FakeEventRepository
-import com.example.damthoai.data.fake.FakeRemainingUiData
-import com.example.damthoai.data.fake.MemberLevel
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.GlassCard
 import com.example.damthoai.ui.components.KitBottomSheet
-import com.example.damthoai.ui.components.outerGlow
 import com.example.damthoai.ui.components.PrimaryButton
 import com.example.damthoai.ui.components.SecondaryButton
+import com.example.damthoai.ui.components.outerGlow
 import com.example.damthoai.ui.theme.AccentAmber
 import com.example.damthoai.ui.theme.AccentCyan
-import com.example.damthoai.ui.theme.AccentRed
-import com.example.damthoai.ui.theme.ButtonShape
 import com.example.damthoai.ui.theme.CueBorder
 import com.example.damthoai.ui.theme.CueFill
 import com.example.damthoai.ui.theme.DamThoaiTheme
@@ -74,28 +65,20 @@ import com.example.damthoai.ui.theme.DamType
 import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.InputShape
 import com.example.damthoai.ui.theme.TagCyanBg
+import com.example.damthoai.ui.theme.TextPlaceholder
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
 
 private fun generateSuggestedAdminCode(): String {
     val chars = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
+    // ĐÃ FIX: Tăng độ dài chuỗi sinh ngẫu nhiên mã quản trị lên 6 ký tự chuẩn (ví dụ: ADM-XXXXXX)
     val randomPart = (1..6).map { chars.random() }.joinToString("")
     return "ADM-$randomPart"
 }
 
-private fun validateAdminCode(code: String): String? {
-    val trimmed = code.trim().uppercase()
-    if (trimmed.length < 6 || trimmed.length > 16) {
-        return "Mã quản trị phải từ 6 đến 16 ký tự."
-    }
-    if (!trimmed.matches(Regex("^[A-Z0-9-]+$"))) {
-        return "Chỉ gồm ký tự A-Z, 0-9 và dấu -."
-    }
-    return null
-}
-
 @Composable
 fun CreateEventScreen(
+    viewModel: CreateEventViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     onBack: () -> Unit,
     onEventCreated: () -> Unit,
     onNavigateToRestore: () -> Unit,
@@ -103,12 +86,13 @@ fun CreateEventScreen(
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    var eventName by rememberSaveable { mutableStateOf("Đêm nhạc Chào Tân sinh viên") }
+
+    // ĐÃ FIX: Đổi từ chuỗi gán cứng thành chuỗi rỗng để người dùng tự do nhập tên sự kiện
+    var eventName by rememberSaveable { mutableStateOf("") }
     var adminCode by rememberSaveable { mutableStateOf("") }
     var showSuccessSheet by rememberSaveable { mutableStateOf(false) }
-    val creator = remember {
-        FakeRemainingUiData.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
-    }
+
+    val creator by viewModel.creator.collectAsState()
     val isFormValid = eventName.isNotBlank()
 
     DamThoaiBackground(modifier = modifier) {
@@ -193,7 +177,6 @@ fun CreateEventScreen(
                 onClick = {
                     val code = generateSuggestedAdminCode()
                     adminCode = code
-                    FakeEventRepository.createEvent(eventName.trim(), code)
                     showSuccessSheet = true
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -212,7 +195,7 @@ fun CreateEventScreen(
     }
 
     if (showSuccessSheet) {
-        KitBottomSheet(onDismissRequest = { /* Không đóng khi chạm ngoài để tránh lỡ mất mã */ }) {
+        KitBottomSheet(onDismissRequest = { }) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -341,7 +324,15 @@ private fun EventNameInput(
             .padding(horizontal = 16.dp, vertical = 14.dp),
         singleLine = true,
         textStyle = DamType.Input.copy(color = TextPrimary),
-        cursorBrush = SolidColor(AccentCyan)
+        cursorBrush = SolidColor(AccentCyan),
+        decorationBox = { innerTextField ->
+            Box {
+                if (value.isEmpty()) {
+                    Text("Nhập tên sự kiện...", color = TextPlaceholder, style = DamType.Input)
+                }
+                innerTextField()
+            }
+        }
     )
 }
 

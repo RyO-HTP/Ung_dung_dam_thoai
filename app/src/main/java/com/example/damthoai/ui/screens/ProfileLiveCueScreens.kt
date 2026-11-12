@@ -28,10 +28,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
-import com.example.damthoai.data.fake.FakeRemainingUiData
-import com.example.damthoai.data.fake.LiveCue
+import com.example.damthoai.data.LiveCue
 import com.example.damthoai.ui.components.AvatarCircle
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.DamThoaiBackground
@@ -50,12 +48,13 @@ import com.example.damthoai.ui.theme.TextSecondary
 fun LiveCueDraftScreen(
     onBack: () -> Unit,
     onSendCue: (LiveCue) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    initialCue: LiveCue = LiveCue(title = "Tiết mục tiếp theo", message = "Chuẩn bị ra sân khấu")
 ) {
-    var title by remember { mutableStateOf(FakeRemainingUiData.liveCue.title) }
-    var message by remember { mutableStateOf(FakeRemainingUiData.liveCue.message) }
+    var title by remember { mutableStateOf(initialCue.title) }
+    var message by remember { mutableStateOf(initialCue.message) }
     val previewCue = remember(title, message) {
-        FakeRemainingUiData.liveCue.copy(title = title, message = message)
+        initialCue.copy(title = title, message = message)
     }
 
     DamThoaiBackground(modifier = modifier) {
@@ -94,7 +93,7 @@ fun LiveCueDraftScreen(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                SectionLabel("XEM TRƯỚC")
+                SectionLabel("XEM TRƯỚC", color = TextSecondary)
                 LiveCueCard(cue = previewCue)
                 GlassTextField(
                     value = title,
@@ -111,12 +110,8 @@ fun LiveCueDraftScreen(
             PrimaryButton(
                 text = "Đẩy lên mọi máy",
                 onClick = {
-                    onSendCue(
-                        previewCue.copy(
-                            channelName = "Toàn sự kiện",
-                            isPriority = true
-                        )
-                    )
+                    // Truyền trực tiếp đối tượng previewCue đã được cập nhật nội dung chuẩn xác
+                    onSendCue(previewCue)
                 },
                 modifier = Modifier
                     .fillMaxWidth()

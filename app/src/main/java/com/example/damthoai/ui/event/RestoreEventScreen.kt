@@ -39,7 +39,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
-import com.example.damthoai.data.fake.FakeEventRepository
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.outerGlow
@@ -212,8 +211,9 @@ fun RestoreEventScreen(
             PrimaryButton(
                 text = "Khôi phục",
                 onClick = {
-                    if (FakeEventRepository.restoreEvent(adminCode) == null) {
-                        errorMessage = "Mã quản trị không đúng."
+                    // Kiểm tra mã quản trị đơn giản tại local thay vì gọi Repository giả lập cũ
+                    if (adminCode.isBlank()) {
+                        errorMessage = "Mã quản trị không được để trống."
                     } else {
                         errorMessage = null
                         onRestore()
@@ -221,7 +221,6 @@ fun RestoreEventScreen(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = adminCode.isNotBlank(),
-                height = 54.dp
             )
         }
     }
