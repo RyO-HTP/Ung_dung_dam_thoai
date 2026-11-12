@@ -37,6 +37,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -53,9 +54,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.damthoai.R
-import com.example.damthoai.data.fake.FakeNetworkStatus
+import com.example.damthoai.network.NetworkStatusProvider
+import com.example.damthoai.data.SpeakingStateProvider
 import com.example.damthoai.data.fake.FakeRemainingUiData
-import com.example.damthoai.data.fake.FakeSpeakingState
 import com.example.damthoai.data.fake.FakeRepositories
 import com.example.damthoai.data.fake.NetworkStatus
 import com.example.damthoai.ui.components.DamThoaiBackground
@@ -96,14 +97,17 @@ fun ChannelListScreen(
     viewModel: ChannelViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val networkStatus by FakeNetworkStatus.status.collectAsState()
-    val speakingChannelIds by FakeSpeakingState.speakingChannelIds.collectAsState()
+    val networkStatus by NetworkStatusProvider.source.status.collectAsState()
+    val speakingByChannel by SpeakingStateProvider.source.speakingByChannel.collectAsState()
+    val speakingChannelIds = speakingByChannel.keys
     val liveCue by FakeRemainingUiData.liveCueState.collectAsState()
     val (networkStatusLabel, networkStatusColor) = when (val status = networkStatus) {
         is NetworkStatus.Good -> "Internet · ${status.ms} ms" to AccentMint
         is NetworkStatus.Weak -> "Internet · ${status.ms} ms" to AccentAmber
         NetworkStatus.Offline -> "Offline" to AccentRed
     }
+
+    val bottomBarPadding = com.example.damthoai.ui.navigation.LocalBottomBarPadding.current
 
     DamThoaiBackground(modifier = modifier) {
         Box(Modifier.fillMaxSize()) {
@@ -113,6 +117,7 @@ fun ChannelListScreen(
                     .statusBarsPadding()
                     .padding(horizontal = 20.dp)
                     .verticalScroll(rememberScrollState())
+                    .padding(bottom = bottomBarPadding + 24.dp)
             ) {
                 Spacer(Modifier.height(12.dp))
                 Row(

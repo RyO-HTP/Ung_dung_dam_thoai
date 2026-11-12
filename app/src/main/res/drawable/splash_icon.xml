@@ -31,8 +31,8 @@
             <path android:pathData="M76.12,38.51A27,27 0 0,1 76.12,69.49" android:fillColor="#00000000" android:strokeColor="#5EE1FF" android:strokeWidth="2.6" android:strokeLineCap="round"/>
             <path android:pathData="M31.88,69.49A27,27 0 0,1 31.88,38.51" android:fillColor="#00000000" android:strokeColor="#5EE1FF" android:strokeWidth="2.6" android:strokeLineCap="round"/>
             <!-- Sóng âm ngoài -->
-            <path android:pathData="M80.21,35.65A32,32 0 0,1 80.21,72.35" android:fillColor="#00000000" android:strokeColor="#805EE1FF" android:strokeWidth="2" android:strokeLineCap="round"/>
-            <path android:pathData="M27.79,72.35A32,32 0 0,1 27.79,35.65" android:fillColor="#00000000" android:strokeColor="#805EE1FF" android:strokeWidth="2" android:strokeLineCap="round"/>
+            <path android:pathData="M80.21,35.65A32,32 0 0,1 80.21,72.35" android:fillColor="#00000000" android:strokeColor="#5EE1FF" android:strokeWidth="2" android:strokeLineCap="round"/>
+            <path android:pathData="M27.79,72.35A32,32 0 0,1 27.79,35.65" android:fillColor="#00000000" android:strokeColor="#5EE1FF" android:strokeWidth="2" android:strokeLineCap="round"/>
             <!-- Thân mic -->
             <path android:pathData="M49,43a5,5 0 0,1 5,-5a5,5 0 0,1 5,5v7a5,5 0 0,1 -5,5a5,5 0 0,1 -5,-5z">
                 <aapt:attr name="android:fillColor">

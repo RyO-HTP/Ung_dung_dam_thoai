@@ -1,5 +1,8 @@
 package com.example.damthoai.data.fake
 
+import com.example.damthoai.data.model.Member
+import com.example.damthoai.data.model.MemberLevel
+
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

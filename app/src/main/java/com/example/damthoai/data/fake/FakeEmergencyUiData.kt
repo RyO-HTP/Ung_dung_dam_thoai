@@ -1,5 +1,8 @@
 package com.example.damthoai.data.fake
 
+import com.example.damthoai.data.model.Member
+import com.example.damthoai.data.model.MemberLevel
+
 data class EmergencyCallParticipant(
     val member: Member,
     val status: String,

@@ -45,6 +45,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import android.provider.Settings
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.platform.LocalContext
+import com.example.damthoai.data.SpeakerInfo
 import com.example.damthoai.R
 import com.example.damthoai.data.fake.FakeVolumeChannel
 import com.example.damthoai.hardware.HapticController
@@ -165,15 +174,30 @@ fun PttButton(
     }
 }
 
+fun getSpeakerStatusLabel(speakerName: String?, fallbackSpeaker: String): String {
+    if (!speakerName.isNullOrBlank()) {
+        return if (speakerName.endsWith("đang nói")) speakerName else "$speakerName đang nói"
+    }
+    val raw = fallbackSpeaker.trim()
+    if (raw.isBlank() || raw.equals("yên lặng", ignoreCase = true)) {
+        return "Yên lặng"
+    }
+    return raw
+}
+
 @Composable
 fun VolumeRow(
     channel: FakeVolumeChannel,
     modifier: Modifier = Modifier,
+    speakerInfo: SpeakerInfo? = null,
     onVolumeChange: (Float) -> Unit = {}
 ) {
     val isLowVolume = channel.volume < 0.30f
     val percentColor = if (isLowVolume) TextSecondary.copy(alpha = 0.6f) else TextSecondary
     val isDucked = channel.isDucked || channel.tag?.contains("HẠ ÂM") == true
+    val statusText = getSpeakerStatusLabel(speakerInfo?.name, channel.speaker)
+    val isSpeaking = speakerInfo != null || channel.speaker.contains("đang nói", ignoreCase = true)
+    val isActivelySpeaking = isSpeaking && !statusText.contains("không ai", ignoreCase = true) && !statusText.contains("yên lặng", ignoreCase = true) && !statusText.contains("không có", ignoreCase = true)
 
     val currentDensity = LocalDensity.current
     val cappedDensity = remember(currentDensity) {
@@ -182,20 +206,22 @@ fun VolumeRow(
 
     CompositionLocalProvider(LocalDensity provides cappedDensity) {
         Column(
-            modifier = modifier.fillMaxWidth()
+            modifier = modifier
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     painter = painterResource(channel.iconRes),
                     contentDescription = null,
-                    tint = TextSecondary,
+                    tint = if (isActivelySpeaking) AccentCyan else TextSecondary,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = channel.name,
                     modifier = Modifier.weight(1f),
-                    color = TextPrimary,
+                    color = if (isActivelySpeaking) AccentCyan else TextPrimary,
                     style = DamType.Body13.copy(fontWeight = FontWeight.SemiBold)
                 )
                 if (channel.tag != null) {
@@ -219,12 +245,24 @@ fun VolumeRow(
                     )
                 }
             }
-            Text(
-                text = channel.speaker,
-                modifier = Modifier.padding(start = 24.dp, top = 1.dp, bottom = 2.dp),
-                color = channel.speakerColor,
-                style = DamType.Small
-            )
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = statusText,
+                    color = channel.speakerColor,
+                    style = DamType.Small
+                )
+                if (isActivelySpeaking) {
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        painter = painterResource(R.drawable.ic_vol),
+                        contentDescription = null,
+                        tint = AccentCyan,
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
+            }
+
             VolumeSlider(
                 value = channel.volume,
                 onValueChange = onVolumeChange,

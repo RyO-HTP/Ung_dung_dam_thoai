@@ -40,6 +40,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,6 +65,8 @@ import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
 import com.example.damthoai.ui.theme.DamType
 import com.example.damthoai.ui.components.outerGlow
+
+val LocalBottomBarPadding = compositionLocalOf { 0.dp }
 
 /**
  * Khung layout chính hỗ trợ Adaptive Điện thoại / Tablet / Màn hình gập
@@ -117,11 +121,14 @@ fun AdaptiveAppLayout(
             },
             modifier = modifier
         ) { innerPadding ->
-            AppNavHost(
-                navController = navController,
-                modifier = Modifier.padding(innerPadding),
-                startDestination = startDestination
-            )
+            val bottomPadding = if (shouldShowBottomBar) innerPadding.calculateBottomPadding() else 0.dp
+            CompositionLocalProvider(LocalBottomBarPadding provides bottomPadding) {
+                AppNavHost(
+                    navController = navController,
+                    modifier = Modifier.fillMaxSize(),
+                    startDestination = startDestination
+                )
+            }
         }
     } else {
         // --- BỐ CỤC TABLET / MÀN HÌNH GẬP (MEDIUM / EXPANDED) ---

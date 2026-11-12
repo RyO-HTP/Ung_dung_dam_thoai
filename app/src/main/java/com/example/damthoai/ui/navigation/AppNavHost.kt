@@ -29,7 +29,7 @@ import com.example.damthoai.hardware.emergency.EmergencyAlertManager
 import com.example.damthoai.hardware.emergency.EmergencyAlert
 import com.example.damthoai.data.fake.FakeRemainingUiData
 import com.example.damthoai.data.fake.FakeEventRepository
-import com.example.damthoai.data.fake.MemberLevel
+import com.example.damthoai.data.model.MemberLevel
 import com.example.damthoai.permission.PermissionScreen
 import com.example.damthoai.ui.channels.ChannelListScreen
 import com.example.damthoai.permission.MicDeniedScreen
@@ -226,8 +226,8 @@ fun AppNavHost(
         composable(AppRoute.EmergencyCallSelect.route) {
             val currentEvent = FakeEventRepository.currentEvent.value
             val currentMember = currentEvent?.members?.firstOrNull { it.id == currentEvent.ownerId }
-                ?: FakeRemainingUiData.eventMembers.first { it.level == com.example.damthoai.data.fake.MemberLevel.LEVEL_1 }
-            if (currentMember.level != com.example.damthoai.data.fake.MemberLevel.LEVEL_1) {
+                ?: FakeRemainingUiData.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
+            if (currentMember.level != MemberLevel.LEVEL_1) {
                 LaunchedEffect(Unit) {
                     android.widget.Toast.makeText(
                         context,

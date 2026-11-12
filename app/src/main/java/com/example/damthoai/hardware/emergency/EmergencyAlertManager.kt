@@ -2,6 +2,7 @@ package com.example.damthoai.hardware.emergency
 
 import android.content.Context
 import android.util.Log
+import com.example.damthoai.data.model.MemberLevel
 import com.example.damthoai.hardware.HandsFreeSettings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -50,8 +51,8 @@ object EmergencyAlertManager {
     private val _vibrationUnavailableReason = MutableStateFlow<String?>(null)
     val vibrationUnavailableReason: StateFlow<String?> = _vibrationUnavailableReason.asStateFlow()
 
-    fun canInitiateAlert(level: com.example.damthoai.data.fake.MemberLevel): Boolean =
-        level == com.example.damthoai.data.fake.MemberLevel.LEVEL_1
+    fun canInitiateAlert(level: MemberLevel): Boolean =
+        level == MemberLevel.LEVEL_1
 
     /**
      * Bắt đầu cảnh báo mới; cảnh báo đang chạy được thay thế mà không chồng vòng lặp phần cứng.
@@ -60,9 +61,9 @@ object EmergencyAlertManager {
     fun trigger(
         context: Context,
         alert: EmergencyAlert,
-        callerLevel: com.example.damthoai.data.fake.MemberLevel = com.example.damthoai.data.fake.MemberLevel.LEVEL_1
+        callerLevel: MemberLevel = MemberLevel.LEVEL_1
     ) {
-        if (callerLevel != com.example.damthoai.data.fake.MemberLevel.LEVEL_1) {
+        if (callerLevel != MemberLevel.LEVEL_1) {
             Log.w(TAG, "Từ chối phát khẩn cấp: Thành viên cấp $callerLevel không phải Cấp 1")
             return
         }

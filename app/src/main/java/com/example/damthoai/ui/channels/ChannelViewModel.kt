@@ -9,7 +9,7 @@ package com.example.damthoai.ui.channels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.damthoai.data.fake.Channel
+import com.example.damthoai.data.model.Channel
 import com.example.damthoai.data.fake.FakeEventRepository
 import com.example.damthoai.data.fake.FakeRepositories
 import kotlinx.coroutines.delay

@@ -55,7 +55,7 @@ import com.example.damthoai.R
 import com.example.damthoai.data.AppStartPrefs
 import com.example.damthoai.data.fake.FakeEventRepository
 import com.example.damthoai.data.fake.FakeRemainingUiData
-import com.example.damthoai.data.fake.MemberLevel
+import com.example.damthoai.data.model.MemberLevel
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.GlassCard

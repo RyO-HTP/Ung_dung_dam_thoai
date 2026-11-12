@@ -3,8 +3,8 @@ package com.example.damthoai.ui.event
 import androidx.lifecycle.ViewModel
 import com.example.damthoai.data.fake.FakeEventRepository
 import com.example.damthoai.data.fake.FakeRemainingUiData
-import com.example.damthoai.data.fake.Member
-import com.example.damthoai.data.fake.MemberLevel
+import com.example.damthoai.data.model.Member
+import com.example.damthoai.data.model.MemberLevel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

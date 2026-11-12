@@ -1,10 +1,10 @@
 /**
- * Path: app/src/main/java/com/example/damthoai/data/fake/Channel.kt
+ * Path: app/src/main/java/com/example/damthoai/data/model/Channel.kt
  *
  * Khối KDoc tiếng Việt:
  * Data class đại diện cho Kênh giao tiếp (Channel) trong sự kiện.
  */
-package com.example.damthoai.data.fake
+package com.example.damthoai.data.model
 
 data class Channel(
     val id: String,

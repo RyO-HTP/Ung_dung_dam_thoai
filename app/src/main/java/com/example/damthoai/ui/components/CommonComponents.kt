@@ -61,7 +61,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.LaunchedEffect
 import com.example.damthoai.R
-import com.example.damthoai.data.fake.MemberLevel
+import com.example.damthoai.data.model.MemberLevel
 import com.example.damthoai.ui.theme.AccentAmber
 import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.AccentMint

@@ -6,7 +6,7 @@
  */
 package com.example.damthoai.ui.channels
 
-import com.example.damthoai.data.fake.Channel
+import com.example.damthoai.data.model.Channel
 
 data class ChannelItemUiState(
     val channel: Channel,

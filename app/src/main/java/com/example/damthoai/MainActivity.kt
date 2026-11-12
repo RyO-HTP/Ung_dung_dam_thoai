@@ -65,7 +65,11 @@ class MainActivity : ComponentActivity() {
             PttController.events.collect { event ->
                 when (event) {
                     is PttEvent.PttPressed -> HapticController.tick(window.decorView)
-                    is PttEvent.PttReleased -> RogerBeepPlayer.play()
+                    is PttEvent.PttReleased -> {
+                        if (!event.forced) {
+                            RogerBeepPlayer.play()
+                        }
+                    }
                 }
             }
         }
@@ -173,6 +177,16 @@ class MainActivity : ComponentActivity() {
         PermissionManager.refreshPermissionStates(this, this)
         AccessibilityStatus.refresh(this)
         HandsFreeSession.onResume(this)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        com.example.damthoai.network.NetworkQualityMonitor.start(applicationContext)
+    }
+
+    override fun onStop() {
+        com.example.damthoai.network.NetworkQualityMonitor.stop()
+        super.onStop()
     }
 
     override fun onDestroy() {

@@ -28,9 +28,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.damthoai.R
 import com.example.damthoai.data.fake.FakeCallData
-import com.example.damthoai.data.fake.FakeNetworkStatus
 import com.example.damthoai.data.fake.FakeRemainingUiData
 import com.example.damthoai.data.fake.NetworkStatus
+import com.example.damthoai.network.NetworkStatusProvider
+import com.example.damthoai.data.SpeakingStateProvider
+import com.example.damthoai.data.SpeakerInfo
 import com.example.damthoai.hardware.PttController
 import com.example.damthoai.hardware.PttSource
 import com.example.damthoai.hardware.audio.AudioRoute
@@ -73,14 +75,20 @@ fun ActiveCallScreen(
     onNavigateToEmergency: () -> Unit = {},
     networkStatusOverride: NetworkStatus? = null
 ) {
-    val observedNetworkStatus by FakeNetworkStatus.status.collectAsState()
+    val observedNetworkStatus by NetworkStatusProvider.source.status.collectAsState()
     val networkStatus = networkStatusOverride ?: observedNetworkStatus
+    val speakingByChannel by SpeakingStateProvider.source.speakingByChannel.collectAsState()
     val liveCue by FakeRemainingUiData.liveCueState.collectAsState()
     var isScreenPttPressed by remember(state) { mutableStateOf(false) }
-    val displayState = if (state == CallUiState.CallIdle && isScreenPttPressed) {
-        CallUiState.CallTalk
+    val baseState = if (networkStatus is NetworkStatus.Offline && state == CallUiState.CallIdle) {
+        CallUiState.CallOffline
     } else {
         state
+    }
+    val displayState = if (baseState == CallUiState.CallIdle && isScreenPttPressed) {
+        CallUiState.CallTalk
+    } else {
+        baseState
     }
     val content = FakeCallData.contentFor(displayState)
     val currentAudioRoute by AudioRouteGuard.currentRoute.collectAsState()
@@ -132,17 +140,19 @@ fun ActiveCallScreen(
                         GlassCard(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(24.dp),
-                            contentPadding = PaddingValues(14.dp)
+                            contentPadding = PaddingValues(16.dp)
                         ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
                                 Text(
                                     text = "ÂM LƯỢNG TỪNG KÊNH",
                                     color = TextSecondary,
                                     style = DamType.Label
                                 )
                                 content.channels.forEachIndexed { index, channel ->
+                                    val speaker = speakingByChannel[channel.name]
                                     VolumeRow(
                                         channel = channel.copy(volume = volumes[index]),
+                                        speakerInfo = speaker,
                                         onVolumeChange = { newValue ->
                                             volumes = volumes.toMutableList().also {
                                                 it[index] = newValue
@@ -156,13 +166,13 @@ fun ActiveCallScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 140.dp),
+                            .padding(vertical = 36.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         PttButton(
                             size = 140.dp,
                             state = displayState,
-                            modifier = Modifier.heightIn(min = 120.dp),
+                            modifier = Modifier,
                             onPress = {
                                 PttController.onKeyPressed(PttSource.SCREEN_BUTTON)
                                 isScreenPttPressed =

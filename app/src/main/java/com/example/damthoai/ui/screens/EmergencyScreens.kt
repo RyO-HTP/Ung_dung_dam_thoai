@@ -70,8 +70,8 @@ import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
 import com.example.damthoai.data.fake.EmergencyCallParticipant
 import com.example.damthoai.data.fake.FakeEmergencyUiData
-import com.example.damthoai.data.fake.Member
-import com.example.damthoai.data.fake.MemberLevel
+import com.example.damthoai.data.model.Member
+import com.example.damthoai.data.model.MemberLevel
 import com.example.damthoai.hardware.PttController
 import com.example.damthoai.hardware.PttSource
 import com.example.damthoai.hardware.emergency.EmergencyAlert

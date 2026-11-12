@@ -7,6 +7,11 @@
  */
 package com.example.damthoai.data.fake
 
+import com.example.damthoai.data.model.Channel
+import com.example.damthoai.data.model.Event
+import com.example.damthoai.data.model.Member
+import com.example.damthoai.data.model.MemberLevel
+
 object FakeRepositories {
 
     val sampleEvent = Event(

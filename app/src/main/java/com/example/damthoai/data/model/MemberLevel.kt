@@ -1,5 +1,5 @@
 /**
- * Path: app/src/main/java/com/example/damthoai/data/fake/Level.kt
+ * Path: app/src/main/java/com/example/damthoai/data/model/MemberLevel.kt
  *
  * Khối KDoc tiếng Việt:
  * Enum định nghĩa Cấp bậc quyền hạn thành viên trong ứng dụng Đàm Thoại.
@@ -7,7 +7,7 @@
  * - CẤP 2: Trưởng ban
  * - CẤP 3: Cộng tác viên (CTV)
  */
-package com.example.damthoai.data.fake
+package com.example.damthoai.data.model
 
 enum class MemberLevel(
     val code: Int,

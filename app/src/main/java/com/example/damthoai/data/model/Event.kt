@@ -1,10 +1,10 @@
 /**
- * Path: app/src/main/java/com/example/damthoai/data/fake/Event.kt
+ * Path: app/src/main/java/com/example/damthoai/data/model/Event.kt
  *
  * Khối KDoc tiếng Việt:
  * Data class đại diện cho Sự kiện (Event) trong ứng dụng Đàm Thoại.
  */
-package com.example.damthoai.data.fake
+package com.example.damthoai.data.model
 
 data class Event(
     val id: String,

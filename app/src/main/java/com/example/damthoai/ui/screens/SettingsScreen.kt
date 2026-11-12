@@ -41,12 +41,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.damthoai.R
-import com.example.damthoai.data.fake.Event
+import com.example.damthoai.data.model.Event
 import com.example.damthoai.data.fake.FakeEventRepository
 import com.example.damthoai.data.fake.FakeRemainingUiData
-import com.example.damthoai.data.fake.MemberLevel
-import com.example.damthoai.data.fake.FakeNetworkStatus
+import com.example.damthoai.data.model.MemberLevel
 import com.example.damthoai.data.fake.NetworkStatus
+import com.example.damthoai.network.NetworkStatusProvider
 import com.example.damthoai.permission.PermissionManager
 import com.example.damthoai.ui.components.AvatarCircle
 import com.example.damthoai.ui.components.DamThoaiBackground
@@ -72,7 +72,7 @@ fun SettingsScreen(
     onHandsFree: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val networkStatus by FakeNetworkStatus.status.collectAsState()
+    val networkStatus by NetworkStatusProvider.source.status.collectAsState()
     val currentEvent by FakeEventRepository.currentEvent.collectAsStateWithLifecycle()
     val networkDescription = when (val status = networkStatus) {
         is NetworkStatus.Good -> "Internet đang dùng · ${status.ms} ms"
@@ -105,15 +105,16 @@ private fun SettingsContent(
 ) {
     var showLeaveEventDialog by remember { mutableStateOf(false) }
 
+    val bottomBarPadding = com.example.damthoai.ui.navigation.LocalBottomBarPadding.current
+
     DamThoaiBackground(modifier = modifier) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
-                .padding(top = 16.dp, bottom = 90.dp),
+                .padding(top = 16.dp, bottom = bottomBarPadding + 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
