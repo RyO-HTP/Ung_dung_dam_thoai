@@ -93,6 +93,7 @@ fun ActiveCallScreen(
     val content = FakeCallData.contentFor(displayState)
     val currentAudioRoute by AudioRouteGuard.currentRoute.collectAsState()
     val availableAudioRoutes by AudioRouteGuard.availableRoutes.collectAsState()
+    val activeIncident by com.example.damthoai.hardware.audio.AudioIncidentBus.activeIncident.collectAsState()
     val headsetRoute = when {
         AudioRoute.HEADSET in availableAudioRoutes -> AudioRoute.HEADSET
         AudioRoute.BLUETOOTH in availableAudioRoutes -> AudioRoute.BLUETOOTH
@@ -127,6 +128,7 @@ fun ActiveCallScreen(
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         CallHeader(onBack = onBack, networkStatus = networkStatus)
+                        com.example.damthoai.ui.components.AudioIncidentBanner(incident = activeIncident)
                         liveCue?.let { LiveCueCard(cue = it) }
                         CallStatusBanner(
                             state = displayState,

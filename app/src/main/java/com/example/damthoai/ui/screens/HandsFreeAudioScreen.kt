@@ -26,24 +26,27 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.damthoai.R
 import com.example.damthoai.hardware.AccessibilityStatus
 import com.example.damthoai.hardware.HandsFreeSettings
+import com.example.damthoai.hardware.emergency.EmergencyNotifier
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.GlassCard
+import com.example.damthoai.ui.components.KitDialog
 import com.example.damthoai.ui.components.KitSwitch
 import com.example.damthoai.ui.components.SectionLabel
 import com.example.damthoai.ui.theme.DamThoaiTheme
@@ -66,14 +69,17 @@ fun HandsFreeAudioScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 AccessibilityStatus.refresh(context)
+                EmergencyNotifier.isFullScreenIntentAllowed(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         AccessibilityStatus.refresh(context)
+        EmergencyNotifier.isFullScreenIntentAllowed(context)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     val accessibilityEnabled by AccessibilityStatus.isServiceEnabled.collectAsState()
+    val fullScreenIntentAllowed by EmergencyNotifier.fullScreenIntentAllowed.collectAsState()
     val headsetButtonEnabled by HandsFreeSettings.headsetButtonEnabled.collectAsState()
     val volumeDownHoldEnabled by HandsFreeSettings.volumeDownHoldEnabled.collectAsState()
     val noiseSuppressionEnabled by HandsFreeSettings.noiseSuppressionEnabled.collectAsState()
@@ -82,10 +88,13 @@ fun HandsFreeAudioScreen(
     val beepHapticEnabled by HandsFreeSettings.beepHapticEnabled.collectAsState()
     val emergencyAlertEnabled by HandsFreeSettings.emergencyAlertEnabled.collectAsState()
 
+    var showAccessibilityDialog by remember { mutableStateOf(false) }
+
     HandsFreeAudioContent(
         onBack = onBack,
         modifier = modifier,
         accessibilityEnabled = accessibilityEnabled,
+        fullScreenIntentAllowed = fullScreenIntentAllowed,
         headsetButtonEnabled = headsetButtonEnabled,
         volumeDownHoldEnabled = volumeDownHoldEnabled,
         noiseSuppressionEnabled = noiseSuppressionEnabled,
@@ -93,7 +102,8 @@ fun HandsFreeAudioScreen(
         duckSecondaryEnabled = duckSecondaryEnabled,
         beepHapticEnabled = beepHapticEnabled,
         emergencyAlertEnabled = emergencyAlertEnabled,
-        onOpenAccessibilitySettings = { AccessibilityStatus.openSettings(context) },
+        onOpenAccessibilitySettingsClick = { showAccessibilityDialog = true },
+        onOpenFullScreenSettings = { EmergencyNotifier.openFullScreenIntentSettings(context) },
         onHeadsetButtonChange = HandsFreeSettings::setHeadsetButtonEnabled,
         onVolumeDownHoldChange = HandsFreeSettings::setVolumeDownHoldEnabled,
         onNoiseSuppressionChange = HandsFreeSettings::setNoiseSuppressionEnabled,
@@ -102,6 +112,20 @@ fun HandsFreeAudioScreen(
         onBeepHapticChange = HandsFreeSettings::setBeepHapticEnabled,
         onEmergencyAlertChange = HandsFreeSettings::setEmergencyAlertEnabled
     )
+
+    if (showAccessibilityDialog) {
+        KitDialog(
+            title = "Cần bật Trợ năng",
+            description = "Ứng dụng chỉ đọc phím Âm lượng để dùng làm nút Push-to-Talk khi tắt màn hình. Ứng dụng không đọc nội dung màn hình và không thu thập dữ liệu.",
+            primaryButtonText = "Mở cài đặt Trợ năng",
+            secondaryButtonText = "Để sau",
+            onPrimaryClick = {
+                showAccessibilityDialog = false
+                AccessibilityStatus.openSettings(context)
+            },
+            onDismissRequest = { showAccessibilityDialog = false }
+        )
+    }
 }
 
 @Composable
@@ -109,6 +133,7 @@ private fun HandsFreeAudioContent(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     accessibilityEnabled: Boolean,
+    fullScreenIntentAllowed: Boolean,
     headsetButtonEnabled: Boolean,
     volumeDownHoldEnabled: Boolean,
     noiseSuppressionEnabled: Boolean,
@@ -116,7 +141,8 @@ private fun HandsFreeAudioContent(
     duckSecondaryEnabled: Boolean,
     beepHapticEnabled: Boolean,
     emergencyAlertEnabled: Boolean,
-    onOpenAccessibilitySettings: () -> Unit,
+    onOpenAccessibilitySettingsClick: () -> Unit,
+    onOpenFullScreenSettings: () -> Unit,
     onHeadsetButtonChange: (Boolean) -> Unit,
     onVolumeDownHoldChange: (Boolean) -> Unit,
     onNoiseSuppressionChange: (Boolean) -> Unit,
@@ -187,6 +213,7 @@ private fun HandsFreeAudioContent(
                             .clip(RoundedCornerShape(20.dp))
                             .background(AccentAmber.copy(alpha = 0.12f))
                             .border(1.dp, CueBorder, RoundedCornerShape(20.dp))
+                            .clickable(onClick = onOpenAccessibilitySettingsClick)
                             .padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.Top
                     ) {
@@ -216,7 +243,7 @@ private fun HandsFreeAudioContent(
                             Box(
                                 modifier = Modifier
                                     .heightIn(min = 48.dp)
-                                    .clickable(onClick = onOpenAccessibilitySettings),
+                                    .clickable(onClick = onOpenAccessibilitySettingsClick),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Box(
@@ -286,6 +313,57 @@ private fun HandsFreeAudioContent(
                         )
                     }
                 }
+                if (!fullScreenIntentAllowed) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(AccentAmber.copy(alpha = 0.12f))
+                            .border(1.dp, CueBorder, RoundedCornerShape(20.dp))
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_alert),
+                            contentDescription = null,
+                            tint = AccentAmber,
+                            modifier = Modifier
+                                .padding(top = 1.dp)
+                                .size(20.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "Cần cho phép hiển thị toàn màn hình để cảnh báo khẩn cấp bật sáng màn hình khi khóa",
+                                color = TextPrimary,
+                                style = DamType.Small
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .clickable(onClick = onOpenFullScreenSettings),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .background(AccentAmber.copy(alpha = 0.16f))
+                                        .border(1.dp, CueBorder, RoundedCornerShape(50))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "Mở cài đặt",
+                                        color = AccentAmber,
+                                        style = DamType.Small11Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -343,6 +421,7 @@ private fun HandsFreeAudioScreenPreview() {
         HandsFreeAudioContent(
             onBack = {},
             accessibilityEnabled = false,
+            fullScreenIntentAllowed = false,
             headsetButtonEnabled = true,
             volumeDownHoldEnabled = true,
             noiseSuppressionEnabled = true,
@@ -350,7 +429,8 @@ private fun HandsFreeAudioScreenPreview() {
             duckSecondaryEnabled = true,
             beepHapticEnabled = true,
             emergencyAlertEnabled = true,
-            onOpenAccessibilitySettings = {},
+            onOpenAccessibilitySettingsClick = {},
+            onOpenFullScreenSettings = {},
             onHeadsetButtonChange = {},
             onVolumeDownHoldChange = {},
             onNoiseSuppressionChange = {},
@@ -369,6 +449,7 @@ private fun HandsFreeAudioAccessibilityEnabledPreview() {
         HandsFreeAudioContent(
             onBack = {},
             accessibilityEnabled = true,
+            fullScreenIntentAllowed = true,
             headsetButtonEnabled = true,
             volumeDownHoldEnabled = true,
             noiseSuppressionEnabled = true,
@@ -376,7 +457,8 @@ private fun HandsFreeAudioAccessibilityEnabledPreview() {
             duckSecondaryEnabled = true,
             beepHapticEnabled = true,
             emergencyAlertEnabled = true,
-            onOpenAccessibilitySettings = {},
+            onOpenAccessibilitySettingsClick = {},
+            onOpenFullScreenSettings = {},
             onHeadsetButtonChange = {},
             onVolumeDownHoldChange = {},
             onNoiseSuppressionChange = {},

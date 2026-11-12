@@ -52,11 +52,13 @@ import kotlin.math.sin
  *
  * ĐIỂM NỐI:
  * - [HardwareKeyHandler] ghi thời điểm nhận KeyEvent; [PttController] ghi lúc phát PttEvent.
- * - TV2 gọi [mark] với `mic_open`/`mic_closed` đúng lúc microphone thật được bật/tắt.
+ * - TV2 gọi [mark] với `mic_open`/`mic_closed` đúng lúc microphone thật được bật/tắt qua [recordMicrophoneState].
  * - Log thiết bị và [AudioIncidentBus] được thu khi bắt đầu phiên ghi.
  *
- * Tick Bluetooth và AudioTimestamp chỉ cho ước lượng phần mềm; không thay thế phép đo bằng quay
- * video chậm để thấy thời điểm âm thanh thực sự phát ra từ tai nghe.
+ * CÁCH TÍNH ĐỘ TRỄ APP TO MIC OPEN:
+ * `app_to_mic_open_ms` được ghép cặp bằng cách lấy mốc `elapsedRealtimeMs` của sự kiện `mic_open`
+ * trừ mốc `elapsedRealtimeMs` của sự kiện `key_input_to_app` gần nhất trước đó thuộc cùng lượt bấm phím,
+ * ghép cặp tuần tự theo thứ tự thời gian trong cùng một `sessionId`.
  */
 object FieldTestLogger {
 
@@ -71,6 +73,7 @@ object FieldTestLogger {
     private const val HARDWARE_KEY_DEBOUNCE_MS = 50L
 
     private val lock = Any()
+    private var currentSessionId: String = ""
     private val pendingKeyTimes = mutableMapOf<String, Long>()
     private val lastHardwareKeyDownTimeMs = mutableMapOf<Int, Long>()
     private val _loggingActive = MutableStateFlow(false)
@@ -187,6 +190,7 @@ object FieldTestLogger {
                 Log.e(TAG, "Lỗi runtime khi lấy AudioManager", exception)
                 null
             }
+            currentSessionId = java.util.UUID.randomUUID().toString().take(8)
             _outputDirectoryPath.value = directory.absolutePath
             _currentCsvPath.value = outputFile.absolutePath
             _pressCounts.value = _pressCounts.value.mapValues { 0 }
@@ -260,6 +264,9 @@ object FieldTestLogger {
         if (!isDebuggable() || !_loggingActive.value) return
         val channel = synchronized(lock) { writerChannel } ?: return
         val record = CsvRecord(
+            sessionId = currentSessionId,
+            deviceModel = "${Build.MANUFACTURER} ${Build.MODEL}",
+            androidSdk = Build.VERSION.SDK_INT,
             timestampWallMs = System.currentTimeMillis(),
             elapsedRealtimeMs = SystemClock.elapsedRealtimeNanos() / NANOS_PER_MILLISECOND,
             eventType = eventType,
@@ -806,6 +813,9 @@ object FieldTestLogger {
     }
 
     private data class CsvRecord(
+        val sessionId: String,
+        val deviceModel: String,
+        val androidSdk: Int,
         val timestampWallMs: Long,
         val elapsedRealtimeMs: Long,
         val eventType: String,
@@ -814,6 +824,9 @@ object FieldTestLogger {
         val extra: String
     ) {
         fun toCsvLine(): String = listOf(
+            sessionId,
+            deviceModel,
+            androidSdk.toString(),
             timestampWallMs.toString(),
             elapsedRealtimeMs.toString(),
             eventType,
@@ -833,7 +846,7 @@ object FieldTestLogger {
 
     private const val FILE_TIMESTAMP_PATTERN = "yyyyMMdd_HHmmss_SSS"
     private const val CSV_HEADER =
-        "timestampWallMs,elapsedRealtimeMs,eventType,source,deviceName,extra"
+        "sessionId,deviceModel,androidSdk,timestampWallMs,elapsedRealtimeMs,eventType,source,deviceName,extra"
     private const val NANOS_PER_MILLISECOND = 1_000_000L
     private const val NANOS_PER_SECOND = 1_000_000_000L
 }

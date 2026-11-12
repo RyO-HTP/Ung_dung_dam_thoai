@@ -51,6 +51,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         handleEmergencyAction(intent)
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            com.example.damthoai.hardware.diagnostics.FieldTestLogger.start(applicationContext)
+        }
         HandsFreeSettings.initialize(applicationContext)
         HandsFreeSession.initialize(this)
         AudioRouteGuard.start(applicationContext)
@@ -190,6 +193,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        com.example.damthoai.hardware.diagnostics.FieldTestLogger.stop()
         RogerBeepPlayer.release()
         AudioRouteGuard.stop()
         super.onDestroy()

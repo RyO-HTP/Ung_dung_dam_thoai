@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -144,6 +145,8 @@ private fun PocketModeContent(
     onUnlockBoundsChanged: (Rect) -> Unit = {}
 ) {
     var isTalking by remember { mutableStateOf(false) }
+    val activeIncident by com.example.damthoai.hardware.audio.AudioIncidentBus.activeIncident.collectAsState()
+
     Column(
         modifier = modifier.padding(horizontal = 24.dp, vertical = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -171,6 +174,14 @@ private fun PocketModeContent(
                     if (locked) "Đã khóa chống chạm" else "Đã mở khóa",
                     color = TextPrimary,
                     style = DamType.Small
+                )
+            }
+            if (activeIncident != null) {
+                Spacer(Modifier.height(12.dp))
+                com.example.damthoai.ui.components.AudioIncidentBanner(
+                    incident = activeIncident,
+                    compactSingleLine = true,
+                    showDismiss = !locked
                 )
             }
             Spacer(Modifier.height(20.dp))
