@@ -4,7 +4,7 @@
  * Khối KDoc tiếng Việt:
  * Data class đại diện cho Kênh giao tiếp (Channel) trong sự kiện.
  */
-package com.example.damthoai.data.fake
+package com.example.damthoai.data
 
 data class Channel(
     val id: String,
