@@ -278,11 +278,7 @@ private fun ChannelCardItem(
         0.6f
     }
     val glowAlpha = speakingGlow * (0.35f + pulse * 0.65f)
-    val icon = when {
-        item.channel.isDefault || item.channel.id == "ch_01" || item.channel.name.contains("Toàn sự kiện", ignoreCase = true) -> R.drawable.ic_crown
-        item.channel.id == "ch_02" || item.channel.name.contains("Sân khấu", ignoreCase = true) -> R.drawable.ic_stage
-        else -> R.drawable.ic_radio
-    }
+    val icon = getChannelIcon(item.channel)
     val iconTint = if (icon == R.drawable.ic_crown) AccentAmber else AccentCyan
     val cardModifier = Modifier
         .fillMaxWidth()
@@ -568,6 +564,12 @@ private fun ChannelListScreenPreview() {
     DamThoaiTheme {
         ChannelListScreen(onNavigateToActiveCall = {}, onNavigateToAddChannel = {})
     }
+}
+
+fun getChannelIcon(channel: com.example.damthoai.data.model.Channel): Int = when {
+    channel.isDefault || channel.id == "ch_01" || channel.name.contains("Toàn sự kiện", ignoreCase = true) -> R.drawable.ic_crown
+    channel.id == "ch_02" || channel.name.contains("Sân khấu", ignoreCase = true) -> R.drawable.ic_stage
+    else -> R.drawable.ic_radio
 }
 
 @Preview(widthDp = 390, heightDp = 844)

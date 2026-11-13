@@ -1,5 +1,6 @@
 package com.example.damthoai.ui.onboarding
 
+import com.example.damthoai.ui.components.DevicePreviews
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -171,26 +172,8 @@ private val descriptions = listOf(
     "Tự chuyển giữa Internet, Wi-Fi nội bộ và Bluetooth khi mạng hội trường bị nghẽn."
 )
 
-@Preview(widthDp = 390, heightDp = 844)
+@DevicePreviews
 @Composable
 private fun OnboardingSlide1Preview() {
-    DamThoaiTheme { OnboardingScreenContent(onFinishOnboarding = {}) }
-}
-
-@Preview(widthDp = 390, heightDp = 844)
-@Composable
-private fun OnboardingSlide2Preview() {
-    DamThoaiTheme { OnboardingScreenContent(onFinishOnboarding = {}, initialPage = 1) }
-}
-
-@Preview(widthDp = 390, heightDp = 844)
-@Composable
-private fun OnboardingSlide3Preview() {
-    DamThoaiTheme { OnboardingScreenContent(onFinishOnboarding = {}, initialPage = 2) }
-}
-
-@Preview(widthDp = 390, heightDp = 844, showSystemUi = true)
-@Composable
-private fun OnboardingSystemUiPreview() {
     DamThoaiTheme { OnboardingScreenContent(onFinishOnboarding = {}) }
 }
