@@ -1,10 +1,12 @@
 package com.example.damthoai.permission
 import android.app.Activity
 import android.content.pm.PackageManager
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +15,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -58,6 +63,7 @@ import com.example.damthoai.ui.theme.DamThoaiTheme
 import com.example.damthoai.ui.theme.DamType
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
+import com.example.damthoai.ui.theme.PureWhite
 
 private enum class ContinueRequestStage {
     NONE,
@@ -144,6 +150,8 @@ fun PermissionScreen(
                 PermissionManager.markRequested(context, permission)
                 currentRequestingPermissions = listOf(permission)
                 permissionLauncher.launch(manifestPermissions)
+            } else if (permission == AppPermission.NOTIFICATION) {
+                PermissionManager.openNotificationSettings(context)
             }
         }
     }
@@ -263,35 +271,32 @@ private fun PermissionScreenContent(
     onRequest: (AppPermission) -> Unit,
     onContinue: () -> Unit
 ) {
+    val context = LocalContext.current
+
+    fun handlePermissionClick(permission: AppPermission) {
+        if (states[permission] != PermissionState.GRANTED) {
+            onRequest(permission)
+            return
+        }
+
+        Toast.makeText(context, "Tắt quyền trong Cài đặt hệ thống", Toast.LENGTH_SHORT).show()
+        when (permission) {
+            AppPermission.NOTIFICATION -> PermissionManager.openNotificationSettings(context)
+            AppPermission.BACKGROUND -> PermissionManager.openBatterySettings(context)
+            else -> PermissionManager.openAppSettings(context)
+        }
+    }
+
     DamThoaiBackground(modifier = modifier) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .padding(start = 20.dp, end = 20.dp, top = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(22.dp)
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("9:41", style = DamType.Small.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold), color = TextPrimary)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_wifi),
-                        contentDescription = "Wi-Fi",
-                        tint = TextPrimary,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text("92%", style = DamType.Small.copy(fontSize = 12.sp), color = TextPrimary)
-                }
-            }
-
-            Column(modifier = Modifier.padding(top = 10.dp)) {
+            Column(modifier = Modifier.padding(top = 8.dp)) {
                 Text("Bước cuối cùng", style = DamType.Title, color = TextPrimary)
                 Text(
                     "Cấp quyền để bộ đàm hoạt động trơn tru.",
@@ -307,28 +312,28 @@ private fun PermissionScreenContent(
                 description = "Để mọi người nghe bạn nói",
                 required = true,
                 granted = states[AppPermission.AUDIO] == PermissionState.GRANTED
-            ) { onRequest(AppPermission.AUDIO) }
+            ) { handlePermissionClick(AppPermission.AUDIO) }
 
             PermissionRow(
                 icon = R.drawable.ic_bell,
                 title = "Thông báo",
                 description = "Nhận cảnh báo khẩn cấp",
                 granted = states[AppPermission.NOTIFICATION] == PermissionState.GRANTED
-            ) { onRequest(AppPermission.NOTIFICATION) }
+            ) { handlePermissionClick(AppPermission.NOTIFICATION) }
 
             PermissionRow(
                 icon = R.drawable.ic_bt,
                 title = "Bluetooth và thiết bị ở gần",
                 description = "Tai nghe, kết nối ngang hàng",
                 granted = states[AppPermission.BLUETOOTH] == PermissionState.GRANTED
-            ) { onRequest(AppPermission.BLUETOOTH) }
+            ) { handlePermissionClick(AppPermission.BLUETOOTH) }
 
             PermissionRow(
                 icon = R.drawable.ic_zap,
                 title = "Chạy nền",
                 description = "Giữ app hoạt động khi tắt màn hình",
                 granted = states[AppPermission.BACKGROUND] == PermissionState.GRANTED
-            ) { onRequest(AppPermission.BACKGROUND) }
+            ) { handlePermissionClick(AppPermission.BACKGROUND) }
 
             Text(
                 text = "Camera sẽ được hỏi khi bạn quét mã QR lần đầu.",
@@ -355,10 +360,13 @@ private fun PermissionRow(
     description: String,
     granted: Boolean,
     required: Boolean = false,
-    onRequest: () -> Unit
+    onClick: () -> Unit
 ) {
     GlassCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .clickable(onClick = onClick),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -366,7 +374,7 @@ private fun PermissionRow(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color.White.copy(alpha = 0.09f)),
+                    .background(PureWhite.copy(alpha = 0.09f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -397,8 +405,7 @@ private fun PermissionRow(
             }
             KitSwitch(
                 checked = granted,
-                onCheckedChange = { if (it) onRequest() },
-                enabled = !granted
+                onCheckedChange = { onClick() }
             )
         }
     }
@@ -460,29 +467,11 @@ private fun MicDeniedContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .padding(start = 20.dp, end = 20.dp, top = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(22.dp)
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("9:41", style = DamType.Small.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold), color = TextPrimary)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_wifi),
-                        contentDescription = "Wi-Fi",
-                        tint = TextPrimary,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text("92%", style = DamType.Small.copy(fontSize = 12.sp), color = TextPrimary)
-                }
-            }
             Spacer(Modifier.weight(0.9f))
             Box(
                 modifier = Modifier
@@ -507,10 +496,9 @@ private fun MicDeniedContent(
                 Text(
                     "Không có micro thì bạn không nói được. Hãy bật quyền Micro cho Đàm Thoại trong cài đặt điện thoại.",
                     modifier = Modifier.padding(top = 10.dp, start = 12.dp, end = 12.dp),
-                    style = DamType.Body,
+                    style = DamType.BodyLine21,
                     color = TextSecondary,
                     textAlign = TextAlign.Center,
-                    lineHeight = 21.sp
                 )
             }
             Spacer(Modifier.weight(1f))

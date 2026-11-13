@@ -6,6 +6,7 @@ import com.example.damthoai.network.SignalingClient
 import com.example.damthoai.network.MdnsDiscoveryManager
 import com.example.damthoai.webrtc.WebRTCClient
 import android.content.Context
+import android.media.AudioManager
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,7 +32,7 @@ sealed class CallState {
 
 /**
  * Lớp điều phối trung tâm giữa Tầng Mạng (Signaling WebSocket, mDNS) và WebRTC Audio cho App.
- * Cung cấp API trực tiếp cho UI Jetpack Compose (PTT, Trạng thái đàm thoại, Quét máy chủ).
+ * Cung cấp API trực tiếp cho UI Jetpack Compose (PTT, Trạng thái đàm thoại, Quét máy chủ, Cảnh báo khẩn cấp).
  */
 class DamThoaiCallManager private constructor(private val context: Context) {
 
@@ -64,6 +65,9 @@ class DamThoaiCallManager private constructor(private val context: Context) {
 
     // ID đối tác đang đàm thoại
     private var activePeerUserId: String? = null
+    
+    // Quản lý lắng nghe chuyển mạng (Seamless Handover)
+    private var networkChangeReceiver: com.example.damthoai.network.NetworkChangeReceiver? = null
 
     init {
         observeSignalingEvents()
@@ -108,7 +112,7 @@ class DamThoaiCallManager private constructor(private val context: Context) {
                 when (event) {
                     is SignalingEvent.ConfigReceived -> {
                         Log.d(TAG, "Nạp cấu hình ${event.iceServers.size} ICE Servers vào WebRTC Client")
-                        webRTCClient.   updateIceServers(event.iceServers)
+                        webRTCClient.updateIceServers(event.iceServers)
                     }
 
                     is SignalingEvent.OfferReceived -> {
@@ -151,6 +155,10 @@ class DamThoaiCallManager private constructor(private val context: Context) {
         com.example.damthoai.hardware.PttController.acquireCapture("DamThoaiCallManager")
 
         setupPeerConnection(targetUserId)
+        
+        // Kích hoạt theo dõi chuyển mạng và micro Bluetooth
+        startNetworkMonitoring()
+        enableBluetoothScoAudio()
 
         webRTCClient.createOffer(
             onSuccess = { sdp ->
@@ -175,6 +183,10 @@ class DamThoaiCallManager private constructor(private val context: Context) {
         com.example.damthoai.hardware.PttController.acquireCapture("DamThoaiCallManager")
 
         setupPeerConnection(senderUserId)
+        
+        // Kích hoạt theo dõi chuyển mạng và micro Bluetooth
+        startNetworkMonitoring()
+        enableBluetoothScoAudio()
 
         val offerSdp = SessionDescription(SessionDescription.Type.OFFER, offerSdpStr)
         webRTCClient.setRemoteDescription(offerSdp, onSuccess = {
@@ -233,6 +245,26 @@ class DamThoaiCallManager private constructor(private val context: Context) {
     }
 
     /**
+     * Kích hoạt phát cảnh báo khẩn cấp (Emergency Alert - Tuần 4)
+     * Tích hợp với EmergencyAlertManager của TV4
+     */
+    fun triggerEmergency(
+        fromName: String = "Tổng Đạo Diễn",
+        fromRole: String = "Chỉ Huy",
+        isDirectCall: Boolean = true
+    ) {
+        val alert = com.example.damthoai.hardware.emergency.EmergencyAlert(
+            id = "alert_${System.currentTimeMillis()}",
+            fromName = fromName,
+            fromRole = fromRole,
+            startedAtMs = System.currentTimeMillis(),
+            isDirectCall = isDirectCall
+        )
+        Log.d(TAG, "Kích hoạt Cảnh báo Khẩn cấp: $fromName ($fromRole)")
+        com.example.damthoai.hardware.emergency.EmergencyAlertManager.trigger(context, alert)
+    }
+
+    /**
      * Kết thúc cuộc gọi
      */
     fun endCall() {
@@ -245,6 +277,11 @@ class DamThoaiCallManager private constructor(private val context: Context) {
         com.example.damthoai.hardware.PttController.releaseCapture("DamThoaiCallManager")
         com.example.damthoai.hardware.PttController.setPttModeEnabled(false)
         PttController.forceReleasePtt()
+        
+        // Dọn dẹp tài nguyên mạng và Bluetooth
+        networkChangeReceiver?.stop()
+        networkChangeReceiver = null
+        disableBluetoothScoAudio()
     }
 
     /**
@@ -254,5 +291,47 @@ class DamThoaiCallManager private constructor(private val context: Context) {
         endCall()
         signalingClient.disconnect()
         mdnsDiscovery.stopDiscovery()
+    }
+    
+    // --- CÁC HÀM XỬ LÝ NGOẠI VI (MẠNG & BLUETOOTH) ---
+
+    private fun startNetworkMonitoring() {
+        if (networkChangeReceiver == null) {
+            networkChangeReceiver = com.example.damthoai.network.NetworkChangeReceiver(context) {
+                triggerSeamlessHandover()
+            }
+            networkChangeReceiver?.start()
+        }
+    }
+
+    private fun triggerSeamlessHandover() {
+        val targetId = activePeerUserId ?: return
+        Log.d(TAG, "Bắt đầu Seamless Handover tới $targetId...")
+        
+        webRTCClient.restartIce(
+            onSuccess = { sdp ->
+                Log.d(TAG, "Gửi Offer mới qua Signaling để nối lại cuộc gọi")
+                signalingClient.sendOffer(targetId, sdp.description)
+            },
+            onError = { err ->
+                Log.e(TAG, "Lỗi Handover: $err")
+            }
+        )
+    }
+
+    private fun enableBluetoothScoAudio() {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        if (audioManager.isBluetoothScoAvailableOffCall) {
+            audioManager.startBluetoothSco()
+            audioManager.isBluetoothScoOn = true
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        }
+    }
+
+    private fun disableBluetoothScoAudio() {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.stopBluetoothSco()
+        audioManager.isBluetoothScoOn = false
+        audioManager.mode = AudioManager.MODE_NORMAL
     }
 }

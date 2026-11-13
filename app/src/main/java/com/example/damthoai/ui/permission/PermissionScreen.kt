@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -50,6 +51,7 @@ import com.example.damthoai.ui.components.SectionLabel
 import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.AccentRed
 import com.example.damthoai.ui.theme.DamThoaiTheme
+import com.example.damthoai.ui.theme.DamType
 import com.example.damthoai.ui.theme.DangerStart
 import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.GlassBorder
@@ -66,7 +68,6 @@ fun GrantPermissionScreen(
     modifier: Modifier = Modifier,
     uiState: PermissionUiState = PermissionUiState()
 ) {
-    // // TODO(TV4): Lấy trạng thái công tắc từ PermissionManager của Người 4
     var micState by remember { mutableStateOf(uiState.isMicrophoneGranted) }
     var notiState by remember { mutableStateOf(uiState.isNotificationGranted) }
     var btState by remember { mutableStateOf(uiState.isBluetoothGranted) }
@@ -77,6 +78,7 @@ fun GrantPermissionScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
+                .navigationBarsPadding()
                 .padding(20.dp)
         ) {
             Row(
@@ -93,14 +95,13 @@ fun GrantPermissionScreen(
             Text(
                 text = "Bước cuối cùng",
                 color = TextPrimary,
-                fontSize = 26.sp,
-                fontWeight = FontWeight.ExtraBold
+                style = DamType.Title26.copy(fontWeight = FontWeight.ExtraBold)
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = "Cấp quyền để bộ đàm hoạt động trơn tru.",
                 color = TextSecondary,
-                fontSize = 15.sp
+                style = DamType.Body15
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -148,7 +149,7 @@ fun GrantPermissionScreen(
             Text(
                 text = "Camera sẽ được hỏi khi bạn quét mã QR lần đầu.",
                 color = TextSecondary,
-                fontSize = 13.sp,
+                style = DamType.Body13,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -186,8 +187,7 @@ private fun PermissionRowCard(
                     Text(
                         text = title,
                         color = TextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        style = DamType.Heading16
                     )
                     if (isRequired) {
                         Spacer(modifier = Modifier.width(8.dp))
@@ -201,8 +201,7 @@ private fun PermissionRowCard(
                             Text(
                                 text = "BẮT BUỘC",
                                 color = AccentRed,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.ExtraBold
+                                style = DamType.Tag
                             )
                         }
                     }
@@ -211,7 +210,7 @@ private fun PermissionRowCard(
                 Text(
                     text = description,
                     color = TextSecondary,
-                    fontSize = 13.sp
+                    style = DamType.Body13
                 )
             }
 
@@ -244,6 +243,7 @@ fun MicrophonePermissionScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .navigationBarsPadding()
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
@@ -270,8 +270,7 @@ fun MicrophonePermissionScreen(
             Text(
                 text = "Cần quyền Micro",
                 color = TextPrimary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
+                style = DamType.Title24,
                 textAlign = TextAlign.Center
             )
 
@@ -280,9 +279,8 @@ fun MicrophonePermissionScreen(
             Text(
                 text = "Không có micro thì bạn không nói được. Hãy bật quyền Micro cho Đàm Thoại trong cài đặt điện thoại.",
                 color = TextSecondary,
-                fontSize = 15.sp,
+                style = DamType.Body15Line22,
                 textAlign = TextAlign.Center,
-                lineHeight = 22.sp
             )
 
             Spacer(modifier = Modifier.height(36.dp))
@@ -304,7 +302,7 @@ fun MicrophonePermissionScreen(
     }
 }
 
-@Preview
+@Preview(widthDp = 390, heightDp = 844)
 @Composable
 private fun GrantPermissionScreenPreview() {
     DamThoaiTheme {
@@ -312,7 +310,7 @@ private fun GrantPermissionScreenPreview() {
     }
 }
 
-@Preview
+@Preview(widthDp = 390, heightDp = 844)
 @Composable
 private fun MicrophonePermissionScreenPreview() {
     DamThoaiTheme {

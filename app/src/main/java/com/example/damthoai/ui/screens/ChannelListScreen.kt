@@ -16,7 +16,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,9 +23,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
+import com.example.damthoai.ui.theme.AccentCyan
+import com.example.damthoai.ui.theme.DamThoaiTheme
+import com.example.damthoai.ui.theme.DamType
+import com.example.damthoai.ui.theme.GlassBg
+import com.example.damthoai.ui.theme.SelectedChannelBg
+import com.example.damthoai.ui.theme.TextPrimary
+import com.example.damthoai.ui.theme.TextSecondary
 
 @Composable
 fun ChannelListScreen(
@@ -46,14 +52,14 @@ fun ChannelListScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                Text(text = "SỰ KIỆN", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                Text(text = "Đêm nhạc Chào Tân sinh viên", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text(text = "Cloud · 42 ms", fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
+                Text(text = "SỰ KIỆN", color = AccentCyan, style = DamType.Label)
+                Text(text = "Đêm nhạc Chào Tân sinh viên", color = TextPrimary, style = DamType.Heading18)
+                Text(text = "Cloud · 42 ms", color = TextSecondary, style = DamType.Small12)
             }
 
             OutlinedButton(onClick = onNavigateToCreateEvent) {
                 Icon(painter = painterResource(R.drawable.ic_plus), contentDescription = "Tạo sự kiện")
-                Text("Tạo sự kiện")
+                Text("Tạo sự kiện", color = TextPrimary, style = DamType.Chip)
             }
         }
 
@@ -62,31 +68,30 @@ fun ChannelListScreen(
         // Live Cue Banner
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+            colors = CardDefaults.cardColors(containerColor = GlassBg)
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 Text(
                     text = "THANH KỊCH BẢN · ĐANG DIỄN",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                    style = DamType.Label,
+                    color = TextSecondary
                 )
                 Text(
                     text = "Tiết mục 4 – Ban nhạc khách mời",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
+                    style = DamType.Body14Bold,
+                    color = TextPrimary
                 )
                 Text(
                     text = "Tiếp theo: chuyển cảnh, hậu cần mang đạo cụ",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                    style = DamType.Small12,
+                    color = TextSecondary.copy(alpha = 0.8f)
                 )
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Text(text = "Danh sách kênh", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text(text = "Danh sách kênh", color = TextPrimary, style = DamType.Heading16)
         Spacer(modifier = Modifier.height(8.dp))
 
         val channels = listOf(
@@ -103,7 +108,9 @@ fun ChannelListScreen(
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
                     .clickable { onNavigateToActiveCall() },
-                colors = if (isHighlight) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer) else CardDefaults.cardColors()
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isHighlight) SelectedChannelBg else GlassBg
+                )
             ) {
                 Row(
                     modifier = Modifier
@@ -113,8 +120,8 @@ fun ChannelListScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text(text = name, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Text(text = subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(text = name, color = TextPrimary, style = DamType.Heading)
+                        Text(text = subtitle, color = TextSecondary, style = DamType.Small12)
                     }
                     Icon(painter = painterResource(R.drawable.ic_vol), contentDescription = "Sound")
                 }
@@ -125,7 +132,7 @@ fun ChannelListScreen(
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            colors = CardDefaults.cardColors(containerColor = GlassBg)
         ) {
             Row(
                 modifier = Modifier
@@ -134,11 +141,19 @@ fun ChannelListScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = "Mic đang tắt · nghe 3 kênh", fontSize = 13.sp)
+                Text(text = "Mic đang tắt · nghe 3 kênh", color = TextPrimary, style = DamType.Body13)
                 Button(onClick = onNavigateToActiveCall) {
-                    Text("Mở mic")
+                    Text("Mở mic", style = DamType.Chip)
                 }
             }
         }
+    }
+}
+
+@Preview(widthDp = 390, heightDp = 844)
+@Composable
+private fun ChannelListScreenPreview() {
+    DamThoaiTheme {
+        ChannelListScreen(onNavigateToActiveCall = {}, onNavigateToCreateEvent = {})
     }
 }

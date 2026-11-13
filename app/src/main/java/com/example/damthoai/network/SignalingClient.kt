@@ -70,6 +70,7 @@ class SignalingClient(
 
     private var webSocket: WebSocket? = null
     private var currentServerUrl: String? = null
+    val serverUrl: String? get() = currentServerUrl
     private var currentUserId: String? = null
     private var shouldReconnect: Boolean = true
     private var reconnectJob: Job? = null

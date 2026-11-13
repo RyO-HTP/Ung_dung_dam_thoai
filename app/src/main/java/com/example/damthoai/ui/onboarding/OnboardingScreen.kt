@@ -1,5 +1,6 @@
 package com.example.damthoai.ui.onboarding
 
+import com.example.damthoai.ui.components.DevicePreviews
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,7 +13,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -22,6 +25,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -57,18 +63,33 @@ private fun OnboardingScreenContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 26.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().height(30.dp),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Bỏ qua",
-                    color = TextMuted,
-                    style = DamType.Muted.copy(fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
-                    modifier = Modifier.clickable(onClick = onFinishOnboarding)
+            Box(modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(30.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Bỏ qua",
+                        color = TextMuted,
+                        style = DamType.Body14Bold.copy(
+                            fontSize = 12.5.sp,
+                            lineHeight = 16.25.sp
+                        ),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .align(Alignment.TopEnd)
+                        .semantics { contentDescription = "Bỏ qua" }
+                        .clickable(role = Role.Button, onClick = onFinishOnboarding)
                 )
             }
 
@@ -102,7 +123,7 @@ private fun OnboardingScreenContent(
                     Text(
                         text = descriptions[page],
                         color = TextMuted,
-                        style = DamType.Body.copy(lineHeight = 21.sp),
+                        style = DamType.BodyLine21,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
                     )
@@ -151,20 +172,8 @@ private val descriptions = listOf(
     "Tự chuyển giữa Internet, Wi-Fi nội bộ và Bluetooth khi mạng hội trường bị nghẽn."
 )
 
-@Preview(widthDp = 390, heightDp = 844)
+@DevicePreviews
 @Composable
 private fun OnboardingSlide1Preview() {
     DamThoaiTheme { OnboardingScreenContent(onFinishOnboarding = {}) }
-}
-
-@Preview(widthDp = 390, heightDp = 844)
-@Composable
-private fun OnboardingSlide2Preview() {
-    DamThoaiTheme { OnboardingScreenContent(onFinishOnboarding = {}, initialPage = 1) }
-}
-
-@Preview(widthDp = 390, heightDp = 844)
-@Composable
-private fun OnboardingSlide3Preview() {
-    DamThoaiTheme { OnboardingScreenContent(onFinishOnboarding = {}, initialPage = 2) }
 }

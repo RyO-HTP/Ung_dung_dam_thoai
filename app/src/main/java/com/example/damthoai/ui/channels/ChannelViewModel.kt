@@ -9,11 +9,14 @@ package com.example.damthoai.ui.channels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.damthoai.data.model.Channel
+import com.example.damthoai.data.fake.FakeEventRepository
 import com.example.damthoai.data.fake.FakeRepositories
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -23,34 +26,54 @@ class ChannelViewModel : ViewModel() {
     val uiState: StateFlow<ChannelListUiState> = _uiState.asStateFlow()
 
     init {
-        loadFakeChannels()
+        observeEventChannels()
         triggerMockRoleChangedBanner()
     }
 
-    private fun loadFakeChannels() {
-        val sampleList = FakeRepositories.sampleChannels
-        val channelStates = sampleList.map { channel ->
-            when (channel.id) {
-                "ch_01" -> ChannelItemUiState(
-                    channel = channel,
-                    volume = 1.0f,
-                    isTransmittingMic = false
-                )
-                "ch_02" -> ChannelItemUiState(
-                    channel = channel,
-                    volume = 0.7f
-                )
-                else -> ChannelItemUiState(
-                    channel = channel,
-                    volume = 0.2f,
-                    isTransmittingMic = true,
-                    isDucked80 = true
-                )
+    private fun observeEventChannels() {
+        viewModelScope.launch {
+            FakeEventRepository.currentEvent.collect { event ->
+                val currentState = _uiState.value
+                val previousChannels = currentState.channels.associateBy { it.channel.id }
+                val channelStates = (event?.channels ?: FakeRepositories.sampleChannels).map { channel ->
+                    previousChannels[channel.id]?.copy(channel = channel)
+                        ?: initialChannelState(channel)
+                }
+                val activeMicChannelId = currentState.activeMicChannelId
+                    .takeIf { id -> channelStates.any { it.channel.id == id } }
+                    ?: channelStates.firstOrNull()?.channel?.id.orEmpty()
+                val selectedMenuChannel = currentState.selectedMenuChannel?.let { selected ->
+                    channelStates.firstOrNull { it.channel.id == selected.channel.id }
+                }
+
+                _uiState.update {
+                    it.copy(
+                        eventName = event?.name ?: FakeRepositories.sampleEvent.name,
+                        channels = channelStates,
+                        activeMicChannelId = activeMicChannelId,
+                        selectedMenuChannel = selectedMenuChannel
+                    )
+                }
             }
         }
-
-        _uiState.update { it.copy(channels = channelStates) }
     }
+
+    private fun initialChannelState(channel: Channel): ChannelItemUiState =
+        when (channel.id) {
+            "ch_01" -> ChannelItemUiState(
+                channel = channel,
+                volume = 1.0f,
+                isTransmittingMic = false
+            )
+            "ch_02" -> ChannelItemUiState(channel = channel, volume = 0.7f)
+            "ch_03" -> ChannelItemUiState(
+                channel = channel,
+                volume = 0.2f,
+                isTransmittingMic = true,
+                isDucked80 = true
+            )
+            else -> ChannelItemUiState(channel = channel)
+        }
 
     fun updateChannelVolume(channelId: String, newVolume: Float) {
         _uiState.update { state ->
@@ -88,6 +111,22 @@ class ChannelViewModel : ViewModel() {
 
     fun closeChannelMenu() {
         _uiState.update { it.copy(selectedMenuChannel = null) }
+    }
+
+    fun leaveChannel(channelId: String) {
+        _uiState.update { state ->
+            val remainingChannels = state.channels.filterNot { it.channel.id == channelId }
+            val activeMicChannelId = if (state.activeMicChannelId == channelId) {
+                remainingChannels.firstOrNull()?.channel?.id.orEmpty()
+            } else {
+                state.activeMicChannelId
+            }
+            state.copy(
+                channels = remainingChannels,
+                activeMicChannelId = activeMicChannelId,
+                selectedMenuChannel = null
+            )
+        }
     }
 
     fun dismissRoleChangedBanner() {

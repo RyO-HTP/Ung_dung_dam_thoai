@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -38,17 +40,32 @@ import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.GlassBorder
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
+import com.example.damthoai.ui.theme.Transparent
 
 @Composable
 fun JoinErrorScreen(
     onRetryQr: () -> Unit,
     onSwitchPin: () -> Unit,
     onNavigateToCreateEvent: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    reason: com.example.damthoai.data.qr.QrJoinFailure? = null,
+    customMessage: String? = null
 ) {
+    val errorSubtitle = when (reason) {
+        com.example.damthoai.data.qr.QrJoinFailure.EXPIRED -> "Mã QR đã hết hạn"
+        com.example.damthoai.data.qr.QrJoinFailure.MALFORMED -> "Mã QR không đúng định dạng"
+        com.example.damthoai.data.qr.QrJoinFailure.NOT_DAM_THOAI -> "Đây không phải mã của Đàm Thoại"
+        com.example.damthoai.data.qr.QrJoinFailure.SERVER_REJECTED -> customMessage ?: "Máy chủ từ chối mã"
+        com.example.damthoai.data.qr.QrJoinFailure.NETWORK -> "Không kết nối được máy chủ"
+        null -> "Hãy kiểm tra lại các nguyên nhân thường gặp"
+    }
     DamThoaiBackground(modifier = modifier) {
         Column(
-            Modifier.fillMaxSize().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 26.dp),
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 26.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(Modifier.weight(1f))
@@ -74,8 +91,8 @@ fun JoinErrorScreen(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Hãy kiểm tra lại các nguyên nhân thường gặp",
-                color = TextSecondary,
+                text = errorSubtitle,
+                color = AccentAmber,
                 style = DamType.Body,
                 textAlign = TextAlign.Center
             )
@@ -105,15 +122,13 @@ fun JoinErrorScreen(
                 modifier = Modifier.fillMaxWidth(),
                 height = 54.dp
             )
-            Text(
-                "Muốn tạo sự kiện mới? Tạo sự kiện",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onNavigateToCreateEvent)
-                    .padding(top = 10.dp),
-                color = AccentCyan,
-                style = DamType.Small,
-                textAlign = TextAlign.Center
+            Spacer(Modifier.height(10.dp))
+            SecondaryButton(
+                text = "Tạo sự kiện mới",
+                onClick = onNavigateToCreateEvent,
+                iconRes = R.drawable.ic_plus,
+                modifier = Modifier.fillMaxWidth(),
+                height = 48.dp
             )
         }
     }
@@ -126,7 +141,7 @@ private fun ErrorReason(text: String) {
             Modifier.padding(top = 7.dp).size(8.dp).clip(CircleShape).background(AccentAmber)
         )
         Spacer(Modifier.size(10.dp))
-        Text(text, color = TextPrimary, style = DamType.Body.copy(fontSize = 14.sp, lineHeight = 21.sp))
+        Text(text, color = TextPrimary, style = DamType.Body14Line21)
     }
 }
 

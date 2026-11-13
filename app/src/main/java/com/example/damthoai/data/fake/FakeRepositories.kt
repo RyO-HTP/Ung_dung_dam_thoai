@@ -7,6 +7,11 @@
  */
 package com.example.damthoai.data.fake
 
+import com.example.damthoai.data.model.Channel
+import com.example.damthoai.data.model.Event
+import com.example.damthoai.data.model.Member
+import com.example.damthoai.data.model.MemberLevel
+
 object FakeRepositories {
 
     val sampleEvent = Event(
@@ -14,7 +19,6 @@ object FakeRepositories {
         name = "Lễ Trao Giải Âm Nhạc 2026",
         pinCode = "889900",
         adminCode = "ADM-7788",
-        memberCount = 24,
         isOwner = true
     )
 

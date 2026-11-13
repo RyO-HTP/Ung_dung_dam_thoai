@@ -21,24 +21,26 @@ import com.example.damthoai.ui.theme.GlowBlue
 import com.example.damthoai.ui.theme.GlowPurple
 import com.example.damthoai.ui.theme.PocketBase
 import com.example.damthoai.ui.theme.PocketGlow
+import com.example.damthoai.ui.theme.PureWhite
 import com.example.damthoai.ui.theme.StarTint
+import com.example.damthoai.ui.theme.Transparent
 
 enum class BgVariant { Default, Emergency, Pocket }
 
 private fun DrawScope.glow(cx: Float, cy: Float, rx: Float, ry: Float, color: Color) {
     withTransform({ translate(cx, cy); scale(1f, ry / rx, pivot = Offset.Zero) }) {
         drawCircle(
-            Brush.radialGradient(listOf(color, Color.Transparent), center = Offset.Zero, radius = rx),
+            Brush.radialGradient(listOf(color, Transparent), center = Offset.Zero, radius = rx),
             radius = rx,
             center = Offset.Zero
         )
     }
 }
 
-private fun DrawScope.star(px: Float, py: Float, radius: Float, color: Color = Color.White) {
+private fun DrawScope.star(px: Float, py: Float, radius: Float, color: Color = PureWhite) {
     val center = Offset(size.width * px, size.height * py)
     drawCircle(
-        Brush.radialGradient(listOf(color, Color.Transparent), center = center, radius = radius),
+        Brush.radialGradient(listOf(color, Transparent), center = center, radius = radius),
         radius = radius,
         center = center
     )
