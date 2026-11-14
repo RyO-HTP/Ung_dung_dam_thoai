@@ -1,10 +1,11 @@
 package com.example.damthoai
 
+import io.ktor.http.encodeURLParameter
 import com.example.damthoai.data.qr.QrParseResult
 import com.example.damthoai.data.qr.QrTokenParser
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.test.Test
 
 class QrTokenParserTest {
 
@@ -40,7 +41,7 @@ class QrTokenParserTest {
 
     @Test
     fun parsePinDeepLink_readsOrganizerEventName() {
-        val encoded = java.net.URLEncoder.encode("Đêm nhạc Hội trường A", "UTF-8")
+        val encoded = "Đêm nhạc Hội trường A".encodeURLParameter(spaceToPlus = true)
         val result = QrTokenParser.parse("damthoai://join?channel=ch_01&pin=123456&name=$encoded")
         assertTrue(result is QrParseResult.Valid)
         assertEquals("Đêm nhạc Hội trường A", (result as QrParseResult.Valid).payload.eventName)

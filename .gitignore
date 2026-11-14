@@ -13,3 +13,12 @@ __pycache__/
 # File riêng của Visual Studio và file chạy Go đã build (tạo lại bằng go build)
 .vs/
 backend-tv5/bin/
+
+# iOS (Xcode project sinh bằng XcodeGen, file build)
+iosApp/iosApp.xcodeproj/
+iosApp/build/
+iosApp/iosApp/Info.plist
+iosApp/iosApp/iosApp.entitlements
+xcuserdata/
+*.xcworkspace/xcuserdata/
+.kotlin/

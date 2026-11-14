@@ -9,6 +9,8 @@ multiplatform-settings = "1.3.0"
 jb-lifecycle = "2.9.6"
 jb-navigation = "2.9.1"
 atomicfu = "0.29.0"
+# Sinh ảnh QR thuần Kotlin cho iOS (Android vẫn dùng ZXing). 1.0.1 là bản cuối tương thích Kotlin 2.2 / Compose 1.9.
+qrose = "1.0.1"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -25,6 +27,7 @@ jb-lifecycle-runtime-compose = { module = "org.jetbrains.androidx.lifecycle:life
 jb-navigation-compose = { module = "org.jetbrains.androidx.navigation:navigation-compose", version.ref = "jb-navigation" }
 
 compose-ui-backhandler = { module = "org.jetbrains.compose.ui:ui-backhandler", version.ref = "compose-multiplatform" }
+qrose = { module = "io.github.alexzhirkevich:qrose", version.ref = "qrose" }
 atomicfu = { module = "org.jetbrains.kotlinx:atomicfu", version.ref = "atomicfu" }
 
 [plugins]
