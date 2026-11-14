@@ -103,6 +103,12 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
+        <!-- Giữ phiên đàm thoại (micro, mạng) khi app ở nền / tắt màn hình -->
+        <service
+            android:name=".service.DamThoaiCallService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
     </application>
 
 </manifest>

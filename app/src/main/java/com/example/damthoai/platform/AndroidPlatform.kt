@@ -17,6 +17,15 @@ import com.example.damthoai.hardware.emergency.EmergencyAlertManager
 import com.example.damthoai.network.AndroidLanProbe
 import com.example.damthoai.network.MdnsDiscoveryManager
 import com.example.damthoai.network.NetworkChangeReceiver
+import com.example.damthoai.service.DamThoaiCallManager
+import com.example.damthoai.service.DamThoaiCallService
+import com.example.damthoai.service.ServerStatus
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import com.example.damthoai.webrtc.WebRTCClient
 
 /**
@@ -24,6 +33,7 @@ import com.example.damthoai.webrtc.WebRTCClient
  */
 object AndroidPlatform {
     private var installed = false
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     fun install(context: Context) {
         if (installed) return
@@ -55,6 +65,19 @@ object AndroidPlatform {
 
         PttController.onCaptureActiveChanged = { active -> HandsFreeSession.onCaptureActiveChanged(active) }
         PttController.onPttEventLogged = { event -> FieldTestLogger.recordPttEvent(event) }
+
+        // Phiên chạy nền: bật khi đang trong sự kiện (bộ giám sát kết nối đang chạy), tắt khi rời sự kiện.
+        // Đổi trạng thái Connected <-> Reconnecting không bật/tắt lại service, chỉ cập nhật tên trên thông báo.
+        val callManager = DamThoaiCallManager.getInstance()
+        scope.launch {
+            combine(callManager.serverStatus, callManager.eventName) { status, name ->
+                (status !is ServerStatus.Idle) to name
+            }
+                .distinctUntilChanged()
+                .collect { (inEvent, name) ->
+                    if (inEvent) DamThoaiCallService.start(appContext, name) else DamThoaiCallService.stop(appContext)
+                }
+        }
     }
 }
 
