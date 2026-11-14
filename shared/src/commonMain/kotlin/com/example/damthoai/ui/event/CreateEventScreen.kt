@@ -38,9 +38,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalClipboardManager
+import com.example.damthoai.util.rememberTextClipboard
 import org.jetbrains.compose.resources.painterResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -87,7 +86,7 @@ fun CreateEventScreen(
     onNavigateToRestore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = rememberTextClipboard()
 
     var eventName by rememberSaveable { mutableStateOf("") }
     val creator by viewModel.creator.collectAsState()
@@ -307,7 +306,7 @@ fun CreateEventScreen(
                                 .align(Alignment.CenterEnd)
                                 .clip(CircleShape)
                                 .clickable {
-                                    clipboardManager.setText(AnnotatedString(adminCode))
+                                    clipboard.copy(adminCode)
                                     copied = true
                                 },
                             contentAlignment = Alignment.Center

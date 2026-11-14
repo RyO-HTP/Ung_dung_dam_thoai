@@ -30,7 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalClipboardManager
+import com.example.damthoai.util.rememberTextClipboard
 import org.jetbrains.compose.resources.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -59,7 +59,7 @@ fun RestoreEventScreen(
     onRestore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = rememberTextClipboard()
     var adminCode by rememberSaveable { mutableStateOf("") }
     var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
 
@@ -160,7 +160,7 @@ fun RestoreEventScreen(
                     textStyle = DamType.MonoInput.copy(color = TextPrimary),
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Characters,
-                        autoCorrect = false
+                        autoCorrectEnabled = false
                     ),
                     cursorBrush = SolidColor(AccentCyan),
                     decorationBox = { innerTextField ->
@@ -182,10 +182,11 @@ fun RestoreEventScreen(
                         .align(Alignment.CenterEnd)
                         .clip(CircleShape)
                         .clickable {
-                            val clipText = clipboardManager.getText()?.text
-                            if (!clipText.isNullOrBlank()) {
-                                adminCode = clipText.toString().trim().uppercase()
-                                errorMessage = null
+                            clipboard.paste { clipText ->
+                                if (clipText.isNotBlank()) {
+                                    adminCode = clipText.trim().uppercase()
+                                    errorMessage = null
+                                }
                             }
                         },
                     contentAlignment = Alignment.Center

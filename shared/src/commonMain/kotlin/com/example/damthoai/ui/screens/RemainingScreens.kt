@@ -40,10 +40,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalClipboardManager
+import com.example.damthoai.util.rememberTextClipboard
 import com.example.damthoai.platform.LocalPlatformUi
 import org.jetbrains.compose.resources.painterResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -371,7 +370,7 @@ private fun ManageEventContent(
     onRenameChannel: (String, String) -> Unit = { _, _ -> },
     onDeleteChannel: (String) -> Unit = {}
 ) {
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = rememberTextClipboard()
     var showAdminCode by rememberSaveable { mutableStateOf(false) }
     var showEndEventDialog by rememberSaveable { mutableStateOf(false) }
     var channelMenuId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -422,7 +421,7 @@ private fun ManageEventContent(
                                 )
                             }
                             Box(
-                                modifier = Modifier.size(36.dp).clickable { clipboardManager.setText(AnnotatedString(code)) },
+                                modifier = Modifier.size(36.dp).clickable { clipboard.copy(code) },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -650,7 +649,7 @@ fun MyQrCodeScreen(
     channel: Channel? = null
 ) {
     val platformUi = LocalPlatformUi.current
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = rememberTextClipboard()
     val currentMember = event.members.firstOrNull { it.id == event.ownerId } ?: event.members.firstOrNull()
     val userLevel = currentMember?.level ?: MemberLevel.LEVEL_1
 
@@ -749,7 +748,7 @@ fun MyQrCodeScreen(
                     .border(1.5.dp, AccentCyan, RoundedCornerShape(18.dp))
                     .clickable {
                         val link = selectedChannel.qrPayload.ifBlank { "damthoai://join?channel=${selectedChannel.id}&pin=${selectedChannel.pin}" }
-                        clipboardManager.setText(AnnotatedString(link))
+                        clipboard.copy(link)
                     },
                 contentAlignment = Alignment.Center
             ) {
