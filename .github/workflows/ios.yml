@@ -67,6 +67,33 @@ jobs:
           path: iosApp/build/Build/Products/Debug-iphonesimulator/DamThoai.app
           if-no-files-found: error
 
+      # Bản cho iPhone thật, CHƯA KÝ: tải về rồi ký + cài bằng Sideloadly (Windows) với Apple ID.
+      # Bỏ entitlement PushToTalk vì Apple ID miễn phí không được cấp quyền này.
+      - name: Build bản iPhone thật (chưa ký) và đóng gói .ipa
+        run: |
+          cd iosApp
+          xcodebuild \
+            -project iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build-device \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_ENTITLEMENTS="" \
+            build
+          mkdir -p ipa/Payload
+          cp -R build-device/Build/Products/Release-iphoneos/DamThoai.app ipa/Payload/
+          cd ipa && zip -qry ../DamThoai-unsigned.ipa Payload
+
+      - name: Tải lên DamThoai-unsigned.ipa (iPhone thật)
+        uses: actions/upload-artifact@v4
+        with:
+          name: DamThoai-iphone-unsigned-ipa
+          path: iosApp/DamThoai-unsigned.ipa
+          if-no-files-found: error
+
       - name: Báo cáo test khi lỗi
         if: failure()
         uses: actions/upload-artifact@v4
