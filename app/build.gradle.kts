@@ -19,7 +19,7 @@ android {
         // Máy chủ Signaling trên đám mây (Render): app dùng mặc định, không cần máy tính chạy server.
         // Đổi trong gradle.properties (damthoai.cloudSignalingUrl) nếu Render cấp địa chỉ khác; để trống để tắt.
         val cloudSignalingUrl = (project.findProperty("damthoai.cloudSignalingUrl") as String?)
-            ?: "wss://damthoai-signaling.onrender.com"
+            ?: "wss://ung-dung-dam-thoai.onrender.com"
         buildConfigField("String", "CLOUD_SIGNALING_URL", "\"$cloudSignalingUrl\"")
         vectorDrawables {
             useSupportLibrary = true
