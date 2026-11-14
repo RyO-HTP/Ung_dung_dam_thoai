@@ -6,6 +6,7 @@ package com.example.damthoai.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +37,10 @@ import com.example.damthoai.ui.onboarding.OnboardingScreen
 import com.example.damthoai.ui.screens.ActiveCallScreen
 import com.example.damthoai.ui.screens.ChannelMenuRouteScreen
 import com.example.damthoai.ui.screens.EmergencyActiveCallScreen
+import com.example.damthoai.ui.screens.EmergencyCallParticipant
+import com.example.damthoai.ui.screens.EmergencyCallSelectScreen
+import com.example.damthoai.ui.event.toUiMember
+import com.example.damthoai.service.DamThoaiCallManager
 import com.example.damthoai.ui.screens.EmergencyAlertIncomingScreen
 import com.example.damthoai.ui.screens.EventEndedScreen
 import com.example.damthoai.ui.screens.EventMembersScreen
@@ -56,6 +61,26 @@ fun AppNavHost(
     startDestination: String = AppRoute.Onboarding.route
 ) {
     val context = LocalContext.current
+    // ViewModel kênh dùng chung (phạm vi Activity) giữa màn Quản lý sự kiện và Danh sách kênh,
+    // để kênh thêm/đổi tên/xóa ở màn quản trị hiển thị ngay ở danh sách kênh.
+    val sharedChannelViewModel: com.example.damthoai.ui.channels.ChannelViewModel = viewModel()
+    val callManager = remember { DamThoaiCallManager.getInstance(context) }
+    val onlineMembers by callManager.onlineMembers.collectAsState()
+    val currentEventName by callManager.eventName.collectAsState()
+    val myUserId = remember { AppStartPrefs.getUserId(context) }
+    // Sự kiện hiện tại kèm danh sách thành viên online thật từ server. Các màn dùng chung giá trị này
+    // để số thành viên luôn khớp với trang Thành viên. Chỉ tính lại khi danh sách hoặc tên sự kiện đổi.
+    val currentEvent = remember(onlineMembers, currentEventName) {
+        val pin = AppStartPrefs.getEventPin(context)
+        com.example.damthoai.data.Event(
+            id = pin,
+            name = currentEventName,
+            pinCode = pin,
+            members = onlineMembers.map { it.toUiMember(myUserId) },
+            ownerId = onlineMembers.firstOrNull { it.isOrganizer }?.userId.orEmpty(),
+            isOwner = AppStartPrefs.isOrganizer(context)
+        )
+    }
     var channelMenuMuted by rememberSaveable { mutableStateOf(false) }
     var selectedEmergencyMemberIds by remember { mutableStateOf<Set<String>?>(null) }
     var activeEmergencyAlert by remember { mutableStateOf<EmergencyAlert?>(null) }
@@ -163,7 +188,9 @@ fun AppNavHost(
         composable(AppRoute.UserInfo.route) {
             UserInfoScreen(
                 onBack = { navController.popBackStack() },
-                onEnterChannel = {
+                onEnterChannel = { displayName, roleTitle ->
+                    // Lưu tên/vai trò và gửi lên server để danh sách thành viên hiển thị đúng
+                    callManager.updateProfile(displayName, roleTitle)
                     AppStartPrefs.setHasJoinedEvent(context, true)
                     navController.navigate(AppRoute.ChannelList.route) {
                         popUpTo(navController.graph.id) { inclusive = true }
@@ -176,7 +203,8 @@ fun AppNavHost(
         composable(AppRoute.ChannelList.route) {
             ChannelListScreen(
                 onNavigateToActiveCall = { navController.navigate(AppRoute.ActiveCall.route) },
-                onNavigateToAddChannel = { navController.navigate(AppRoute.ScanQr.route) }
+                onNavigateToAddChannel = { navController.navigate(AppRoute.ScanQr.route) },
+                viewModel = sharedChannelViewModel
             )
         }
         composable(AppRoute.ChannelMenuSheet.route) {
@@ -195,7 +223,11 @@ fun AppNavHost(
 
         // === NHÓM D: MÀN ĐÀM THOẠI & BỎ TÚI ===
         composable(AppRoute.ActiveCall.route) {
+            val channelUiState by sharedChannelViewModel.uiState.collectAsState()
             ActiveCallScreen(
+                channels = channelUiState.channels,
+                activeChannelId = channelUiState.activeMicChannelId,
+                onChannelVolumeChange = { id, volume -> sharedChannelViewModel.updateChannelVolume(id, volume) },
                 onBack = { navController.popBackStack() },
                 onNavigateToPocketMode = {
                     navController.navigate(AppRoute.PocketMode.route)
@@ -227,6 +259,30 @@ fun AppNavHost(
                 }
             )
         }
+        composable(AppRoute.EmergencyCallSelect.route) {
+            if (!AppStartPrefs.isOrganizer(context)) {
+                LaunchedEffect(Unit) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Chỉ Ban tổ chức (Cấp 1) mới được phát cảnh báo khẩn cấp.",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                    navController.popBackStack()
+                }
+            } else {
+                EmergencyCallSelectScreen(
+                    onBack = { navController.popBackStack() },
+                    onCall = { selectedIds ->
+                        selectedEmergencyMemberIds = selectedIds
+                        activeEmergencyAlert = null
+                        navController.navigate(AppRoute.EmergencyActiveCall.route)
+                    },
+                    recipients = onlineMembers
+                        .filter { it.userId != myUserId }
+                        .map { it.toUiMember(myUserId) }
+                )
+            }
+        }
         composable(AppRoute.EmergencyAlertIncoming.route) {
             EmergencyAlertIncomingScreen(
                 onAccept = {
@@ -251,7 +307,12 @@ fun AppNavHost(
                     activeEmergencyAlert = null
                     navController.popBackStack()
                 },
-                activeParticipants = emptyList(),
+                activeParticipants = onlineMembers
+                    .filter { member ->
+                        member.userId != myUserId &&
+                            (selectedEmergencyMemberIds?.contains(member.userId) ?: true)
+                    }
+                    .map { EmergencyCallParticipant(member = it.toUiMember(myUserId), status = "Đang nghe") },
                 caller = activeEmergencyAlert
             )
         }
@@ -262,7 +323,7 @@ fun AppNavHost(
                 onProfile = { navController.navigate(AppRoute.UserProfile.route) },
                 onManageEvent = { navController.navigate(AppRoute.ManageEvent.route) },
                 onLeaveEvent = {
-                    AppStartPrefs.setHasJoinedEvent(context, false)
+                    callManager.leaveEvent()
                     navController.navigate(AppRoute.ScanQr.route) {
                         popUpTo(navController.graph.findStartDestination().id) {
                             inclusive = true
@@ -314,6 +375,8 @@ fun AppNavHost(
             arguments = listOf(androidx.navigation.navArgument(name = "fromCreate") { defaultValue = false })
         ) { backStackEntry ->
             val fromCreate = backStackEntry.arguments?.getBoolean("fromCreate") ?: false
+            val channelViewModel = sharedChannelViewModel
+            val channelUiState by channelViewModel.uiState.collectAsState()
             ManageEventScreen(
                 onBack = {
                     if (fromCreate) {
@@ -329,12 +392,17 @@ fun AppNavHost(
                 onMembers = { navController.navigate(AppRoute.EventMembers.route) },
                 onLiveCue = { navController.navigate(AppRoute.LiveCueDraft.route) },
                 onEndEvent = {
-                    AppStartPrefs.setHasJoinedEvent(context, false)
+                    callManager.leaveEvent()
                     navController.navigate(AppRoute.EventEnded.route)
                 },
                 onNavigateToActiveCall = {
                     navController.navigate(AppRoute.ActiveCall.route)
-                }
+                },
+                channels = channelUiState.channels.map { it.channel },
+                event = currentEvent,
+                onAddChannel = { channelViewModel.addChannel(it) },
+                onRenameChannel = { id, name -> channelViewModel.renameChannel(id, name) },
+                onDeleteChannel = { channelViewModel.deleteChannel(it) }
             )
         }
         composable(AppRoute.RestoreEvent.route) {
@@ -351,7 +419,8 @@ fun AppNavHost(
         composable(AppRoute.MyQrCode.route) {
             MyQrCodeScreen(
                 onBack = { navController.popBackStack() },
-                onShare = {}
+                onShare = {},
+                event = currentEvent.copy(channels = sharedChannelViewModel.uiState.value.channels.map { it.channel })
             )
         }
         composable(AppRoute.EventMembers.route) {

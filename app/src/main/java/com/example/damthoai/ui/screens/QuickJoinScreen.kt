@@ -22,11 +22,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.example.damthoai.R
+import com.example.damthoai.data.AppStartPrefs
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.example.damthoai.R
 import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.DamThoaiTheme
 import com.example.damthoai.ui.theme.DamType
@@ -39,7 +41,8 @@ fun QuickJoinScreen(
     onNavigateToChannels: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var pinCode by remember { mutableStateOf("240 826") }
+    val context = LocalContext.current
+    var pinCode by remember { mutableStateOf("") }
 
     Column(
         modifier = modifier
@@ -100,7 +103,7 @@ fun QuickJoinScreen(
             colors = CardDefaults.cardColors(containerColor = GlassBg)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = "hoặc nhập tần số ảo (PIN 6 số)", color = TextPrimary, style = DamType.Body14SemiBold)
+                Text(text = "hoặc nhập tần số (PIN 6 số)", color = TextPrimary, style = DamType.Body14SemiBold)
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = pinCode,
@@ -114,7 +117,16 @@ fun QuickJoinScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(
-            onClick = onNavigateToChannels,
+            onClick = {
+                val cleanPin = pinCode.replace(" ", "")
+                if (cleanPin.length == 6 && cleanPin.all { it.isDigit() }) {
+                    com.example.damthoai.service.DamThoaiCallManager.getInstance(context)
+                        .joinEvent(pin = cleanPin, eventNameHint = null, asOrganizer = false)
+                    onNavigateToChannels()
+                } else {
+                    android.widget.Toast.makeText(context, "Vui lòng nhập đủ 6 chữ số mã PIN.", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp),

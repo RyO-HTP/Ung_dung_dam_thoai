@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.damthoai.R
+import com.example.damthoai.data.AppStartPrefs
 import com.example.damthoai.data.Channel
 import com.example.damthoai.data.Event
 import com.example.damthoai.data.Member
@@ -71,6 +72,7 @@ import com.example.damthoai.ui.components.KitDialog
 import com.example.damthoai.ui.components.KitSwitch
 import com.example.damthoai.ui.components.LevelTag
 import com.example.damthoai.ui.components.PrimaryButton
+import com.example.damthoai.ui.components.SecondaryButton
 import com.example.damthoai.ui.components.QrCodeImage
 import com.example.damthoai.ui.components.TagLabel
 import com.example.damthoai.ui.event.EventMembersUiState
@@ -192,12 +194,46 @@ private fun MultiLevelConnectionContent(
     onLocalNetworkChange: (Boolean) -> Unit,
     onBluetoothDirectChange: (Boolean) -> Unit
 ) {
+    val context = LocalContext.current
+    var signalingUrl by remember { mutableStateOf(AppStartPrefs.getManualServerUrl(context)) }
+
     ScreenFrame("Kết nối đa tầng", onBack, modifier) {
         Text(
             text = "App tự chuyển giữa các tầng khi mạng yếu. Bạn chỉ cần bật hoặc tắt từng tầng.",
             color = TextSecondary,
             style = DamType.Body13Line19_5
         )
+        GlassCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Địa chỉ Server nội bộ (WebSocket)", color = TextPrimary, style = DamType.Heading)
+                Text("App tự kết nối máy chủ đám mây (dùng được cả Wi-Fi và 4G). Chỉ nhập khi muốn dùng server riêng (vd: ws://192.168.1.8:8765); để trống để tự động.", color = TextSecondary, style = DamType.Small)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    BasicTextField(
+                        value = signalingUrl,
+                        onValueChange = { signalingUrl = it },
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(GlassBg)
+                            .border(1.dp, GlassBorder, RoundedCornerShape(12.dp))
+                            .padding(12.dp),
+                        singleLine = true,
+                        textStyle = DamType.Body16SemiBold.copy(color = TextPrimary),
+                        cursorBrush = SolidColor(AccentCyan)
+                    )
+                    PrimaryButton(
+                        text = "Lưu",
+                        onClick = {
+                            // Nhập địa chỉ = dùng riêng server đó; để trống = tự động (máy chủ đám mây/LAN)
+                            com.example.damthoai.service.DamThoaiCallManager.getInstance(context).setServerUrl(signalingUrl)
+                            signalingUrl = AppStartPrefs.getManualServerUrl(context)
+                            android.widget.Toast.makeText(context, "Đã lưu địa chỉ Server!", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        height = 44.dp
+                    )
+                }
+            }
+        }
         ConnectionLayerCard(
             iconRes = R.drawable.ic_radio,
             title = "Internet",
@@ -293,10 +329,13 @@ fun ManageEventScreen(
     onLiveCue: () -> Unit,
     onEndEvent: () -> Unit,
     modifier: Modifier = Modifier,
-    event: Event = Event(id = "default", name = "Sự kiện", pinCode = "1234", channels = emptyList(), members = emptyList()),
+    event: Event = Event(id = "default", name = "Sự kiện", pinCode = "240826", channels = emptyList(), members = emptyList()),
     channels: List<Channel> = emptyList(),
     onChannelQrCode: (String) -> Unit = { onQrCode() },
-    onNavigateToActiveCall: () -> Unit = {}
+    onNavigateToActiveCall: () -> Unit = {},
+    onAddChannel: (String) -> Unit = {},
+    onRenameChannel: (String, String) -> Unit = { _, _ -> },
+    onDeleteChannel: (String) -> Unit = {}
 ) {
     ManageEventContent(
         onBack = onBack,
@@ -308,7 +347,10 @@ fun ManageEventScreen(
         event = event,
         channels = channels.ifEmpty { event.channels },
         modifier = modifier,
-        onNavigateToActiveCall = onNavigateToActiveCall
+        onNavigateToActiveCall = onNavigateToActiveCall,
+        onAddChannel = onAddChannel,
+        onRenameChannel = onRenameChannel,
+        onDeleteChannel = onDeleteChannel
     )
 }
 
@@ -323,16 +365,23 @@ private fun ManageEventContent(
     event: Event,
     channels: List<Channel>,
     modifier: Modifier = Modifier,
-    onNavigateToActiveCall: () -> Unit = {}
+    onNavigateToActiveCall: () -> Unit = {},
+    onAddChannel: (String) -> Unit = {},
+    onRenameChannel: (String, String) -> Unit = { _, _ -> },
+    onDeleteChannel: (String) -> Unit = {}
 ) {
     val clipboardManager = LocalClipboardManager.current
     var showAdminCode by rememberSaveable { mutableStateOf(false) }
     var showEndEventDialog by rememberSaveable { mutableStateOf(false) }
     var channelMenuId by rememberSaveable { mutableStateOf<String?>(null) }
     var deleteChannelId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showAddChannelDialog by rememberSaveable { mutableStateOf(false) }
+    var renameChannelTarget by rememberSaveable { mutableStateOf<Channel?>(null) }
+
     val selectedMenuChannel = channels.firstOrNull { it.id == channelMenuId }
     val channelToDelete = channels.firstOrNull { it.id == deleteChannelId }
-    val eventOwner = event.members.firstOrNull { it.id == event.ownerId }
+    // Chỉ hiện "Bạn là Cấp 1" khi người đang xem đúng là ban tổ chức
+    val eventOwner = event.members.firstOrNull { it.id == event.ownerId }?.takeIf { event.isOwner }
 
     ScreenFrame("Quản lý sự kiện", onBack, modifier, bottomPadding = 26.dp) {
         GlassCard(modifier = Modifier.fillMaxWidth()) {
@@ -416,6 +465,22 @@ private fun ManageEventContent(
                 )
             }
         }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(GlassBg)
+                .border(1.dp, GlassBorder, RoundedCornerShape(22.dp))
+                .clickable { showAddChannelDialog = true },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                "+ Thêm phòng ban / kênh mới",
+                color = TextSecondary,
+                style = DamType.Body13Bold
+            )
+        }
         ActionRow(R.drawable.ic_qr, "Mã QR của ban", "Chia sẻ quyền vào nhanh", onQrCode)
         ActionRow(R.drawable.ic_users, "Thành viên · ${event.members.size} người", "Quản lý cấp và chức vụ", onMembers)
         ActionRow(R.drawable.ic_zap, "Live Cue", "Quản lý nội dung nhắc việc", onLiveCue, "ƯU TIÊN")
@@ -425,6 +490,7 @@ private fun ManageEventContent(
             modifier = Modifier.fillMaxWidth()
         )
     }
+
     if (showEndEventDialog) {
         KitDialog(
             title = "Kết thúc sự kiện?",
@@ -439,6 +505,45 @@ private fun ManageEventContent(
             primaryBrush = DangerBrush
         )
     }
+
+    if (deleteChannelId != null) {
+        KitDialog(
+            title = "Xoá phòng ban?",
+            description = "Bạn có chắc chắn muốn xoá phòng ban này?",
+            primaryButtonText = "Xoá",
+            secondaryButtonText = "Hủy",
+            onPrimaryClick = {
+                deleteChannelId?.let { onDeleteChannel(it) }
+                deleteChannelId = null
+            },
+            onDismissRequest = { deleteChannelId = null },
+            primaryBrush = DangerBrush
+        )
+    }
+
+    if (showAddChannelDialog) {
+        ChannelInputDialog(
+            title = "Thêm phòng ban / kênh mới",
+            onDismiss = { showAddChannelDialog = false },
+            onSubmit = { name ->
+                onAddChannel(name)
+                showAddChannelDialog = false
+            }
+        )
+    }
+
+    renameChannelTarget?.let { channel ->
+        ChannelInputDialog(
+            title = "Đổi tên phòng ban",
+            initialValue = channel.name,
+            onDismiss = { renameChannelTarget = null },
+            onSubmit = { newName ->
+                onRenameChannel(channel.id, newName)
+                renameChannelTarget = null
+            }
+        )
+    }
+
     selectedMenuChannel?.let { channel ->
         KitBottomSheet(onDismissRequest = { channelMenuId = null }) {
             Column(
@@ -446,6 +551,18 @@ private fun ManageEventContent(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text("Tùy chọn kênh", color = TextPrimary, style = DamType.Heading)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .clickable {
+                            renameChannelTarget = channel
+                            channelMenuId = null
+                        },
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Text("Đổi tên phòng ban", color = TextPrimary, style = DamType.Body)
+                }
                 if (!channel.isDefault) {
                     Box(
                         modifier = Modifier
@@ -457,9 +574,67 @@ private fun ManageEventContent(
                             },
                         contentAlignment = Alignment.CenterStart
                     ) {
-                        Text("Xoá kênh", color = DangerText, style = DamType.Body)
+                        Text("Xoá phòng ban", color = DangerText, style = DamType.Body)
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChannelInputDialog(
+    title: String,
+    initialValue: String = "",
+    onDismiss: () -> Unit,
+    onSubmit: (String) -> Unit
+) {
+    var text by remember { mutableStateOf(initialValue) }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(22.dp))
+                .background(com.example.damthoai.ui.theme.DialogBg)
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(text = title, color = TextPrimary, style = DamType.Heading16)
+            androidx.compose.foundation.text.BasicTextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(GlassBg)
+                    .border(1.dp, AccentCyan, RoundedCornerShape(14.dp))
+                    .padding(14.dp),
+                singleLine = true,
+                textStyle = DamType.Body16SemiBold.copy(color = TextPrimary),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(AccentCyan)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SecondaryButton(
+                    text = "Hủy",
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                    height = 46.dp
+                )
+                PrimaryButton(
+                    text = "Lưu",
+                    onClick = {
+                        if (text.isNotBlank()) {
+                            onSubmit(text)
+                            onDismiss()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    enabled = text.isNotBlank(),
+                    height = 46.dp
+                )
             }
         }
     }
@@ -470,7 +645,7 @@ fun MyQrCodeScreen(
     onBack: () -> Unit,
     onShare: () -> Unit,
     modifier: Modifier = Modifier,
-    event: Event = Event(id = "default", name = "Sự kiện", pinCode = "1234", channels = emptyList(), members = emptyList()),
+    event: Event = Event(id = "default", name = "Sự kiện", pinCode = "240826", channels = emptyList(), members = emptyList()),
     channel: Channel? = null
 ) {
     val context = LocalContext.current
@@ -538,7 +713,11 @@ fun MyQrCodeScreen(
                     textAlign = TextAlign.Center
                 )
 
-                val qrContent = selectedChannel.qrPayload.ifBlank { "damthoai://join?channel=${selectedChannel.id}&pin=${selectedChannel.pin}" }
+                val currentPin = AppStartPrefs.getEventPin(context).ifBlank { event.pinCode }
+                val encodedName = java.net.URLEncoder.encode(event.name, "UTF-8")
+                val qrContent = selectedChannel.qrPayload.ifBlank {
+                    "damthoai://join?channel=${selectedChannel.id}&pin=$currentPin&name=$encodedName"
+                }
                 QrCodeImage(
                     content = qrContent,
                     size = 200.dp,
@@ -547,7 +726,7 @@ fun MyQrCodeScreen(
 
                 Text("MÃ PIN", color = TextSecondary, style = DamType.Small.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold))
                 Text(
-                    text = selectedChannel.pin.ifBlank { event.pinCode },
+                    text = selectedChannel.pin.ifBlank { currentPin },
                     color = AccentCyan,
                     style = DamType.PinBig
                 )
@@ -669,7 +848,9 @@ private fun EventMembersContent(
                     Text(text = "${uiState.members.size} người trong sự kiện", color = TextSecondary, style = DamType.Small)
                 }
             }
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(10.dp))
+            com.example.damthoai.ui.components.ServerStatusBanner()
+            Spacer(Modifier.height(10.dp))
             MemberSearchField(value = uiState.searchQuery, onValueChange = onSearchQueryChange)
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

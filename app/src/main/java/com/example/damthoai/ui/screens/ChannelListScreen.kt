@@ -33,8 +33,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,15 +44,19 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.damthoai.R
 import com.example.damthoai.data.LiveCue
+import com.example.damthoai.network.SignalingConnectionState
+import com.example.damthoai.service.DamThoaiCallManager
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.GlassCard
 import com.example.damthoai.ui.components.LiveCueCard
@@ -60,6 +66,7 @@ import com.example.damthoai.ui.components.outerGlow
 import com.example.damthoai.ui.theme.AccentAmber
 import com.example.damthoai.ui.theme.AccentCyan
 import com.example.damthoai.ui.theme.AccentMint
+import com.example.damthoai.ui.theme.AccentRed
 import com.example.damthoai.ui.theme.CallDuckedFill
 import com.example.damthoai.ui.theme.CallVolumeInactive
 import com.example.damthoai.ui.theme.ChannelAddBorder
@@ -85,6 +92,20 @@ fun ChannelListScreen(
     viewModel: ChannelViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val callManager = remember { DamThoaiCallManager.getInstance(context) }
+    val connectionState by callManager.signalingClient.connectionState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshEventName()
+    }
+
+    val (statusText, statusColor) = when (connectionState) {
+        is SignalingConnectionState.Connected,
+        is SignalingConnectionState.Registered -> "Online" to AccentMint
+        is SignalingConnectionState.Connecting -> "Đang kết nối" to AccentAmber
+        else -> "Offline" to AccentRed
+    }
 
     DamThoaiBackground(modifier = modifier) {
         Box(Modifier.fillMaxSize()) {
@@ -125,6 +146,8 @@ fun ChannelListScreen(
                     }
                 }
 
+                Spacer(Modifier.height(10.dp))
+                com.example.damthoai.ui.components.ServerStatusBanner()
                 Spacer(Modifier.height(12.dp))
                 Row(
                     Modifier.fillMaxWidth(),
@@ -147,13 +170,13 @@ fun ChannelListScreen(
                         Icon(
                             painter = painterResource(R.drawable.ic_wifi),
                             contentDescription = null,
-                            tint = AccentMint,
+                            tint = statusColor,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            "Online",
-                            color = AccentMint,
+                            statusText,
+                            color = statusColor,
                             style = DamType.Small11Bold
                         )
                     }

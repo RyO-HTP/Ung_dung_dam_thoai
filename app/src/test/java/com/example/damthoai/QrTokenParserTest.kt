@@ -28,4 +28,34 @@ class QrTokenParserTest {
         val result = QrTokenParser.parse("damthoai://join?token=invalid_token_without_dot")
         assertEquals(QrParseResult.Malformed, result)
     }
+
+    @Test
+    fun parsePinDeepLink_returnsValidWithDecodedChannel() {
+        val result = QrTokenParser.parse("damthoai://join?channel=ch%5F02&pin=240826")
+        assertTrue(result is QrParseResult.Valid)
+        val valid = result as QrParseResult.Valid
+        assertEquals("240826", valid.payload.pinCode)
+        assertEquals("ch_02", valid.payload.primaryChCode)
+    }
+
+    @Test
+    fun parsePinDeepLink_readsOrganizerEventName() {
+        val encoded = java.net.URLEncoder.encode("Đêm nhạc Hội trường A", "UTF-8")
+        val result = QrTokenParser.parse("damthoai://join?channel=ch_01&pin=123456&name=$encoded")
+        assertTrue(result is QrParseResult.Valid)
+        assertEquals("Đêm nhạc Hội trường A", (result as QrParseResult.Valid).payload.eventName)
+    }
+
+    @Test
+    fun parsePinDeepLinkWithInvalidPin_returnsMalformed() {
+        val result = QrTokenParser.parse("damthoai://join?channel=ch_01&pin=abc")
+        assertEquals(QrParseResult.Malformed, result)
+    }
+
+    @Test
+    fun parseDeepLink_doesNotMatchParamWithSameSuffix() {
+        // "spin=" không được hiểu nhầm là tham số "pin"
+        val result = QrTokenParser.parse("damthoai://join?spin=123456&token=invalid_token_without_dot")
+        assertEquals(QrParseResult.Malformed, result)
+    }
 }

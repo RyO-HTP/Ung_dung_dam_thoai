@@ -2,6 +2,7 @@ package com.example.damthoai.ui.join
 
 import android.app.Activity
 import android.os.Build
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
@@ -56,6 +57,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.damthoai.R
+import com.example.damthoai.data.AppStartPrefs
 import com.example.damthoai.permission.AppPermission
 import com.example.damthoai.permission.PermissionManager
 import com.example.damthoai.permission.PermissionState
@@ -222,7 +224,15 @@ private fun JoinChannelScreenContent(
                     PinInputTab(
                         initialPin = initialPin,
                         onPinSubmit = { pin ->
-                            if (pin == "000000") onJoinError() else onSuccessJoin()
+                            val cleanPin = pin.replace(" ", "")
+                            if (cleanPin.length == 6 && cleanPin.all { it.isDigit() }) {
+                                // Tên sự kiện thật sẽ do server (ban tổ chức) gửi về sau khi kết nối
+                                com.example.damthoai.service.DamThoaiCallManager.getInstance(context)
+                                    .joinEvent(pin = cleanPin, eventNameHint = null, asOrganizer = false)
+                                onSuccessJoin()
+                            } else {
+                                onJoinError()
+                            }
                         }
                     )
                 }
@@ -363,6 +373,7 @@ private fun QrScanTab(
     onOpenSettings: () -> Unit,
     onQrScanned: () -> Unit
 ) {
+    val context = LocalContext.current
     if (isCameraGranted) {
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
@@ -371,11 +382,39 @@ private fun QrScanTab(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(30.dp))
                     .background(LcdBg)
-                    .border(1.dp, GlassBorder, RoundedCornerShape(30.dp))
-                    .clickable(onClick = onQrScanned),
+                    .border(1.dp, GlassBorder, RoundedCornerShape(30.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                QrScannerView(onQrScanned = { onQrScanned() }, modifier = Modifier.size(220.dp))
+                QrCameraScanner(
+                    onQrDetected = { rawQr ->
+                        val parseResult = com.example.damthoai.data.qr.QrTokenParser.parse(rawQr)
+                        if (parseResult !is com.example.damthoai.data.qr.QrParseResult.Valid) {
+                            // Mã QR không phải của Đàm Thoại / sai định dạng / hết hạn: không cho vào sự kiện
+                            Log.w("QrScanTab", "Mã QR không hợp lệ: $parseResult")
+                            android.widget.Toast.makeText(
+                                context,
+                                "Mã QR không hợp lệ hoặc đã hết hạn. Vui lòng quét lại.",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                            return@QrCameraScanner
+                        }
+                        val payload = parseResult.payload
+                        val pin = payload.pinCode.ifBlank { payload.eventId.toString() }
+                        // Chỉ dùng tên trong QR nếu đó là tên thật do ban tổ chức đặt (không phải tên tạm)
+                        val nameHint = payload.eventName.takeIf {
+                            it.isNotBlank() &&
+                                it != AppStartPrefs.DEFAULT_EVENT_NAME &&
+                                !it.startsWith("Kênh tần số")
+                        }
+                        com.example.damthoai.service.DamThoaiCallManager.getInstance(context)
+                            .joinEvent(pin = pin, eventNameHint = nameHint, asOrganizer = false)
+                        onQrScanned()
+                    },
+                    onError = { err -> Log.e("QrScanTab", err) },
+                    torchEnabled = false,
+                    onTorchAvailable = {},
+                    modifier = Modifier.fillMaxSize()
+                )
                 ScannerCorners(Modifier.size(220.dp))
                 ScanLine(Modifier.width(186.dp))
             }
@@ -558,7 +597,7 @@ private fun PinInputTab(initialPin: String, onPinSubmit: (String) -> Unit) {
                 .border(1.dp, LcdBorder, RoundedCornerShape(22.dp))
                 .padding(horizontal = 18.dp, vertical = 12.dp)
         ) {
-            Text("TẦN SỐ ẢO · PIN 6 SỐ", color = AccentCyan, style = DamType.Label)
+            Text("TẦN SỐ · PIN 6 SỐ", color = AccentCyan, style = DamType.Label)
             Spacer(Modifier.height(8.dp))
             val formattedPin = buildString {
                 for (index in 0 until 6) {

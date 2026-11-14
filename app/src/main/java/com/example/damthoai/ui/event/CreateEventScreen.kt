@@ -63,6 +63,7 @@ import com.example.damthoai.ui.theme.CueFill
 import com.example.damthoai.ui.theme.DamThoaiTheme
 import com.example.damthoai.ui.theme.DamType
 import com.example.damthoai.ui.theme.GlassBg
+import com.example.damthoai.ui.theme.GlassBorder
 import com.example.damthoai.ui.theme.InputShape
 import com.example.damthoai.ui.theme.TagCyanBg
 import com.example.damthoai.ui.theme.TextPlaceholder
@@ -71,9 +72,12 @@ import com.example.damthoai.ui.theme.TextSecondary
 
 private fun generateSuggestedAdminCode(): String {
     val chars = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
-    // ĐÃ FIX: Tăng độ dài chuỗi sinh ngẫu nhiên mã quản trị lên 6 ký tự chuẩn (ví dụ: ADM-XXXXXX)
     val randomPart = (1..6).map { chars.random() }.joinToString("")
     return "ADM-$randomPart"
+}
+
+private fun generateSuggestedPinCode(): String {
+    return (100000..999999).random().toString()
 }
 
 @Composable
@@ -87,12 +91,14 @@ fun CreateEventScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
-    // ĐÃ FIX: Đổi từ chuỗi gán cứng thành chuỗi rỗng để người dùng tự do nhập tên sự kiện
     var eventName by rememberSaveable { mutableStateOf("") }
+    val creator by viewModel.creator.collectAsState()
+    var creatorName by rememberSaveable { mutableStateOf(creator.name) }
+    var creatorRoleTitle by rememberSaveable { mutableStateOf(creator.roleTitle) }
     var adminCode by rememberSaveable { mutableStateOf("") }
+    var eventPinCode by rememberSaveable { mutableStateOf("") }
     var showSuccessSheet by rememberSaveable { mutableStateOf(false) }
 
-    val creator by viewModel.creator.collectAsState()
     val isFormValid = eventName.isNotBlank()
 
     DamThoaiBackground(modifier = modifier) {
@@ -128,16 +134,25 @@ fun CreateEventScreen(
             ) {
                 Spacer(Modifier.height(4.dp))
                 EventFieldLabel("Tên sự kiện")
-                EventNameInput(
+                EventInputField(
                     value = eventName,
-                    onValueChange = { eventName = it }
+                    onValueChange = { eventName = it },
+                    placeholder = "Nhập tên sự kiện..."
                 )
 
                 EventFieldLabel("Tên của bạn")
-                StaticEventField(creator.name)
+                EventInputField(
+                    value = creatorName,
+                    onValueChange = { creatorName = it },
+                    placeholder = "Nhập tên của bạn..."
+                )
 
                 EventFieldLabel("Chức vụ")
-                StaticEventField(creator.roleTitle)
+                EventInputField(
+                    value = creatorRoleTitle,
+                    onValueChange = { creatorRoleTitle = it },
+                    placeholder = "Nhập chức vụ (Tổng đạo diễn, Hậu cần...)"
+                )
 
                 Row(
                     modifier = Modifier
@@ -175,8 +190,13 @@ fun CreateEventScreen(
             PrimaryButton(
                 text = "Tạo sự kiện",
                 onClick = {
+                    viewModel.updateCreator(creatorName, creatorRoleTitle)
                     val code = generateSuggestedAdminCode()
+                    val pin = generateSuggestedPinCode()
                     adminCode = code
+                    eventPinCode = pin
+                    AppStartPrefs.setEventPin(context, pin)
+                    AppStartPrefs.setEventName(context, eventName)
                     showSuccessSheet = true
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -212,14 +232,45 @@ fun CreateEventScreen(
                     style = DamType.Title24,
                     textAlign = TextAlign.Center
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(12.dp))
+                
+                // MÃ PIN 6 SỐ VÀO KÊNH
                 Text(
-                    text = "Mã quản trị của bạn:",
-                    color = TextSecondary.copy(alpha = 0.7f),
-                    style = DamType.Body13,
+                    text = "MÃ PIN TẦN SỐ VÀO KÊNH (6 SỐ)",
+                    color = AccentCyan,
+                    style = DamType.Tag12,
                     textAlign = TextAlign.Center
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(4.dp))
+                SelectionContainer {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(TagCyanBg)
+                            .border(1.5.dp, AccentCyan, RoundedCornerShape(18.dp))
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = eventPinCode,
+                            color = AccentCyan,
+                            style = DamType.PinBig,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                // MÃ QUẢN TRỊ KHÔI PHỤC
+                Text(
+                    text = "MÃ QUẢN TRỊ (KHÔI PHỤC QUYỀN)",
+                    color = TextSecondary.copy(alpha = 0.7f),
+                    style = DamType.Small,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(4.dp))
 
                 var copied by remember { mutableStateOf(false) }
                 LaunchedEffect(copied) {
@@ -234,14 +285,14 @@ fun CreateEventScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(18.dp))
-                            .background(TagCyanBg)
-                            .border(1.5.dp, AccentCyan, RoundedCornerShape(18.dp))
+                            .background(GlassBg)
+                            .border(1.dp, GlassBorder, RoundedCornerShape(18.dp))
                             .padding(horizontal = 16.dp, vertical = 10.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = adminCode,
-                            color = AccentCyan,
+                            color = TextPrimary,
                             style = DamType.MonoInput.copy(
                                 fontSize = 15.sp,
                                 letterSpacing = 2.sp,
@@ -266,7 +317,7 @@ fun CreateEventScreen(
                             Icon(
                                 painter = painterResource(if (copied) R.drawable.ic_check else R.drawable.ic_copy),
                                 contentDescription = "Sao chép mã",
-                                tint = AccentCyan,
+                                tint = TextPrimary,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -274,7 +325,7 @@ fun CreateEventScreen(
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "Hãy lưu mã này để khôi phục quyền khi đổi máy hoặc cài lại app.",
+                    text = "Hãy chia sẻ Mã PIN 6 số cho ekip để họ vào kênh thoại, và lưu Mã quản trị để khôi phục quyền.",
                     color = TextSecondary,
                     style = DamType.Small,
                     textAlign = TextAlign.Center,
@@ -282,9 +333,16 @@ fun CreateEventScreen(
                 )
                 Spacer(Modifier.height(16.dp))
                 PrimaryButton(
-                    text = "Tiếp tục",
+                    text = "Tiếp tục vào kênh",
                     onClick = {
-                        AppStartPrefs.setHasJoinedEvent(context, true)
+                        // Ban tổ chức đăng ký sự kiện (PIN + tên) lên server để người vào sau nhận đúng tên
+                        val callManager = com.example.damthoai.service.DamThoaiCallManager.getInstance(context)
+                        callManager.updateProfile(creatorName, creatorRoleTitle.ifBlank { "Ban tổ chức" })
+                        callManager.joinEvent(
+                            pin = eventPinCode,
+                            eventNameHint = eventName.ifBlank { null },
+                            asOrganizer = true
+                        )
                         showSuccessSheet = false
                         onEventCreated()
                     },
@@ -307,9 +365,10 @@ private fun EventFieldLabel(text: String) {
 }
 
 @Composable
-private fun EventNameInput(
+private fun EventInputField(
     value: String,
-    onValueChange: (String) -> Unit
+    onValueChange: (String) -> Unit,
+    placeholder: String
 ) {
     val shape = RoundedCornerShape(18.dp)
     BasicTextField(
@@ -328,27 +387,12 @@ private fun EventNameInput(
         decorationBox = { innerTextField ->
             Box {
                 if (value.isEmpty()) {
-                    Text("Nhập tên sự kiện...", color = TextPlaceholder, style = DamType.Input)
+                    Text(placeholder, color = TextPlaceholder, style = DamType.Input)
                 }
                 innerTextField()
             }
         }
     )
-}
-
-@Composable
-private fun StaticEventField(value: String) {
-    GlassCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = InputShape,
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
-    ) {
-        Text(
-            value,
-            color = TextPrimary,
-            style = DamType.Body16SemiBold
-        )
-    }
 }
 
 @Preview(widthDp = 390, heightDp = 844)

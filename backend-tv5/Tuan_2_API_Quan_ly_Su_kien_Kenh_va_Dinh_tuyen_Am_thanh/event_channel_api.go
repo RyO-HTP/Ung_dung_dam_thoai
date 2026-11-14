@@ -166,16 +166,27 @@ func (em *EventManager) HandleCreateEvent(w http.ResponseWriter, r *http.Request
 		req.Description = "Sự kiện điều phối bộ đàm đa kênh thời gian thực"
 	}
 
-	pinCode := req.PinCode
-	if len(pinCode) != 6 || pinCode == "000000" {
-		pinNum, _ := rand.Int(rand.Reader, big.NewInt(900000))
-		pinCode = fmt.Sprintf("%06d", pinNum.Int64()+100000)
-	}
-	eventID := em.eventSeq.Add(1)
 	chMap, chList := createDefaultFiveChannels()
 
+	em.mu.Lock()
+	pinCode := req.PinCode
+	// PIN phải gồm đúng 6 chữ số, khác "000000" và chưa được sự kiện khác sử dụng (tránh ghi đè sự kiện cũ)
+	if _, taken := em.eventsByPin[pinCode]; taken || !isValidPin(pinCode) {
+		for {
+			pinNum, err := rand.Int(rand.Reader, big.NewInt(900000))
+			if err != nil {
+				em.mu.Unlock()
+				http.Error(w, "Không sinh được mã PIN", http.StatusInternalServerError)
+				return
+			}
+			pinCode = fmt.Sprintf("%06d", pinNum.Int64()+100000)
+			if _, taken := em.eventsByPin[pinCode]; !taken {
+				break
+			}
+		}
+	}
 	ev := &EventInfo{
-		EventID:     eventID,
+		EventID:     em.eventSeq.Add(1),
 		EventName:   req.EventName,
 		Description: req.Description,
 		PinCode:     pinCode,
@@ -183,8 +194,6 @@ func (em *EventManager) HandleCreateEvent(w http.ResponseWriter, r *http.Request
 		Channels:    chMap,
 		ChannelList: chList,
 	}
-
-	em.mu.Lock()
 	em.eventsByPin[pinCode] = ev
 	em.mu.Unlock()
 
@@ -300,10 +309,25 @@ func (em *EventManager) HandleSwitchChannel(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Giới hạn tối đa 3 kênh nghe đồng thời theo NFR để tránh quá tải thính giác
-	if len(req.ListeningChannels) > 3 {
-		req.ListeningChannels = req.ListeningChannels[:3]
+	if req.PrimaryTxChannel < 1 || req.PrimaryTxChannel > 5 {
+		http.Error(w, "primaryTxChannel phải nằm trong khoảng 1..5", http.StatusBadRequest)
+		return
 	}
+
+	// Loại bỏ kênh không hợp lệ / trùng lặp, giới hạn tối đa 3 kênh nghe đồng thời theo NFR
+	seen := make(map[uint8]bool, len(req.ListeningChannels))
+	validChannels := make([]uint8, 0, 3)
+	for _, ch := range req.ListeningChannels {
+		if ch < 1 || ch > 5 || seen[ch] {
+			continue
+		}
+		seen[ch] = true
+		validChannels = append(validChannels, ch)
+		if len(validChannels) == 3 {
+			break
+		}
+	}
+	req.ListeningChannels = validChannels
 
 	em.mu.Lock()
 	session, exists := em.usersByID[req.UserID]
@@ -342,8 +366,9 @@ func (em *EventManager) HandleLeaveChannel(w http.ResponseWriter, r *http.Reques
 
 	em.mu.Lock()
 	session, exists := em.usersByID[req.UserID]
+	var filtered []uint8
 	if exists {
-		filtered := make([]uint8, 0, len(session.ListeningChannels))
+		filtered = make([]uint8, 0, len(session.ListeningChannels))
 		for _, ch := range session.ListeningChannels {
 			if ch != req.ChannelID {
 				filtered = append(filtered, ch)
@@ -353,8 +378,12 @@ func (em *EventManager) HandleLeaveChannel(w http.ResponseWriter, r *http.Reques
 	}
 	em.mu.Unlock()
 
-	if em.audioRouter != nil && exists {
-		em.audioRouter.UpdateUserSubscribedChannels(req.UserID, session.ListeningChannels)
+	if !exists {
+		http.Error(w, "User session not found", http.StatusNotFound)
+		return
+	}
+	if em.audioRouter != nil {
+		em.audioRouter.UpdateUserSubscribedChannels(req.UserID, filtered)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -362,6 +391,19 @@ func (em *EventManager) HandleLeaveChannel(w http.ResponseWriter, r *http.Reques
 		"userId":    req.UserID,
 		"channelId": req.ChannelID,
 	})
+}
+
+// isValidPin kiểm tra PIN gồm đúng 6 chữ số và khác "000000" (mã dành riêng cho kịch bản lỗi).
+func isValidPin(pin string) bool {
+	if len(pin) != 6 || pin == "000000" {
+		return false
+	}
+	for _, c := range pin {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {

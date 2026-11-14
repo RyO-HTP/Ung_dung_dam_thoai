@@ -64,22 +64,15 @@ import com.example.damthoai.ui.theme.PureWhite
 @Composable
 fun UserInfoScreen(
     onBack: () -> Unit,
-    onEnterChannel: () -> Unit,
+    onEnterChannel: (displayName: String, roleTitle: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var displayName by remember { mutableStateOf("Minh Hậu") }
-    var roleTitle by remember { mutableStateOf("Trưởng ban Hậu cần") }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // Điền sẵn tên/vai trò đã dùng lần trước
+    var displayName by remember { mutableStateOf(com.example.damthoai.data.AppStartPrefs.getDisplayName(context)) }
+    var roleTitle by remember { mutableStateOf(com.example.damthoai.data.AppStartPrefs.getRoleTitle(context)) }
     var selectedLevel by remember { mutableStateOf(2) }
     var nameFocused by remember { mutableStateOf(true) }
-
-    val initials = remember(displayName) {
-        val parts = displayName.trim().split(" ").filter(String::isNotEmpty)
-        when {
-            parts.size >= 2 -> "${parts.first().first()}${parts.last().first()}".uppercase()
-            parts.isNotEmpty() -> parts.first().take(2).uppercase()
-            else -> "DT"
-        }
-    }
 
     DamThoaiBackground(modifier = modifier) {
         Column(
@@ -99,16 +92,10 @@ fun UserInfoScreen(
             }
 
             Spacer(Modifier.height(16.dp))
-            Box(
-                Modifier.size(72.dp).clip(CircleShape).background(cssGradient(135f, BlueAvatarA, BlueAvatarB)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    initials,
-                    color = AvatarInk,
-                    style = DamType.Title28Tall
-                )
-            }
+            com.example.damthoai.ui.components.AvatarCircle(
+                nameOrInitials = displayName,
+                size = 72.dp
+            )
             Spacer(Modifier.height(20.dp))
 
             ProfileField(
@@ -117,7 +104,8 @@ fun UserInfoScreen(
                 onValueChange = { displayName = it },
                 focused = nameFocused,
                 onFocusChanged = { nameFocused = it },
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                placeholder = "Nhập tên hiển thị..."
             )
             Spacer(Modifier.height(14.dp))
             ProfileField(
@@ -126,7 +114,8 @@ fun UserInfoScreen(
                 onValueChange = { roleTitle = it },
                 focused = false,
                 onFocusChanged = {},
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                placeholder = "Nhập chức vụ..."
             )
             Spacer(Modifier.height(14.dp))
             Column(Modifier.fillMaxWidth()) {
@@ -157,8 +146,9 @@ fun UserInfoScreen(
             Spacer(Modifier.weight(1f))
             PrimaryButton(
                 text = "Vào kênh",
-                onClick = onEnterChannel,
+                onClick = { onEnterChannel(displayName.trim(), roleTitle.trim()) },
                 modifier = Modifier.fillMaxWidth(),
+                enabled = displayName.isNotBlank(),
                 height = 54.dp
             )
         }
@@ -172,7 +162,8 @@ private fun ProfileField(
     onValueChange: (String) -> Unit,
     focused: Boolean,
     onFocusChanged: (Boolean) -> Unit,
-    keyboardOptions: KeyboardOptions
+    keyboardOptions: KeyboardOptions,
+    placeholder: String = ""
 ) {
     Column(Modifier.fillMaxWidth()) {
         Text(label, color = TextSecondary, style = DamType.Muted.copy(fontWeight = FontWeight.SemiBold))
@@ -211,7 +202,15 @@ private fun ProfileField(
                 singleLine = true,
                 textStyle = DamType.Body16SemiBold.copy(color = TextPrimary),
                 cursorBrush = Brush.horizontalGradient(listOf(AccentCyan, AccentCyan)),
-                keyboardOptions = keyboardOptions
+                keyboardOptions = keyboardOptions,
+                decorationBox = { innerTextField ->
+                    Box {
+                        if (value.isEmpty()) {
+                            Text(placeholder, color = com.example.damthoai.ui.theme.TextPlaceholder, style = DamType.Body16SemiBold)
+                        }
+                        innerTextField()
+                    }
+                }
             )
         }
     }
@@ -240,5 +239,5 @@ private fun LevelOption(text: String, selected: Boolean, modifier: Modifier, onC
 @Preview(widthDp = 390, heightDp = 844)
 @Composable
 private fun UserInfoScreenPreview() {
-    DamThoaiTheme { UserInfoScreen(onBack = {}, onEnterChannel = {}) }
+    DamThoaiTheme { UserInfoScreen(onBack = {}, onEnterChannel = { _, _ -> }) }
 }

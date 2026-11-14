@@ -12,6 +12,8 @@ object SignalingType {
     const val OFFER = "offer"
     const val ANSWER = "answer"
     const val ICE_CANDIDATE = "ice_candidate"
+    const val USER_LIST = "user_list"
+    const val EVENT_INFO = "event_info"
 }
 
 /**
@@ -30,7 +32,21 @@ data class RegisterMessage(
     @SerializedName("type")
     val type: String = SignalingType.REGISTER,
     @SerializedName("user_id")
-    val userId: String
+    val userId: String,
+    /** Mã PIN sự kiện: server gom các thiết bị cùng PIN vào một nhóm đàm thoại. */
+    @SerializedName("event_pin")
+    val eventPin: String? = null,
+    /** Tên hiển thị trong danh sách thành viên. */
+    @SerializedName("display_name")
+    val displayName: String? = null,
+    @SerializedName("role_title")
+    val roleTitle: String? = null,
+    /** true nếu thiết bị là ban tổ chức (người tạo sự kiện). */
+    @SerializedName("is_organizer")
+    val isOrganizer: Boolean = false,
+    /** Tên sự kiện do ban tổ chức đặt (chỉ ban tổ chức gửi). */
+    @SerializedName("event_name")
+    val eventName: String? = null
 )
 
 /**
@@ -114,4 +130,45 @@ data class IceCandidateSignalingMessage(
     val sdpMLineIndex: Int = 0,
     @SerializedName("candidate")
     val candidate: String
+)
+
+/**
+ * Gói tin nhận danh sách các thiết bị/người dùng online từ server
+ */
+data class UserListMessage(
+    @SerializedName("type")
+    val type: String = SignalingType.USER_LIST,
+    @SerializedName("users")
+    val users: List<String>? = null,
+    /** Danh sách chi tiết (tên, vai trò). Server bản cũ không gửi trường này. */
+    @SerializedName("members")
+    val members: List<OnlineMember>? = null
+)
+
+/**
+ * Một thành viên đang online trong sự kiện.
+ */
+data class OnlineMember(
+    @SerializedName("user_id")
+    val userId: String = "",
+    @SerializedName("display_name")
+    val displayName: String? = null,
+    @SerializedName("role_title")
+    val roleTitle: String? = null,
+    @SerializedName("is_organizer")
+    val isOrganizer: Boolean = false
+)
+
+/**
+ * Thông tin sự kiện server trả về sau khi đăng ký bằng mã PIN.
+ */
+data class EventInfoMessage(
+    @SerializedName("type")
+    val type: String = SignalingType.EVENT_INFO,
+    @SerializedName("event_pin")
+    val eventPin: String? = null,
+    @SerializedName("event_name")
+    val eventName: String? = null,
+    @SerializedName("found")
+    val found: Boolean = false
 )

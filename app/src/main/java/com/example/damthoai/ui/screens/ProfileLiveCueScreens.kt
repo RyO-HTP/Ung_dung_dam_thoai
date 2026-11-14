@@ -127,8 +127,8 @@ fun UserProfileScreen(
     onSave: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var displayName by remember { mutableStateOf("Lan Phương") }
-    var role by remember { mutableStateOf("Tổng đạo diễn") }
+    var displayName by remember { mutableStateOf("") }
+    var role by remember { mutableStateOf("") }
 
     DamThoaiBackground(modifier = modifier) {
         Column(
@@ -165,7 +165,7 @@ fun UserProfileScreen(
                         .padding(vertical = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    AvatarCircle("LP", size = 72.dp)
+                    AvatarCircle(displayName, size = 72.dp)
                 }
                 GlassTextField(
                     value = displayName,

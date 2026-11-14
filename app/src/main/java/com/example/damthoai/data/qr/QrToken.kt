@@ -54,6 +54,29 @@ object QrTokenParser {
     private const val TOLERANCE_SECONDS = 60L
     private val gson = Gson()
 
+    /**
+     * Lấy giá trị tham số [key] trong phần query của URL (không dùng android.net.Uri để chạy được trong unit test JVM).
+     * Chỉ khớp đúng tên tham số đứng sau '?' hoặc '&' (tránh "pin" khớp nhầm "spin=").
+     */
+    private fun extractQueryParam(url: String, key: String): String? {
+        val query = url.substringAfter('?', missingDelimiterValue = "").substringBefore('#')
+        if (query.isEmpty()) return null
+        for (pair in query.split('&')) {
+            val name = pair.substringBefore('=')
+            if (name == key && pair.contains('=')) {
+                val value = pair.substringAfter('=')
+                return try {
+                    java.net.URLDecoder.decode(value, "UTF-8")
+                } catch (e: IllegalArgumentException) {
+                    value
+                }
+            }
+        }
+        return null
+    }
+
+    private fun isSixDigitPin(value: String): Boolean = value.length == 6 && value.all { it.isDigit() }
+
     fun parse(raw: String, nowEpochSeconds: Long = System.currentTimeMillis() / 1000): QrParseResult {
         val trimmed = raw.trim()
         if (trimmed.isEmpty()) return QrParseResult.Malformed
@@ -79,13 +102,61 @@ object QrTokenParser {
             return QrParseResult.Valid(demoPayload, MOCK_QR_STRING)
         }
 
+        // 1.5. Kiểm tra định dạng tần số PIN 6 số thực tế
+        val cleanPin = trimmed.replace(" ", "")
+        if (isSixDigitPin(cleanPin)) {
+            Log.d(TAG, "Giải mã tần số PIN 6 số thực tế: $cleanPin")
+            val pinPayload = QrTokenPayload(
+                eventId = cleanPin.toLongOrNull() ?: 100000L,
+                eventName = "Kênh tần số $cleanPin",
+                pinCode = cleanPin,
+                deptCode = "FREQ",
+                deptTitle = "Ban Điều Phối Tần Số",
+                roleTitle = "Thành viên kênh",
+                userLevel = 2,
+                priority = 1,
+                primaryCh = cleanPin.toLongOrNull() ?: 101L,
+                primaryChCode = "ch_$cleanPin",
+                listenCh = listOf(cleanPin.toLongOrNull() ?: 101L),
+                uiMode = "PRO_MULTI_CHANNEL",
+                exp = nowEpochSeconds + 86400L
+            )
+            return QrParseResult.Valid(pinPayload, cleanPin)
+        }
+
         // 2. Kiểm tra định dạng deep link
+        if (trimmed.contains("damthoai://join")) {
+            val extractedPin = extractQueryParam(trimmed, "pin")?.replace(" ", "")
+            if (!extractedPin.isNullOrBlank()) {
+                if (!isSixDigitPin(extractedPin)) {
+                    Log.w(TAG, "Deep link chứa PIN không hợp lệ: $extractedPin")
+                    return QrParseResult.Malformed
+                }
+                val pinPayload = QrTokenPayload(
+                    eventId = extractedPin.toLongOrNull() ?: 100000L,
+                    // Tên sự kiện do ban tổ chức đặt được nhúng trong QR (tham số "name")
+                    eventName = extractQueryParam(trimmed, "name")?.trim()?.takeIf { it.isNotEmpty() }
+                        ?: "Sự kiện Đàm Thoại",
+                    pinCode = extractedPin,
+                    deptCode = "JOIN",
+                    deptTitle = "Ban Điều Phối",
+                    roleTitle = "Thành viên kênh",
+                    userLevel = 2,
+                    priority = 1,
+                    primaryCh = 101L,
+                    primaryChCode = extractQueryParam(trimmed, "channel") ?: "ch_01",
+                    listenCh = listOf(101L),
+                    uiMode = "PRO_MULTI_CHANNEL",
+                    exp = nowEpochSeconds + 86400L
+                )
+                return QrParseResult.Valid(pinPayload, extractedPin)
+            }
+        }
+
         val tokenPart = if (trimmed.startsWith(DEEP_LINK_PREFIX, ignoreCase = true)) {
             trimmed.removePrefix(DEEP_LINK_PREFIX)
         } else if (trimmed.contains("damthoai://join")) {
-            // Trường hợp URI tổng quát hơn
-            val uri = android.net.Uri.parse(trimmed)
-            uri.getQueryParameter("token") ?: return QrParseResult.NotDamThoai
+            extractQueryParam(trimmed, "token") ?: return QrParseResult.NotDamThoai
         } else {
             return QrParseResult.NotDamThoai
         }

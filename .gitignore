@@ -8,8 +8,8 @@ captures/
 node_modules/
 design/
 .vscode/
-<<<<<<< HEAD
-=======
 __pycache__/
 *.pyc
->>>>>>> origin/feat/tuan1-tv2-network
+# File riêng của Visual Studio và file chạy Go đã build (tạo lại bằng go build)
+.vs/
+backend-tv5/bin/

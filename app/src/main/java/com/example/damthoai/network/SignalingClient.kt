@@ -46,6 +46,15 @@ sealed class SignalingEvent {
         val sdpMLineIndex: Int,
         val candidate: String
     ) : SignalingEvent()
+    data class UserListReceived(
+        val users: List<String>,
+        val members: List<OnlineMember>
+    ) : SignalingEvent()
+    data class EventInfoReceived(
+        val eventPin: String,
+        val eventName: String,
+        val found: Boolean
+    ) : SignalingEvent()
 }
 
 /**
@@ -68,9 +77,14 @@ class SignalingClient(
         .retryOnConnectionFailure(true)
         .build()
 
+    @Volatile
     private var webSocket: WebSocket? = null
+    // Tăng mỗi lần connect(); callback của socket thuộc thế hệ cũ sẽ bị bỏ qua
+    @Volatile
+    private var connectionGeneration = 0
     private var currentServerUrl: String? = null
-    private var currentUserId: String? = null
+    // Gói đăng ký đầy đủ (PIN sự kiện, tên, vai trò) — gửi lại mỗi lần kết nối lại
+    private var currentRegistration: RegisterMessage? = null
     private var shouldReconnect: Boolean = true
     private var reconnectJob: Job? = null
 
@@ -99,8 +113,15 @@ class SignalingClient(
      * @param userId Định danh người dùng (vd: "Tong_Dao_Dien")
      */
     fun connect(serverUrl: String, userId: String) {
+        connect(serverUrl, RegisterMessage(userId = userId))
+    }
+
+    /**
+     * Kết nối và đăng ký kèm hồ sơ (mã PIN sự kiện, tên hiển thị, vai trò).
+     */
+    fun connect(serverUrl: String, registration: RegisterMessage) {
         currentServerUrl = serverUrl
-        currentUserId = userId
+        currentRegistration = registration
         shouldReconnect = true
         reconnectJob?.cancel()
 
@@ -114,21 +135,25 @@ class SignalingClient(
             return
         }
 
-        webSocket = okHttpClient.newWebSocket(request, createWebSocketListener())
+        val generation = ++connectionGeneration
+        webSocket = okHttpClient.newWebSocket(request, createWebSocketListener(generation))
     }
 
     /**
      * Tạo listener xử lý các sự kiện WebSocket
      */
-    private fun createWebSocketListener(): WebSocketListener {
+    private fun createWebSocketListener(generation: Int): WebSocketListener {
+        fun isStale(@Suppress("UNUSED_PARAMETER") socket: WebSocket): Boolean = generation != connectionGeneration
         return object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                if (isStale(webSocket)) return
                 Log.d(TAG, "WebSocket đã kết nối thành công tới $currentServerUrl")
                 _connectionState.value = SignalingConnectionState.Connected
 
                 // B. ĐĂNG KÝ (HANDSHAKE) THEO YÊU CẦU TUẦN 1
-                currentUserId?.let { uid ->
-                    val registerJson = gson.toJson(RegisterMessage(userId = uid))
+                currentRegistration?.let { registration ->
+                    val uid = registration.userId
+                    val registerJson = gson.toJson(registration)
                     Log.d(TAG, "Gửi gói tin đăng ký Handshake: $registerJson")
                     webSocket.send(registerJson)
                     _connectionState.value = SignalingConnectionState.Registered(uid)
@@ -136,6 +161,7 @@ class SignalingClient(
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                if (isStale(webSocket)) return
                 Log.d(TAG, "Nhận tin nhắn: $text")
                 handleIncomingMessage(text)
             }
@@ -146,12 +172,16 @@ class SignalingClient(
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                // Socket cũ (đã bị thay bằng kết nối mới) đóng: không được đổi trạng thái hay kết nối lại,
+                // nếu không sẽ đóng nhầm kết nối đang hoạt động và tạo vòng lặp ngắt/nối mỗi 3 giây.
+                if (isStale(webSocket)) return
                 Log.d(TAG, "WebSocket đã đóng.")
                 _connectionState.value = SignalingConnectionState.Disconnected
                 scheduleReconnect()
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (isStale(webSocket)) return
                 Log.e(TAG, "Lỗi kết nối WebSocket: ${t.message}", t)
                 _connectionState.value = SignalingConnectionState.Error(t.message ?: "Mất kết nối", t)
                 scheduleReconnect()
@@ -199,6 +229,27 @@ class SignalingClient(
                     )
                 }
 
+                SignalingType.USER_LIST -> {
+                    val userListMsg = gson.fromJson(jsonStr, UserListMessage::class.java)
+                    // Server mới gửi "members" (có tên, vai trò); server cũ chỉ gửi "users" (ID)
+                    val members = userListMsg?.members?.filter { it.userId.isNotBlank() }
+                        ?: userListMsg?.users.orEmpty().map { OnlineMember(userId = it) }
+                    val userList = members.map { it.userId }
+                    Log.d(TAG, "Nhận danh sách người dùng online: $userList")
+                    _events.tryEmit(SignalingEvent.UserListReceived(userList, members))
+                }
+
+                SignalingType.EVENT_INFO -> {
+                    val info = gson.fromJson(jsonStr, EventInfoMessage::class.java) ?: return
+                    _events.tryEmit(
+                        SignalingEvent.EventInfoReceived(
+                            eventPin = info.eventPin.orEmpty(),
+                            eventName = info.eventName.orEmpty(),
+                            found = info.found
+                        )
+                    )
+                }
+
                 else -> {
                     Log.w(TAG, "Loại gói tin không xác định: ${baseMsg.type}")
                 }
@@ -209,13 +260,27 @@ class SignalingClient(
     }
 
     /**
+     * Cập nhật hồ sơ đăng ký (đổi tên, vai trò, sự kiện) và gửi lại ngay nếu đang kết nối.
+     * Nếu đang kết nối tới máy chủ khác hoặc chưa kết nối thì chỉ lưu lại để dùng ở lần kết nối sau.
+     */
+    fun updateRegistration(registration: RegisterMessage) {
+        currentRegistration = registration
+        if (isConnected()) {
+            sendMessage(gson.toJson(registration))
+        }
+    }
+
+    /** URL máy chủ đang dùng (null nếu chưa từng kết nối). */
+    fun currentServerUrl(): String? = currentServerUrl
+
+    /**
      * Gửi Offer SDP cho người nhận
      */
     fun sendOffer(targetId: String, sdp: String): Boolean {
         val msg = SdpSignalingMessage(
             type = SignalingType.OFFER,
             targetId = targetId,
-            senderId = currentUserId,
+            senderId = currentRegistration?.userId,
             sdp = sdp
         )
         return sendMessage(gson.toJson(msg))
@@ -228,7 +293,7 @@ class SignalingClient(
         val msg = SdpSignalingMessage(
             type = SignalingType.ANSWER,
             targetId = targetId,
-            senderId = currentUserId,
+            senderId = currentRegistration?.userId,
             sdp = sdp
         )
         return sendMessage(gson.toJson(msg))
@@ -245,7 +310,7 @@ class SignalingClient(
     ): Boolean {
         val msg = IceCandidateSignalingMessage(
             targetId = targetId,
-            senderId = currentUserId,
+            senderId = currentRegistration?.userId,
             sdpMid = sdpMid,
             sdpMLineIndex = sdpMLineIndex,
             candidate = candidate
@@ -275,7 +340,7 @@ class SignalingClient(
     private fun scheduleReconnect() {
         if (!shouldReconnect) return
         val url = currentServerUrl ?: return
-        val uid = currentUserId ?: return
+        val registration = currentRegistration ?: return
 
         reconnectJob?.cancel()
         reconnectJob = clientScope.launch {
@@ -283,7 +348,9 @@ class SignalingClient(
             delay(RECONNECT_DELAY_MS)
             if (shouldReconnect) {
                 Log.d(TAG, "Đang thử kết nối lại tới $url...")
-                connect(url, uid)
+                // Dùng lại hồ sơ đầy đủ (PIN, tên, vai trò). Đăng ký chỉ bằng ID sẽ mất PIN
+                // → máy rơi khỏi nhóm sự kiện và biến mất khỏi danh sách thành viên.
+                connect(url, currentRegistration ?: registration)
             }
         }
     }
@@ -299,6 +366,7 @@ class SignalingClient(
     }
 
     private fun disconnectInternal() {
+        connectionGeneration++ // Vô hiệu hóa callback của socket sắp đóng
         try {
             webSocket?.close(NORMAL_CLOSURE_STATUS, "Chủ động ngắt kết nối")
         } catch (ignored: Exception) {}

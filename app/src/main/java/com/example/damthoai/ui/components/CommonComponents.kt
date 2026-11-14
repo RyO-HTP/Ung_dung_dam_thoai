@@ -126,15 +126,16 @@ fun Modifier.outerGlow(
 
 @Composable
 fun AvatarCircle(nameOrInitials: String, size: Dp) {
-    val initials = remember(nameOrInitials) {
-        val words = nameOrInitials.trim().split(Regex("\\s+")).filter(String::isNotEmpty)
+    val trimmed = nameOrInitials.trim()
+    val initials = remember(trimmed) {
+        val words = trimmed.split(Regex("\\s+")).filter(String::isNotEmpty)
         if (words.size > 1) {
             words.take(2).joinToString("") { it.take(1) }.uppercase()
         } else {
-            nameOrInitials.trim().take(2).uppercase()
+            trimmed.take(2).uppercase()
         }
     }
-    val colors = AvatarGradients[(nameOrInitials.hashCode().ushr(1)) % AvatarGradients.size]
+    val colors = AvatarGradients[(trimmed.hashCode().ushr(1)) % AvatarGradients.size]
 
     Box(
         modifier = Modifier
@@ -143,11 +144,20 @@ fun AvatarCircle(nameOrInitials: String, size: Dp) {
             .background(Brush.linearGradient(listOf(colors.first, colors.second))),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = initials,
-            color = AvatarInk,
-            style = DamType.avatar(size)
-        )
+        if (trimmed.isEmpty()) {
+            Icon(
+                painter = painterResource(R.drawable.ic_user),
+                contentDescription = null,
+                tint = AvatarInk,
+                modifier = Modifier.size(size * 0.48f)
+            )
+        } else {
+            Text(
+                text = initials,
+                color = AvatarInk,
+                style = DamType.avatar(size)
+            )
+        }
     }
 }
 
@@ -639,7 +649,7 @@ private fun CommonComponentsPreview() {
     DamThoaiTheme {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             BackButton(onClick = {})
-            SectionLabel(text = "TẦN SỐ ẢO · PIN 6 SỐ")
+            SectionLabel(text = "TẦN SỐ · PIN 6 SỐ")
             StatusPill(text = "Internet · 42 ms", statusColor = AccentMint)
             TagLabel(text = "ƯU TIÊN", color = AccentAmber)
             TagLabel(text = "CẤP 1", color = AccentCyan)

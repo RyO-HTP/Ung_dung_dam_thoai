@@ -55,7 +55,8 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
-        if (ws.userId) {
+        // Chỉ xóa nếu userId vẫn trỏ tới đúng socket này (tránh xóa phiên kết nối lại mới hơn)
+        if (ws.userId && clients.get(ws.userId) === ws) {
             clients.delete(ws.userId);
             console.log(`User [${ws.userId}] đã ngắt kết nối.`);
         }

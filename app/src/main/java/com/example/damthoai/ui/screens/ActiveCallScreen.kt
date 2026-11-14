@@ -23,6 +23,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import com.example.damthoai.network.SignalingConnectionState
+import com.example.damthoai.service.CallState
+import com.example.damthoai.service.DamThoaiCallManager
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.damthoai.data.CallContent
@@ -68,10 +72,34 @@ fun ActiveCallScreen(
     state: CallUiState = CallUiState.CallIdle,
     onBack: () -> Unit = {},
     onNavigateToEmergency: () -> Unit = {},
-    networkStatusOverride: NetworkStatus? = null
+    networkStatusOverride: NetworkStatus? = null,
+    // Kênh và âm lượng lấy từ ChannelViewModel dùng chung: kéo ở đây thì màn danh sách kênh cũng đổi theo
+    channels: List<com.example.damthoai.ui.channels.ChannelItemUiState> = emptyList(),
+    activeChannelId: String? = null,
+    onChannelVolumeChange: (channelId: String, volume: Float) -> Unit = { _, _ -> }
 ) {
-    val observedNetworkStatus = NetworkStatus.CONNECTED
+    val context = LocalContext.current
+    val callManager = remember { DamThoaiCallManager.getInstance(context) }
+    val connectionState by callManager.signalingClient.connectionState.collectAsState()
+    val callState by callManager.callState.collectAsState()
+    val eventName by callManager.eventName.collectAsState()
+    val onlineMembers by callManager.onlineMembers.collectAsState()
+
+    val observedNetworkStatus = when (connectionState) {
+        is SignalingConnectionState.Connected,
+        is SignalingConnectionState.Registered -> NetworkStatus.CONNECTED
+        else -> NetworkStatus.Offline
+    }
     val networkStatus = networkStatusOverride ?: observedNetworkStatus
+    val peerStatusText = when (val current = callState) {
+        is CallState.InCall -> {
+            val peerName = onlineMembers.firstOrNull { it.userId == current.peerUserId }
+                ?.displayName?.takeIf { it.isNotBlank() } ?: current.peerUserId
+            "Đã kết nối với $peerName"
+        }
+        is CallState.Calling -> "Đang kết nối âm thanh..."
+        else -> if (onlineMembers.size <= 1) "Chờ thành viên khác vào kênh" else "Đang chờ kết nối"
+    }
 
     val liveCue: LiveCue? = null
 
@@ -94,9 +122,6 @@ fun ActiveCallScreen(
         else -> null
     }
     var queuedCount by remember { mutableStateOf(1) }
-    var volumes by remember(state) {
-        mutableStateOf(content.channels.map { 1.0f })
-    }
 
     DamThoaiBackground(modifier = modifier, variant = BgVariant.Default) {
         Column(
@@ -121,7 +146,12 @@ fun ActiveCallScreen(
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        CallHeader(onBack = onBack, networkStatus = networkStatus)
+                        CallHeader(
+                            onBack = onBack,
+                            networkStatus = networkStatus,
+                            title = eventName,
+                            subtitle = peerStatusText
+                        )
                         liveCue?.let { LiveCueCard(cue = it) }
                         CallStatusBanner(
                             state = displayState,
@@ -143,14 +173,24 @@ fun ActiveCallScreen(
                                     color = TextSecondary,
                                     style = DamType.Label
                                 )
-                                content.channels.forEachIndexed { index, channel ->
+                                if (channels.isEmpty()) {
+                                    Text(
+                                        text = "Chưa có kênh nào.",
+                                        color = TextSecondary,
+                                        style = DamType.Small
+                                    )
+                                }
+                                channels.forEach { item ->
                                     VolumeRow(
-                                        channel = channel,
-                                        volume = volumes.getOrElse(index) { 1.0f },
+                                        channel = item.channel,
+                                        volume = item.volume,
+                                        tag = when {
+                                            item.isMuted -> "TẮT TIẾNG"
+                                            item.channel.id == activeChannelId -> "ĐANG NGHE · ${(item.volume * 100).toInt()}%"
+                                            else -> null
+                                        },
                                         onVolumeChange = { newValue ->
-                                            volumes = volumes.toMutableList().also {
-                                                it[index] = newValue
-                                            }
+                                            onChannelVolumeChange(item.channel.id, newValue)
                                         }
                                     )
                                 }
@@ -188,7 +228,14 @@ fun ActiveCallScreen(
                 headsetSelected = currentAudioRoute == AudioRoute.HEADSET ||
                         currentAudioRoute == AudioRoute.BLUETOOTH,
                 headsetEnabled = headsetRoute != null,
-                onSelectSpeaker = { AudioRouteGuard.userSelectRoute(AudioRoute.SPEAKER) },
+                // Bấm để bật loa ngoài; bấm lần nữa để chuyển về tai nghe (nếu đang cắm) hoặc loa trong
+                onSelectSpeaker = {
+                    if (currentAudioRoute == AudioRoute.SPEAKER) {
+                        AudioRouteGuard.userSelectRoute(headsetRoute ?: AudioRoute.EARPIECE)
+                    } else {
+                        AudioRouteGuard.userSelectRoute(AudioRoute.SPEAKER)
+                    }
+                },
                 onSelectHeadset = {
                     headsetRoute?.let(AudioRouteGuard::userSelectRoute)
                 }
@@ -198,7 +245,12 @@ fun ActiveCallScreen(
 }
 
 @Composable
-private fun CallHeader(onBack: () -> Unit, networkStatus: NetworkStatus) {
+private fun CallHeader(
+    onBack: () -> Unit,
+    networkStatus: NetworkStatus,
+    title: String,
+    subtitle: String
+) {
     Box(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center
@@ -210,9 +262,15 @@ private fun CallHeader(onBack: () -> Unit, networkStatus: NetworkStatus) {
                 .padding(horizontal = 52.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("Hậu cần – An ninh", color = TextPrimary, style = DamType.Heading)
             Text(
-                "Bạn đang nói ở kênh này",
+                title,
+                color = TextPrimary,
+                style = DamType.Heading,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            Text(
+                subtitle,
                 color = TextSecondary,
                 style = DamType.Small
             )

@@ -18,10 +18,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -48,7 +45,6 @@ fun QrCameraScanner(
     val isInspection = LocalInspectionMode.current
 
     if (isInspection) {
-        // Preview placeholder
         Box(
             modifier = modifier.background(androidx.compose.ui.graphics.Color.Black),
             contentAlignment = Alignment.Center
@@ -58,16 +54,18 @@ fun QrCameraScanner(
         return
     }
 
-    var cameraInstance by remember { mutableStateOf<Camera?>(null) }
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
+    val previewView = remember { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
 
     DisposableEffect(context, lifecycleOwner, torchEnabled) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         val listener = Runnable {
             try {
                 val cameraProvider = cameraProviderFuture.get()
-                val preview = Preview.Builder().build()
-                val imageAnalyzer = ImageAnalysis.Builder()
+                val preview = Preview.Builder().build().also {
+                    it.setSurfaceProvider(previewView.surfaceProvider)
+                }
+                val imageAnalysis = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
                     .build()
@@ -77,16 +75,12 @@ fun QrCameraScanner(
                     .build()
                 val scanner = BarcodeScanning.getClient(options)
 
+                // Chống gọi lặp: cùng một mã chỉ được báo lại sau 2 giây.
+                // Không khóa vĩnh viễn sau lần quét đầu để người dùng quét lại được khi mã không hợp lệ.
                 var lastDetectedValue: String? = null
                 var lastDetectedTime = 0L
-                var isDetected = false
 
-                imageAnalyzer.setAnalyzer(cameraExecutor) { imageProxy ->
-                    if (isDetected) {
-                        imageProxy.close()
-                        return@setAnalyzer
-                    }
-
+                imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
                     val mediaImage = imageProxy.image
                     if (mediaImage != null) {
                         val inputImage = InputImage.fromMediaImage(
@@ -102,7 +96,6 @@ fun QrCameraScanner(
                                     if (rawValue != lastDetectedValue || (now - lastDetectedTime) > 2000) {
                                         lastDetectedValue = rawValue
                                         lastDetectedTime = now
-                                        isDetected = true
                                         onQrDetected(rawValue)
                                     }
                                 }
@@ -124,9 +117,8 @@ fun QrCameraScanner(
                     lifecycleOwner,
                     cameraSelector,
                     preview,
-                    imageAnalyzer
+                    imageAnalysis
                 )
-                cameraInstance = camera
 
                 val hasFlash = camera.cameraInfo.hasFlashUnit()
                 onTorchAvailable(hasFlash)
@@ -152,6 +144,13 @@ fun QrCameraScanner(
             } catch (e: Exception) {
                 // Ignore
             }
+        }
+    }
+
+    // Executor chỉ được tắt khi composable rời khỏi màn hình hẳn, không tắt khi bật/tắt đèn pin
+    // (nếu tắt trong effect phía trên, lần chạy lại effect sẽ dùng executor đã shutdown và ngừng quét QR).
+    DisposableEffect(cameraExecutor) {
+        onDispose {
             try {
                 cameraExecutor.shutdown()
             } catch (e: Exception) {
@@ -161,21 +160,7 @@ fun QrCameraScanner(
     }
 
     AndroidView(
-        factory = { ctx ->
-            PreviewView(ctx).apply {
-                scaleType = PreviewView.ScaleType.FILL_CENTER
-            }
-        },
-        modifier = modifier,
-        update = { previewView ->
-            val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-            try {
-                val cameraProvider = cameraProviderFuture.get()
-                val preview = Preview.Builder().build()
-                preview.setSurfaceProvider(previewView.surfaceProvider)
-            } catch (e: Exception) {
-                Log.e("QrCameraScanner", "Lỗi update PreviewView: ${e.message}", e)
-            }
-        }
+        factory = { previewView },
+        modifier = modifier
     )
 }

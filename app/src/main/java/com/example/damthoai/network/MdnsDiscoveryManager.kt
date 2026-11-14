@@ -56,12 +56,13 @@ class MdnsDiscoveryManager(context: Context) {
      * Bắt đầu quét mạng tìm máy chủ bộ đàm (Client Mode)
      */
     fun startDiscovery() {
-        if (isDiscovering) return
+        if (isDiscovering || discoveryListener != null) return
 
         // Khởi tạo và cấp quyền giữ Multicast Lock để không bị HĐH cắt sóng mDNS
         if (multicastLock == null) {
             multicastLock = wifiManager.createMulticastLock("DamThoai_mDNS_Lock")
-            multicastLock?.setReferenceCounted(true)
+            // Không đếm tham chiếu: mỗi lần quét acquire một lần, stopDiscovery release một lần là đủ
+            multicastLock?.setReferenceCounted(false)
         }
         multicastLock?.acquire()
 
@@ -108,6 +109,7 @@ class MdnsDiscoveryManager(context: Context) {
             Log.e(TAG, "Lỗi khi gọi discoverServices: ${e.message}", e)
             _isSearching.value = false
             isDiscovering = false
+            discoveryListener = null
             multicastLock?.release()
         }
     }
@@ -194,8 +196,8 @@ class MdnsDiscoveryManager(context: Context) {
             Log.e(TAG, "Lỗi khi hủy đăng ký mDNS Host: ${e.message}")
         }
         
-        // 2. Dừng chế độ quét Client
-        if (isDiscovering) {
+        // 2. Dừng chế độ quét Client (kể cả khi onDiscoveryStarted chưa kịp gọi về)
+        if (isDiscovering || discoveryListener != null) {
             try {
                 discoveryListener?.let { nsdManager.stopServiceDiscovery(it) }
             } catch (e: Exception) {

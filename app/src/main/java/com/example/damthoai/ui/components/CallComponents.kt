@@ -3,7 +3,7 @@ package com.example.damthoai.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +33,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -242,6 +244,12 @@ fun VolumeRow(
     }
 }
 
+/** Vị trí ngón tay trên thanh trượt → giá trị 0..1 (thanh chừa lề 8dp hai bên cho núm tròn). */
+private fun androidx.compose.ui.input.pointer.PointerInputScope.sliderFraction(x: Float): Float {
+    val inset = 8.dp.toPx()
+    return ((x - inset) / (size.width - inset * 2f)).coerceIn(0f, 1f)
+}
+
 @Composable
 private fun VolumeSlider(
     value: Float,
@@ -250,29 +258,20 @@ private fun VolumeSlider(
     isLocked: Boolean = false
 ) {
     val clampedValue = value.coerceIn(0f, 1f)
+    // pointerInput(Unit) chỉ chạy một lần: phải đọc callback mới nhất qua rememberUpdatedState,
+    // nếu không thao tác kéo sẽ gọi callback cũ của lần vẽ đầu tiên.
+    val currentOnValueChange by rememberUpdatedState(onValueChange)
     val gestureModifier = if (!isLocked) {
         Modifier
-            .pointerInput(onValueChange) {
-                detectTapGestures { position ->
-                    val inset = 8.dp.toPx()
-                    onValueChange(
-                        ((position.x - inset) / (size.width - inset * 2f)).coerceIn(0f, 1f)
-                    )
-                }
+            .pointerInput(Unit) {
+                detectTapGestures { position -> currentOnValueChange(sliderFraction(position.x)) }
             }
             .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = { position ->
-                        val inset = 8.dp.toPx()
-                        onValueChange(
-                            ((position.x - inset) / (size.width - inset * 2f)).coerceIn(0f, 1f)
-                        )
-                    },
-                    onDrag = { change, _ ->
-                        val inset = 8.dp.toPx()
-                        onValueChange(
-                            ((change.position.x - inset) / (size.width - inset * 2f)).coerceIn(0f, 1f)
-                        )
+                // Kéo NGANG: không tranh chấp với cuộn dọc của màn hình
+                detectHorizontalDragGestures(
+                    onDragStart = { position -> currentOnValueChange(sliderFraction(position.x)) },
+                    onHorizontalDrag = { change, _ ->
+                        currentOnValueChange(sliderFraction(change.position.x))
                         change.consume()
                     }
                 )
@@ -283,7 +282,7 @@ private fun VolumeSlider(
 
     Box(
         modifier = modifier
-            .height(24.dp)
+            .height(40.dp) // Vùng chạm 40dp (thanh hiển thị vẫn 24dp) cho dễ bấm
             .semantics(mergeDescendants = true) {
                 stateDescription = "âm lượng ${(clampedValue * 100).toInt()} phần trăm"
                 progressBarRangeInfo = androidx.compose.ui.semantics.ProgressBarRangeInfo(clampedValue, 0f..1f)
@@ -347,6 +346,9 @@ fun CallStatusBanner(
     queuedCount: Int = 1,
     modifier: Modifier = Modifier
 ) {
+    // Đảm bảo nếu iconRes bằng 0 thì dùng tạm một icon hợp lệ (ví dụ ic_vol hoặc ic_alert) để không bị crash
+    val safeIconRes = if (iconRes != 0) iconRes else R.drawable.ic_vol
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -357,7 +359,7 @@ fun CallStatusBanner(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            painter = painterResource(iconRes),
+            painter = painterResource(safeIconRes),
             contentDescription = null,
             tint = color,
             modifier = Modifier.size(22.dp)
@@ -484,5 +486,16 @@ private fun ActionItem(
             style = DamType.Small,
             textAlign = TextAlign.Center
         )
+    }
+}
+@androidx.compose.ui.tooling.preview.Preview(showBackground = true, backgroundColor = 0xFF111122)
+@Composable
+fun CallComponentsPreview() {
+    // Hiển thị thử nút PTT
+    androidx.compose.foundation.layout.Box(
+        modifier = androidx.compose.ui.Modifier.padding(16.dp),
+        contentAlignment = androidx.compose.ui.Alignment.Center
+    ) {
+        PttButton(state = CallUiState.CallOffline)
     }
 }

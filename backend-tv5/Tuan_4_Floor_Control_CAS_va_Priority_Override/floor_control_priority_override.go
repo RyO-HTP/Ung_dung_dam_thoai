@@ -123,7 +123,7 @@ func (fc *FloorControlEngine) RequestFloor(req FloorRequest) FloorDecision {
 	}
 	channelCode := req.ChannelCode
 	if channelCode == "" {
-		channelCode = fmt.Sprintf("ch_0%d", req.ChannelID)
+		channelCode = fmt.Sprintf("ch_%02d", req.ChannelID)
 	}
 	userLevel, rolePriority := NormalizeRoleAndLevel(req.UserLevel, req.RolePriority)
 	req.UserLevel = userLevel
@@ -275,7 +275,7 @@ func (fc *FloorControlEngine) ReleaseFloor(channelID uint8, userID uint32) bool 
 		fc.emitEvent(FloorDecision{
 			Status:             StatusFloorReleased,
 			ChannelID:          channelID,
-			ChannelCode:        fmt.Sprintf("ch_0%d", channelID),
+			ChannelCode:        fmt.Sprintf("ch_%02d", channelID),
 			RequesterCallState: "CallIdle",
 			ListenerCallState:  "CallIdle",
 			IsDucked80:         false,
@@ -328,7 +328,7 @@ func (fc *FloorControlEngine) TriggerDirectorEmergencyOverrideAllChannels(direct
 	decisions := make([]FloorDecision, 0, 5)
 
 	for chID := uint8(1); chID <= 5; chID++ {
-		chCode := fmt.Sprintf("ch_0%d", chID)
+		chCode := fmt.Sprintf("ch_%02d", chID)
 		slot := &fc.slots[chID]
 		prev := slot.holder.Load()
 		emergencyHolder := &FloorHolder{
@@ -392,7 +392,7 @@ func (fc *FloorControlEngine) RunWatchdogLoop(stopCh <-chan struct{}) {
 						fc.emitEvent(FloorDecision{
 							Status:             StatusFloorReleased,
 							ChannelID:          chID,
-							ChannelCode:        fmt.Sprintf("ch_0%d", chID),
+							ChannelCode:        fmt.Sprintf("ch_%02d", chID),
 							RequesterCallState: "CallIdle",
 							ListenerCallState:  "CallIdle",
 							IsDucked80:         false,
@@ -427,6 +427,10 @@ func (fc *FloorControlEngine) emitEvent(d FloorDecision) {
 
 // HandleFloorRequestHTTP cung cấp REST API xin quyền nói: POST /api/v1/floor/request
 func (fc *FloorControlEngine) HandleFloorRequestHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	var req FloorRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -439,6 +443,10 @@ func (fc *FloorControlEngine) HandleFloorRequestHTTP(w http.ResponseWriter, r *h
 
 // HandleFloorReleaseHTTP cung cấp REST API nhả nút PTT: POST /api/v1/floor/release
 func (fc *FloorControlEngine) HandleFloorReleaseHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	var req struct {
 		ChannelID uint8  `json:"channelId"`
 		UserID    uint32 `json:"userId"`
@@ -458,6 +466,10 @@ func (fc *FloorControlEngine) HandleFloorReleaseHTTP(w http.ResponseWriter, r *h
 
 // HandleEmergencyOverrideHTTP cung cấp REST API phát khẩn cấp toàn sự kiện: POST /api/v1/floor/emergency-override
 func (fc *FloorControlEngine) HandleEmergencyOverrideHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	var req struct {
 		UserID      uint32 `json:"userId"`
 		DisplayName string `json:"displayName"`

@@ -15,6 +15,12 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Máy chủ Signaling trên đám mây (Render): app dùng mặc định, không cần máy tính chạy server.
+        // Đổi trong gradle.properties (damthoai.cloudSignalingUrl) nếu Render cấp địa chỉ khác; để trống để tắt.
+        val cloudSignalingUrl = (project.findProperty("damthoai.cloudSignalingUrl") as String?)
+            ?: "wss://damthoai-signaling.onrender.com"
+        buildConfigField("String", "CLOUD_SIGNALING_URL", "\"$cloudSignalingUrl\"")
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -38,6 +44,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
@@ -60,7 +67,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.8.2")
 
     // Compose BOM & UI
-    implementation(platform("androidx.compose:compose-bom:2024.02.02"))
+    implementation(platform("androidx.compose:compose-bom:2024.04.01"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
@@ -83,7 +90,7 @@ dependencies {
     // WebRTC (Thành viên 2)
     implementation("io.getstream:stream-webrtc-android:1.3.10")
 
-    // [MỚI THÊM] Hỗ trợ MediaSession bắt sự kiện phím tai nghe Bluetooth
+    // Hỗ trợ MediaSession bắt sự kiện phím tai nghe Bluetooth
     implementation("androidx.media:media:1.7.0")
 
     // CameraX (Thành viên 3 - QR Scanner)
@@ -92,7 +99,7 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.3.4")
     implementation("androidx.camera:camera-view:1.3.4")
 
-    // ML Kit Barcode Scanning & ZXing (Thành viên 3 - QR Scanner & Generator)
+    // ML Kit Barcode Scanning & ZXing
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
     implementation("com.google.zxing:core:3.5.3")
 

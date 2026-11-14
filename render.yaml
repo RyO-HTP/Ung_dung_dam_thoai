@@ -1,0 +1,20 @@
+# Cấu hình deploy Signaling Server lên Render (https://render.com) — gói miễn phí.
+# Render đọc file này khi tạo "Blueprint" từ repo GitHub.
+services:
+  - type: web
+    name: damthoai-signaling
+    runtime: python
+    plan: free
+    region: singapore          # Gần Việt Nam nhất → độ trễ thấp
+    branch: backup             # Deploy từ nhánh backup
+    buildCommand: pip install websockets==12.0
+    startCommand: python signaling_server.py
+    healthCheckPath: /healthz
+    autoDeploy: true           # Push code mới lên nhánh backup là tự deploy lại
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: DISABLE_MDNS
+        value: "1"

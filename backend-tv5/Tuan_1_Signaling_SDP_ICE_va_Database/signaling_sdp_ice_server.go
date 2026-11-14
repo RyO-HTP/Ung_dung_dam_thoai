@@ -276,16 +276,22 @@ func (h *SignalingHub) updateClientIdentity(c *ClientConn, newUserCode string) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	delete(h.clientsByCode, c.UserCode)
+	if h.clientsByCode[c.UserCode] == c {
+		delete(h.clientsByCode, c.UserCode)
+	}
 	c.UserCode = newUserCode
 	if c.DisplayName == "" || strings.HasPrefix(c.DisplayName, "user_") {
 		c.DisplayName = newUserCode
 	}
 	h.clientsByCode[c.UserCode] = c
 	if parsedInt, err := strconv.Atoi(newUserCode); err == nil && parsedInt > 0 {
-		delete(h.clientsByInt, c.NumericID)
+		if h.clientsByInt[c.NumericID] == c {
+			delete(h.clientsByInt, c.NumericID)
+		}
 		if chMap, ok := h.channels[c.ChannelID]; ok {
-			delete(chMap, c.NumericID)
+			if chMap[c.NumericID] == c {
+				delete(chMap, c.NumericID)
+			}
 			chMap[parsedInt] = c
 		}
 		c.NumericID = parsedInt
@@ -295,11 +301,17 @@ func (h *SignalingHub) updateClientIdentity(c *ClientConn, newUserCode string) {
 
 func (h *SignalingHub) unregisterClient(c *ClientConn) {
 	h.mu.Lock()
-	delete(h.clientsByInt, c.NumericID)
-	delete(h.clientsByCode, c.UserCode)
-	if chMap, ok := h.channels[c.ChannelID]; ok {
+	// Chỉ xóa nếu map vẫn trỏ tới đúng client này (tránh xóa phiên kết nối lại mới hơn cùng ID)
+	if h.clientsByInt[c.NumericID] == c {
+		delete(h.clientsByInt, c.NumericID)
+	}
+	if h.clientsByCode[c.UserCode] == c {
+		delete(h.clientsByCode, c.UserCode)
+	}
+	if chMap, ok := h.channels[c.ChannelID]; ok && chMap[c.NumericID] == c {
 		delete(chMap, c.NumericID)
 	}
+	// Đóng SendChan khi đang giữ Lock: mọi hàm gửi đều giữ RLock nên không thể gửi vào channel đã đóng
 	close(c.SendChan)
 	h.mu.Unlock()
 	_ = c.Conn.Close()
@@ -394,14 +406,14 @@ func (h *SignalingHub) sendToUserByCode(targetCode string, pkt SignalingPacket) 
 		return
 	}
 	h.mu.RLock()
+	defer h.mu.RUnlock()
 	target, exists := h.clientsByCode[targetCode]
 	if !exists {
 		if parsedInt, err := strconv.Atoi(targetCode); err == nil {
 			target, exists = h.clientsByInt[parsedInt]
 		}
 	}
-	h.mu.RUnlock()
-
+	// Gửi khi vẫn giữ RLock để unregisterClient không thể đóng SendChan giữa chừng
 	if exists {
 		select {
 		case target.SendChan <- raw:
@@ -416,8 +428,8 @@ func (h *SignalingHub) sendToUserByInt(targetUserID int, pkt SignalingPacket) {
 		return
 	}
 	h.mu.RLock()
+	defer h.mu.RUnlock()
 	target, exists := h.clientsByInt[targetUserID]
-	h.mu.RUnlock()
 	if exists {
 		select {
 		case target.SendChan <- raw:
