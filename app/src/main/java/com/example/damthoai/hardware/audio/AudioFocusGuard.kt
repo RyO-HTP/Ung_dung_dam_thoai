@@ -43,7 +43,7 @@ object AudioFocusGuard {
                     hasFocus = false
                     focusWasLost = true
                 }
-                AudioRouteGuard.onAudioFocusLost(
+                AndroidAudioRouteGuard.onAudioFocusLost(
                     "Audio focus bị ứng dụng khác hoặc cuộc gọi hệ thống chiếm"
                 )
             }
@@ -65,7 +65,7 @@ object AudioFocusGuard {
                 .getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         }
         if (manager == null) {
-            AudioRouteGuard.onAudioFocusLost("Không tìm thấy AudioManager")
+            AndroidAudioRouteGuard.onAudioFocusLost("Không tìm thấy AudioManager")
             return false
         }
 
@@ -106,7 +106,7 @@ object AudioFocusGuard {
         }
         if (!granted) {
             Log.w(TAG, "Hệ thống từ chối yêu cầu audio focus")
-            AudioRouteGuard.onAudioFocusLost("Hệ thống từ chối yêu cầu audio focus")
+            AndroidAudioRouteGuard.onAudioFocusLost("Hệ thống từ chối yêu cầu audio focus")
         }
         return granted
     }

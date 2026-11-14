@@ -2,10 +2,16 @@ package com.example.damthoai.webrtc
 
 import android.content.Context
 import android.util.Log
+import com.example.damthoai.platform.IceServerSpec
+import com.example.damthoai.platform.RtcEngine
+import com.example.damthoai.platform.RtcIceState
+import com.example.damthoai.platform.RtcPeerListener
+import com.example.damthoai.platform.SdpType
 import org.webrtc.*
 import org.webrtc.audio.JavaAudioDeviceModule
 
-class WebRTCClient(private val context: Context) {
+/** Android: âm thanh P2P bằng stream-webrtc-android, cài đặt [RtcEngine] dùng chung. */
+class WebRTCClient(private val context: Context) : RtcEngine {
 
     // Singleton cho PeerConnectionFactory để chống lỗi Dispose
     companion object {
@@ -91,7 +97,13 @@ class WebRTCClient(private val context: Context) {
      * Cập nhật danh sách ICE Servers nhận từ Signaling Server
      */
     @Synchronized
-    fun updateIceServers(newServers: List<PeerConnection.IceServer>) {
+    override fun updateIceServers(servers: List<IceServerSpec>) {
+        val newServers = servers.map { spec ->
+            PeerConnection.IceServer.builder(spec.urls).apply {
+                spec.username?.let { setUsername(it) }
+                spec.credential?.let { setPassword(it) }
+            }.createIceServer()
+        }
         if (newServers.isNotEmpty()) {
             iceServers = newServers
         }
@@ -99,12 +111,34 @@ class WebRTCClient(private val context: Context) {
 
     /** true nếu đang có PeerConnection hoạt động. */
     @Synchronized
-    fun hasPeerConnection(): Boolean = peerConnection != null
+    override fun hasPeerConnection(): Boolean = peerConnection != null
 
     /**
      * Khởi tạo PeerConnection và chuẩn bị kênh Audio cho PTT.
      * Luôn đóng PeerConnection cũ trước (tránh rò rỉ và 2 phiên chạy song song).
      */
+    @Synchronized
+    override fun createPeerConnection(listener: RtcPeerListener) {
+        createPeerConnection(object : CustomPeerConnectionObserver(this) {
+            override fun onIceCandidate(p0: IceCandidate?) {
+                p0?.let { listener.onIceCandidate(it.sdpMid, it.sdpMLineIndex, it.sdp) }
+            }
+
+            override fun onIceConnectionChange(p0: PeerConnection.IceConnectionState?) {
+                val state = when (p0) {
+                    PeerConnection.IceConnectionState.NEW -> RtcIceState.NEW
+                    PeerConnection.IceConnectionState.CHECKING -> RtcIceState.CHECKING
+                    PeerConnection.IceConnectionState.CONNECTED -> RtcIceState.CONNECTED
+                    PeerConnection.IceConnectionState.COMPLETED -> RtcIceState.COMPLETED
+                    PeerConnection.IceConnectionState.DISCONNECTED -> RtcIceState.DISCONNECTED
+                    PeerConnection.IceConnectionState.FAILED -> RtcIceState.FAILED
+                    PeerConnection.IceConnectionState.CLOSED, null -> RtcIceState.CLOSED
+                }
+                listener.onIceConnectionChange(state)
+            }
+        })
+    }
+
     @Synchronized
     fun createPeerConnection(observer: PeerConnection.Observer) {
         closeInternal()
@@ -140,7 +174,7 @@ class WebRTCClient(private val context: Context) {
      * Tự động ghi log thực địa cho TV4 (FieldTestLogger)
      */
     @Synchronized
-    fun setMicrophoneEnabled(enabled: Boolean) {
+    override fun setMicrophoneEnabled(enabled: Boolean) {
         isMicEnabled = enabled
         try {
             audioTrack?.setEnabled(enabled)
@@ -160,7 +194,7 @@ class WebRTCClient(private val context: Context) {
      * Bật/tắt trạng thái phát của tất cả AudioTrack nhận từ phía đối tác.
      */
     @Synchronized
-    fun setOutputMuted(muted: Boolean) {
+    override fun setOutputMuted(muted: Boolean) {
         isOutputMuted = muted
         remoteAudioTracks.forEach { track ->
             try {
@@ -174,7 +208,7 @@ class WebRTCClient(private val context: Context) {
      * và cho cả track nhận được sau này (khi cuộc gọi được nối lại).
      */
     @Synchronized
-    fun setRemoteVolume(volume: Float) {
+    override fun setRemoteVolume(volume: Float) {
         remoteVolume = volume.coerceIn(0f, 1f)
         remoteAudioTracks.forEach { applyVolume(it) }
     }
@@ -215,8 +249,8 @@ class WebRTCClient(private val context: Context) {
     /**
      * Tạo Offer SDP để gửi đi
      */
-    fun createOffer(onSuccess: (SessionDescription) -> Unit, onError: (String) -> Unit) {
-        createOfferInternal(MediaConstraints(), onSuccess, onError)
+    override fun createOffer(onSuccess: (sdp: String) -> Unit, onError: (String) -> Unit) {
+        createOfferInternal(MediaConstraints(), { onSuccess(it.description) }, onError)
     }
 
     private fun createOfferInternal(
@@ -245,7 +279,7 @@ class WebRTCClient(private val context: Context) {
     /**
      * Tạo Answer SDP phản hồi Offer
      */
-    fun createAnswer(onSuccess: (SessionDescription) -> Unit, onError: (String) -> Unit) {
+    override fun createAnswer(onSuccess: (sdp: String) -> Unit, onError: (String) -> Unit) {
         val pc = synchronized(this) { peerConnection } ?: return onError("Chưa có PeerConnection")
         val constraints = MediaConstraints().apply {
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
@@ -254,7 +288,7 @@ class WebRTCClient(private val context: Context) {
             override fun onCreateSuccess(desc: SessionDescription?) {
                 if (desc == null) return onError("Answer rỗng")
                 pc.setLocalDescription(object : SimpleSdpObserver() {
-                    override fun onSetSuccess() = onSuccess(desc)
+                    override fun onSetSuccess() = onSuccess(desc.description)
                     override fun onSetFailure(error: String?) =
                         onError(error ?: "Lỗi đặt local description (answer)")
                 }, desc)
@@ -269,6 +303,11 @@ class WebRTCClient(private val context: Context) {
      * Thiết lập Remote Description từ đối tác gửi tới.
      * Sau khi thành công, thêm các ICE candidate đã xếp hàng.
      */
+    override fun setRemoteDescription(type: SdpType, sdp: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        val sdpType = if (type == SdpType.OFFER) SessionDescription.Type.OFFER else SessionDescription.Type.ANSWER
+        setRemoteDescription(SessionDescription(sdpType, sdp), onSuccess, onError)
+    }
+
     fun setRemoteDescription(
         sdp: SessionDescription,
         onSuccess: () -> Unit,
@@ -294,6 +333,10 @@ class WebRTCClient(private val context: Context) {
     /**
      * Thêm ICE Candidate nhận được từ mạng (xếp hàng nếu chưa có remote description)
      */
+    override fun addIceCandidate(sdpMid: String?, sdpMLineIndex: Int, candidate: String) {
+        addIceCandidate(IceCandidate(sdpMid, sdpMLineIndex, candidate))
+    }
+
     @Synchronized
     fun addIceCandidate(candidate: IceCandidate) {
         val pc = peerConnection
@@ -308,19 +351,19 @@ class WebRTCClient(private val context: Context) {
      * Khởi động lại ICE (ICE Restart) khi chuyển từ Wi-Fi sang 4G (Seamless Handover).
      * Bắt buộc WebRTC dò tìm lại đường truyền mạng mà không cần ngắt cuộc gọi.
      */
-    fun restartIce(onSuccess: (SessionDescription) -> Unit, onError: (String) -> Unit) {
+    override fun restartIce(onSuccess: (sdp: String) -> Unit, onError: (String) -> Unit) {
         val constraints = MediaConstraints().apply {
             // Cờ bắt buộc khởi động lại dò tìm ICE
             mandatory.add(MediaConstraints.KeyValuePair("IceRestart", "true"))
         }
-        createOfferInternal(constraints, onSuccess, onError)
+        createOfferInternal(constraints, { onSuccess(it.description) }, onError)
     }
 
     /**
      * Đóng và giải phóng tài nguyên WebRTC
      */
     @Synchronized
-    fun close() {
+    override fun close() {
         closeInternal()
     }
 

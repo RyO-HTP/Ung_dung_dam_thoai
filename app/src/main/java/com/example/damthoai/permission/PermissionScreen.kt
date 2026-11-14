@@ -233,7 +233,7 @@ fun PermissionScreen(
                 Text(
                     text = androidx.compose.ui.res.stringResource(
                         R.string.perm_permanently_denied_message,
-                        androidx.compose.ui.res.stringResource(permission.titleRes)
+                        permission.title
                     )
                 )
             },

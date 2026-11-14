@@ -9,62 +9,44 @@ package com.example.damthoai
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Surface
-import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
-import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
-import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.damthoai.hardware.AccessibilityStatus
-import com.example.damthoai.hardware.audio.AudioRouteGuard
-import com.example.damthoai.hardware.audio.WebRTCAudioRouteController
+import com.example.damthoai.platform.AndroidPlatform
+import com.example.damthoai.platform.AndroidPlatformUi
+import com.example.damthoai.hardware.audio.AndroidAudioRouteGuard
 import com.example.damthoai.hardware.HandsFreeSession
 import com.example.damthoai.hardware.HandsFreeSettings
-import com.example.damthoai.hardware.HapticController
 import com.example.damthoai.hardware.HardwareKeyHandler
 import com.example.damthoai.hardware.PttController
 import com.example.damthoai.hardware.PttEvent
 import com.example.damthoai.hardware.RogerBeepPlayer
 import com.example.damthoai.hardware.emergency.EmergencyAlertManager
 import com.example.damthoai.hardware.emergency.EmergencyNotifier
-import com.example.damthoai.data.AppStartPrefs
-import com.example.damthoai.permission.AppPermission
 import com.example.damthoai.permission.PermissionManager
-import com.example.damthoai.permission.PermissionState
-import com.example.damthoai.service.DamThoaiCallManager
-import com.example.damthoai.ui.navigation.AdaptiveAppLayout
-import com.example.damthoai.ui.navigation.AppRoute
-import com.example.damthoai.ui.theme.BgGradientTop
-import com.example.damthoai.ui.theme.DamThoaiTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
-    @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Nối dịch vụ Android (WebRTC, mDNS, âm thanh, cảnh báo...) vào phần code dùng chung
+        AndroidPlatform.install(this)
         handleEmergencyAction(intent)
-        HandsFreeSettings.initialize(applicationContext)
-        HandsFreeSession.initialize(this)
-        AudioRouteGuard.start(applicationContext)
-
-        // ĐIỂM NỐI TV2/TV4 (Tuần 4): Cài đặt bộ điều khiển tuyến âm thanh WebRTC thực tế
-        val callManager = DamThoaiCallManager.getInstance(applicationContext)
-        AudioRouteGuard.installController(
-            WebRTCAudioRouteController(applicationContext, callManager.webRTCClient)
-        )
 
         lifecycleScope.launch {
             PttController.events.collect { event ->
                 when (event) {
-                    is PttEvent.PttPressed -> HapticController.tick(window.decorView)
+                    is PttEvent.PttPressed -> if (HandsFreeSettings.beepHapticEnabled.value) {
+                        window.decorView.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    }
                     is PttEvent.PttReleased -> RogerBeepPlayer.play()
                 }
             }
@@ -87,31 +69,10 @@ class MainActivity : ComponentActivity() {
         // Cập nhật trạng thái quyền ban đầu
         PermissionManager.refreshPermissionStates(this, this)
 
-        val microphonePermissionState =
-            PermissionManager.checkPermissionState(this, AppPermission.AUDIO, this)
-        val startDestination = when {
-            !AppStartPrefs.isOnboardingDone(this) -> AppRoute.Onboarding.route
-            microphonePermissionState == PermissionState.PERMANENTLY_DENIED ->
-                AppRoute.MicrophonePermission.route
-            microphonePermissionState != PermissionState.GRANTED ->
-                AppRoute.GrantPermission.route
-            AppStartPrefs.hasJoinedEvent(this) -> AppRoute.ChannelList.route
-            else -> AppRoute.ScanQr.route
-        }
-
+        val platformUi = AndroidPlatformUi(this)
         setContent {
-            DamThoaiTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = BgGradientTop
-                ) {
-                    val windowSizeClass = calculateWindowSizeClass(this)
-                    AdaptiveAppLayout(
-                        windowSizeClass = windowSizeClass,
-                        startDestination = startDestination
-                    )
-                }
-            }
+            // Giao diện dùng chung với iOS (module :shared)
+            App(platformUi = platformUi)
         }
     }
 
@@ -123,8 +84,8 @@ class MainActivity : ComponentActivity() {
 
     private fun handleEmergencyAction(intent: Intent?) {
         when (intent?.action) {
-            EmergencyNotifier.ACTION_ACKNOWLEDGE -> EmergencyAlertManager.acknowledge(this)
-            EmergencyNotifier.ACTION_SNOOZE -> EmergencyAlertManager.snooze(this)
+            EmergencyNotifier.ACTION_ACKNOWLEDGE -> EmergencyAlertManager.acknowledge()
+            EmergencyNotifier.ACTION_SNOOZE -> EmergencyAlertManager.snooze()
         }
     }
 
@@ -177,7 +138,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         RogerBeepPlayer.release()
-        AudioRouteGuard.stop()
+        AndroidAudioRouteGuard.stop()
         super.onDestroy()
     }
 }

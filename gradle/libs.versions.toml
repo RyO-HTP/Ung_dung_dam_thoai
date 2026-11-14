@@ -8,6 +8,7 @@ ktor = "3.3.3"
 multiplatform-settings = "1.3.0"
 jb-lifecycle = "2.9.6"
 jb-navigation = "2.9.1"
+atomicfu = "0.29.0"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -22,6 +23,9 @@ multiplatform-settings = { module = "com.russhwolf:multiplatform-settings", vers
 jb-lifecycle-viewmodel-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "jb-lifecycle" }
 jb-lifecycle-runtime-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "jb-lifecycle" }
 jb-navigation-compose = { module = "org.jetbrains.androidx.navigation:navigation-compose", version.ref = "jb-navigation" }
+
+compose-ui-backhandler = { module = "org.jetbrains.compose.ui:ui-backhandler", version.ref = "compose-multiplatform" }
+atomicfu = { module = "org.jetbrains.kotlinx:atomicfu", version.ref = "atomicfu" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

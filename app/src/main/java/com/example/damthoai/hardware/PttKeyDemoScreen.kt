@@ -224,7 +224,6 @@ fun PttKeyDemoScreen(
                         Button(
                             onClick = {
                                 EmergencyAlertManager.trigger(
-                                    context,
                                     EmergencyAlert(
                                         id = "debug-${System.currentTimeMillis()}",
                                         fromName = context.getString(R.string.emergency_demo_sender_name),

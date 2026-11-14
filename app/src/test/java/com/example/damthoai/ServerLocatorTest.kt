@@ -1,6 +1,8 @@
 package com.example.damthoai
 
+import com.example.damthoai.network.AndroidLanProbe
 import com.example.damthoai.network.ServerLocator
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -67,25 +69,25 @@ class ServerLocatorTest {
         // Cổng mở nhưng không phải Signaling Server (VD tên miền *.onrender.com chưa deploy) → không sống.
         // Dùng "localhost" (không phải IP LAN) để đi đường kiểm tra /healthz.
         withHttpServer("404 Not Found", "Not Found") { port ->
-            assertFalse(ServerLocator.isServerAlive("ws://localhost:$port"))
+            assertFalse(runBlocking { ServerLocator.isServerAlive("ws://localhost:$port") })
         }
         withHttpServer("200 OK", "OK 0 online") { port ->
-            assertTrue(ServerLocator.isServerAlive("ws://localhost:$port"))
+            assertTrue(runBlocking { ServerLocator.isServerAlive("ws://localhost:$port") })
         }
     }
 
     @Test
     fun isPortOpen_detectsListeningAndClosedPorts() {
         ServerSocket(0).use { server ->
-            assertTrue(ServerLocator.isPortOpen("127.0.0.1", server.localPort))
+            assertTrue(AndroidLanProbe.isPortOpen("127.0.0.1", server.localPort, ServerLocator.PROBE_TIMEOUT_MS))
         }
         val closedPort = ServerSocket(0).use { it.localPort }
-        assertFalse(ServerLocator.isPortOpen("127.0.0.1", closedPort, 300))
+        assertFalse(AndroidLanProbe.isPortOpen("127.0.0.1", closedPort, 300))
     }
 
     @Test
     fun lanScanTargets_neverContainsLoopbackAndStaysWithinSlash24() {
-        val targets = ServerLocator.lanScanTargets()
+        val targets = AndroidLanProbe.lanScanTargets()
         assertTrue(targets.none { it.startsWith("127.") })
         assertTrue(targets.all { it.split('.').size == 4 })
     }

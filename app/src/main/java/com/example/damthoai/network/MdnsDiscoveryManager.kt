@@ -5,6 +5,8 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
 import android.util.Log
+import com.example.damthoai.platform.DiscoveredServer
+import com.example.damthoai.platform.ServerDiscovery
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -14,20 +16,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.net.InetAddress
 
 /**
- * Thông tin máy chủ Signaling được tìm thấy qua mDNS trong mạng LAN
- */
-data class DiscoveredSignalingServer(
-    val serviceName: String,
-    val hostAddress: String,
-    val port: Int,
-    val wsUrl: String = "ws://$hostAddress:$port"
-)
-
-/**
  * Trình tự động quét tìm Signaling Server trên mạng nội bộ (mDNS / Zeroconf)
  * Tương thích trực tiếp với mdns_broadcaster.py (dịch vụ _bodam._tcp)
  */
-class MdnsDiscoveryManager(context: Context) {
+class MdnsDiscoveryManager(context: Context) : ServerDiscovery {
 
     companion object {
         private const val TAG = "MdnsDiscoveryManager"
@@ -49,13 +41,13 @@ class MdnsDiscoveryManager(context: Context) {
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
-    private val _serverFound = MutableSharedFlow<DiscoveredSignalingServer>(extraBufferCapacity = 1)
-    val serverFound: SharedFlow<DiscoveredSignalingServer> = _serverFound.asSharedFlow()
+    private val _serverFound = MutableSharedFlow<DiscoveredServer>(extraBufferCapacity = 1)
+    override val serverFound: SharedFlow<DiscoveredServer> = _serverFound.asSharedFlow()
 
     /**
      * Bắt đầu quét mạng tìm máy chủ bộ đàm (Client Mode)
      */
-    fun startDiscovery() {
+    override fun startDiscovery() {
         if (isDiscovering || discoveryListener != null) return
 
         // Khởi tạo và cấp quyền giữ Multicast Lock để không bị HĐH cắt sóng mDNS
@@ -132,9 +124,9 @@ class MdnsDiscoveryManager(context: Context) {
 
                 Log.d(TAG, "Đã bắt được Server qua mDNS: $hostAddress:$port")
 
-                val discovered = DiscoveredSignalingServer(
-                    serviceName = resolvedInfo.serviceName ?: "BoDamServer",
-                    hostAddress = hostAddress,
+                val discovered = DiscoveredServer(
+                    name = resolvedInfo.serviceName ?: "BoDamServer",
+                    host = hostAddress,
                     port = port
                 )
                 _serverFound.tryEmit(discovered)
@@ -185,7 +177,7 @@ class MdnsDiscoveryManager(context: Context) {
     /**
      * Dừng mọi dịch vụ dò tìm và phát sóng mDNS
      */
-    fun stopDiscovery() {
+    override fun stopDiscovery() {
         // 1. Dừng chế độ phát Host (nếu có)
         try {
             registrationListener?.let { 

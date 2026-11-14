@@ -9,7 +9,6 @@ package com.example.damthoai.data.qr
 import android.content.Context
 import android.net.Uri
 import android.util.Log
-import com.example.damthoai.ui.join.QrDecoder
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -68,4 +67,20 @@ class MlKitQrDecoder(private val context: Context) : QrDecoder {
             }
         }
     }
+}
+
+/**
+ * Interface giải mã QR cho ứng dụng.
+ * ĐIỂM NỐI: cài đặt thật bằng ML Kit ở PROMPT 1B
+ */
+interface QrDecoder {
+    suspend fun decode(uri: android.net.Uri): String?
+}
+
+/**
+ * Mock implementation của QrDecoder.
+ * ĐIỂM NỐI: cài đặt thật bằng ML Kit ở PROMPT 1B
+ */
+class MockQrDecoder : QrDecoder {
+    override suspend fun decode(uri: android.net.Uri): String = "MOCK_QR_EVENT_889900"
 }

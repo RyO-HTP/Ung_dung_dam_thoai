@@ -18,14 +18,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * Cách bấm nút tai nghe: bật/tắt mic hoặc chỉ giữ mic trong lúc nhấn.
- */
-enum class HeadsetPttMode {
-    TOGGLE,
-    HOLD
-}
-
-/**
  * Định tuyến nút tai nghe có dây/Bluetooth về [PttController].
  *
  * MediaSession nền tảng quảng bá trạng thái đang phát với ACTION_PLAY_PAUSE để Android
