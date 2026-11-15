@@ -31,6 +31,9 @@ class IosAudioSession : CallAudioSession, AudioRouteBackend {
     // Người dùng chọn loa ngoài: iOS bỏ override khi đổi tuyến, nên phải đặt lại sau mỗi lần đổi
     private var speakerSelected = true
 
+    // Phiên đàm thoại đang mở (giữa start() và release())
+    private var active = false
+
     init {
         NSNotificationCenter.defaultCenter.addObserverForName(
             name = AVAudioSessionRouteChangeNotification,
@@ -49,6 +52,7 @@ class IosAudioSession : CallAudioSession, AudioRouteBackend {
                 error = null
             )
             session.setActive(true, error = null)
+            active = true
         } catch (e: Throwable) {
             Log.e(TAG, "Không mở được phiên âm thanh: ${e.message}")
         }
@@ -56,6 +60,7 @@ class IosAudioSession : CallAudioSession, AudioRouteBackend {
     }
 
     override fun release() {
+        active = false
         try {
             session.overrideOutputAudioPort(AVAudioSessionPortOverrideNone, error = null)
             session.setActive(false, error = null)
@@ -98,7 +103,16 @@ class IosAudioSession : CallAudioSession, AudioRouteBackend {
         if (AVAudioSessionPortHeadphones in outputTypes || AVAudioSessionPortHeadsetMic in inputTypes) {
             available += AudioRoute.HEADSET
         }
+        val previous = _availableRoutes.value
         _availableRoutes.value = available
+
+        // Tai nghe mới cắm / kết nối trong lúc đàm thoại: bỏ ép loa ngoài để âm thanh ra tai nghe
+        val newHeadset = listOf(AudioRoute.BLUETOOTH, AudioRoute.HEADSET)
+            .firstOrNull { it in available && it !in previous }
+        if (active && newHeadset != null) {
+            userSelectRoute(newHeadset)
+            return
+        }
 
         _currentRoute.value = when {
             outputTypes.any { it in bluetoothTypes } -> AudioRoute.BLUETOOTH

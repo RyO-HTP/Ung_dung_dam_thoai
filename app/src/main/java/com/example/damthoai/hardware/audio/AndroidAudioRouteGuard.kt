@@ -92,10 +92,16 @@ object AndroidAudioRouteGuard : AudioRouteBackend {
             }
             if (newlyConnected.isNotEmpty()) {
                 val route = newlyConnected.firstNotNullOfOrNull { routeForDevice(it.type) }
-                synchronized(lock) {
-                    if (route != null && (selectedRoute == null || selectedRoute == route)) {
-                        _currentRoute.value = route
-                    }
+                // Cắm / kết nối tai nghe = người dùng muốn nghe qua tai nghe: chuyển tuyến THẬT
+                // (setCommunicationDevice / tắt loa ngoài), không chỉ cập nhật trạng thái UI.
+                // Nếu chỉ đổi _currentRoute, Android vẫn giữ loa ngoài đã chọn trước đó.
+                // Chỉ tự chuyển khi phiên đàm thoại đang mở (MODE_IN_COMMUNICATION); lúc rảnh thì
+                // startAudioSession sẽ tự ưu tiên tai nghe khi phiên bắt đầu.
+                val inCall = synchronized(lock) { audioManager }?.mode == AudioManager.MODE_IN_COMMUNICATION
+                if (route != null && inCall) {
+                    userSelectRoute(route)
+                } else if (route != null) {
+                    synchronized(lock) { _currentRoute.value = route }
                 }
                 AudioIncidentBus.report(AudioIncident.HeadsetReconnected(newlyConnected.first().type))
             }
@@ -417,11 +423,19 @@ object AndroidAudioRouteGuard : AudioRouteBackend {
                 routeForDevice(it.type) == route ||
                     route == AudioRoute.SPEAKER && it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
             }
-            if (device != null) return manager.setCommunicationDevice(device)
-
-            if (route == AudioRoute.EARPIECE || route == AudioRoute.SPEAKER) {
-                manager.clearCommunicationDevice()
+            if (device != null) {
+                val ok = manager.setCommunicationDevice(device)
+                Log.d(
+                    TAG,
+                    "setCommunicationDevice($route, type=${device.type}) = $ok; " +
+                        "hiện tại type=${manager.communicationDevice?.type}"
+                )
+                return ok
             }
+
+            // Không tìm thấy thiết bị (vd. Bluetooth mới báo A2DP, chưa có SCO): bỏ lựa chọn cũ
+            // (có thể đang là loa ngoài) để hệ thống tự ưu tiên tai nghe.
+            manager.clearCommunicationDevice()
             return true
         }
 

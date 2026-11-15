@@ -1,7 +1,9 @@
 package com.example.damthoai.hardware.audio
 
 import android.content.Context
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import android.os.Build
 import android.util.Log
 import com.example.damthoai.webrtc.WebRTCClient
 
@@ -60,6 +62,12 @@ class WebRTCAudioRouteController(
         activeRoute = route
         try {
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            WebRTCClient.setPreferredInputDevice(findInputFor(route))
+            // Android 12+: AndroidAudioRouteGuard định tuyến bằng setCommunicationDevice (chọn cả
+            // loa VÀ micro theo thiết bị). KHÔNG trộn với API cũ (setSpeakerphoneOn /
+            // startBluetoothSco): API cũ đè lên lựa chọn đó, làm micro tai nghe không thu tiếng.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return
+            @Suppress("DEPRECATION")
             when (route) {
                 AudioRoute.SPEAKER -> {
                     audioManager.isSpeakerphoneOn = true
@@ -91,5 +99,24 @@ class WebRTCAudioRouteController(
         } catch (e: Exception) {
             Log.e(TAG, "Lỗi khi chuyển đổi tuyến âm thanh sang $route: ${e.message}", e)
         }
+    }
+
+    /** Micro tương ứng tuyến: tai nghe → micro tai nghe (USB-C / có dây / Bluetooth), còn lại → micro máy. */
+    private fun findInputFor(route: AudioRoute): AudioDeviceInfo? {
+        val inputs = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+        val wanted = when (route) {
+            AudioRoute.HEADSET -> listOf(
+                AudioDeviceInfo.TYPE_USB_HEADSET,
+                AudioDeviceInfo.TYPE_USB_DEVICE,
+                AudioDeviceInfo.TYPE_WIRED_HEADSET
+            )
+            AudioRoute.BLUETOOTH -> buildList {
+                add(AudioDeviceInfo.TYPE_BLUETOOTH_SCO)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) add(AudioDeviceInfo.TYPE_BLE_HEADSET)
+            }
+            AudioRoute.SPEAKER, AudioRoute.EARPIECE -> listOf(AudioDeviceInfo.TYPE_BUILTIN_MIC)
+        }
+        // Tai nghe có dây không mic (TYPE_WIRED_HEADPHONES) → null: để hệ thống dùng micro máy
+        return wanted.firstNotNullOfOrNull { type -> inputs.firstOrNull { it.type == type } }
     }
 }

@@ -22,6 +22,24 @@ class WebRTCClient(private val context: Context) : RtcEngine {
         @Volatile
         private var factory: PeerConnectionFactory? = null
 
+        // Giữ module âm thanh để chọn micro khi đổi tuyến (phần Java vẫn dùng được sau release())
+        @Volatile
+        private var audioDeviceModule: JavaAudioDeviceModule? = null
+
+        /**
+         * Chỉ định micro cho luồng thu âm WebRTC (null = để hệ thống tự chọn).
+         * Cần thiết với tai nghe USB-C: micro USB nằm ở module âm thanh riêng, luồng thu đang mở
+         * trên micro máy KHÔNG tự chuyển theo setCommunicationDevice → đối phương nghe im lặng.
+         */
+        fun setPreferredInputDevice(device: android.media.AudioDeviceInfo?) {
+            try {
+                audioDeviceModule?.setPreferredInputDevice(device)
+                Log.d(TAG, "Micro ưu tiên: type=${device?.type} ${device?.productName}")
+            } catch (e: Throwable) {
+                Log.e(TAG, "Không chọn được micro: ${e.message}")
+            }
+        }
+
         @Synchronized
         fun getOrCreateFactory(context: Context): PeerConnectionFactory {
             factory?.let { return it }
@@ -70,6 +88,7 @@ class WebRTCClient(private val context: Context) : RtcEngine {
                 .createPeerConnectionFactory()
             // Factory đã giữ tham chiếu riêng tới module âm thanh
             audioDeviceModule.release()
+            this.audioDeviceModule = audioDeviceModule
             factory = created
             return created
         }
