@@ -1,5 +1,9 @@
 package com.example.damthoai.network
 
+import com.example.damthoai.data.Seat
+import com.example.damthoai.data.TeamChannels
+import com.example.damthoai.data.TeamRole
+import com.example.damthoai.data.seatFor
 import com.example.damthoai.network.model.*
 import com.example.damthoai.platform.IceServerSpec
 import com.example.damthoai.util.Log
@@ -77,6 +81,16 @@ sealed class SignalingEvent {
         val channelId: String,
         val talking: Boolean
     ) : SignalingEvent()
+    /** Chủ sự kiện ([byName]) đã đổi vai trò/phòng ban của mình thành [seat]. */
+    data class SeatAssigned(val seat: Seat, val byName: String) : SignalingEvent()
+    /** Server từ chối lệnh đổi vai trò mình gửi. */
+    data class SetSeatDenied(val targetId: String?) : SignalingEvent()
+    /** Chủ sự kiện ([byName]) đã xoá mình khỏi sự kiện [eventPin]. */
+    data class Kicked(val eventPin: String, val byName: String) : SignalingEvent()
+    /** Server không công nhận mình là chủ sự kiện: [reason] "bad_code" / "revoked". */
+    data class OrganizerDenied(val eventPin: String, val reason: String) : SignalingEvent()
+    /** Danh mục phòng ban chủ sự kiện đã lưu trên server cho sự kiện [eventPin]. */
+    data class CatalogReceived(val eventPin: String, val catalog: List<CatalogEntry>) : SignalingEvent()
 }
 
 /**
@@ -113,7 +127,7 @@ class SignalingClient(
     val connectionState: StateFlow<SignalingConnectionState> = _connectionState.asStateFlow()
 
     // Shared flow phát các sự kiện nhận từ server
-    private val _events = MutableSharedFlow<SignalingEvent>(extraBufferCapacity = 64)
+    private val _events = MutableSharedFlow<SignalingEvent>(extraBufferCapacity = 256)
     val events: SharedFlow<SignalingEvent> = _events.asSharedFlow()
 
     /**
@@ -197,7 +211,7 @@ class SignalingClient(
     /**
      * Xử lý gói tin nhận được từ Server theo tài liệu Tuần 1
      */
-    private fun handleIncomingMessage(jsonStr: String) {
+    private suspend fun handleIncomingMessage(jsonStr: String) {
         try {
             val baseMsg = json.decodeFromString(BaseSignalingMessage.serializer(), jsonStr)
 
@@ -208,23 +222,23 @@ class SignalingClient(
                     val rawConfigs = configMsg.config?.iceServers ?: emptyList()
                     val iceServers = rawConfigs.mapNotNull { it.toIceServerSpec() }
                     Log.d(TAG, "Nhận cấu hình WebRTC thành công: ${iceServers.size} ICE servers")
-                    _events.tryEmit(SignalingEvent.ConfigReceived(iceServers))
+                    _events.emit(SignalingEvent.ConfigReceived(iceServers))
                 }
 
                 // D. ĐỊNH TUYẾN P2P (OFFER / ANSWER / ICE_CANDIDATE)
                 SignalingType.OFFER -> {
                     val sdpMsg = json.decodeFromString(SdpSignalingMessage.serializer(), jsonStr)
-                    _events.tryEmit(SignalingEvent.OfferReceived(sdpMsg.senderId, sdpMsg.sdp))
+                    _events.emit(SignalingEvent.OfferReceived(sdpMsg.senderId, sdpMsg.sdp))
                 }
 
                 SignalingType.ANSWER -> {
                     val sdpMsg = json.decodeFromString(SdpSignalingMessage.serializer(), jsonStr)
-                    _events.tryEmit(SignalingEvent.AnswerReceived(sdpMsg.senderId, sdpMsg.sdp))
+                    _events.emit(SignalingEvent.AnswerReceived(sdpMsg.senderId, sdpMsg.sdp))
                 }
 
                 SignalingType.ICE_CANDIDATE -> {
                     val iceMsg = json.decodeFromString(IceCandidateSignalingMessage.serializer(), jsonStr)
-                    _events.tryEmit(
+                    _events.emit(
                         SignalingEvent.IceCandidateReceived(
                             senderId = iceMsg.senderId,
                             sdpMid = iceMsg.sdpMid,
@@ -241,25 +255,38 @@ class SignalingClient(
                         ?: userListMsg?.users.orEmpty().map { OnlineMember(userId = it) }
                     val userList = members.map { it.userId }
                     Log.d(TAG, "Nhận danh sách người dùng online: $userList")
-                    _events.tryEmit(SignalingEvent.UserListReceived(userList, members))
+                    _events.emit(SignalingEvent.UserListReceived(userList, members))
                 }
 
                 SignalingType.EVENT_INFO -> {
                     val info = json.decodeFromString(EventInfoMessage.serializer(), jsonStr)
-                    _events.tryEmit(
+                    _events.emit(
                         SignalingEvent.EventInfoReceived(
                             eventPin = info.eventPin.orEmpty(),
                             eventName = info.eventName.orEmpty(),
                             found = info.found
                         )
                     )
+                    info.catalog?.takeIf { it.isNotEmpty() }?.let {
+                        _events.emit(SignalingEvent.CatalogReceived(info.eventPin.orEmpty(), it))
+                    }
+                }
+
+                SignalingType.KICKED -> {
+                    val msg = json.decodeFromString(NoticeMessage.serializer(), jsonStr)
+                    _events.emit(SignalingEvent.Kicked(msg.eventPin.orEmpty(), msg.byName.orEmpty()))
+                }
+
+                SignalingType.ORGANIZER_DENIED -> {
+                    val msg = json.decodeFromString(NoticeMessage.serializer(), jsonStr)
+                    _events.emit(SignalingEvent.OrganizerDenied(msg.eventPin.orEmpty(), msg.reason.orEmpty()))
                 }
 
                 SignalingType.PTT -> {
                     val ptt = json.decodeFromString(PttMessage.serializer(), jsonStr)
                     val sender = ptt.senderId
                     if (!sender.isNullOrBlank() && ptt.channelId.isNotBlank()) {
-                        _events.tryEmit(SignalingEvent.PttReceived(sender, ptt.channelId, ptt.talking))
+                        _events.emit(SignalingEvent.PttReceived(sender, ptt.channelId, ptt.talking))
                     }
                 }
 
@@ -268,7 +295,7 @@ class SignalingClient(
                 SignalingType.FLOOR_STATE -> {
                     val floor = json.decodeFromString(FloorMessage.serializer(), jsonStr)
                     if (floor.channelId.isBlank()) return
-                    _events.tryEmit(
+                    _events.emit(
                         when (baseMsg.type) {
                             SignalingType.FLOOR_GRANTED -> SignalingEvent.FloorGranted(floor.channelId)
                             SignalingType.FLOOR_DENIED ->
@@ -278,6 +305,18 @@ class SignalingClient(
                             )
                         }
                     )
+                }
+
+                SignalingType.SEAT_ASSIGNED -> {
+                    val msg = json.decodeFromString(SeatMessage.serializer(), jsonStr)
+                    if (msg.teamRole.isBlank()) return
+                    val seat = seatFor(TeamRole.fromWire(msg.teamRole), msg.channelId, msg.channelName)
+                    _events.emit(SignalingEvent.SeatAssigned(seat, msg.byName.orEmpty()))
+                }
+
+                SignalingType.SET_SEAT_DENIED -> {
+                    val msg = json.decodeFromString(SeatMessage.serializer(), jsonStr)
+                    _events.emit(SignalingEvent.SetSeatDenied(msg.targetId))
                 }
 
                 else -> {
@@ -369,6 +408,25 @@ class SignalingClient(
     /** Nhả lượt nói trên [channelId]. */
     fun releaseFloor(channelId: String): Boolean =
         sendMessage(json.encodeToString(FloorMessage.serializer(), FloorMessage(SignalingType.FLOOR_RELEASE, channelId)))
+
+    /** Chủ sự kiện đổi vai trò/phòng ban của [targetId] (server kiểm tra quyền rồi chuyển tới máy đó). */
+    fun sendSetSeat(targetId: String, seat: Seat): Boolean = sendMessage(
+        json.encodeToString(
+            SeatMessage.serializer(),
+            SeatMessage(
+                type = SignalingType.SET_SEAT,
+                targetId = targetId,
+                teamRole = seat.role.wire,
+                channelId = seat.groupId,
+                channelName = TeamChannels.channelName(seat.groupId, seat.groupName)
+            )
+        )
+    )
+
+    /** Chủ sự kiện xoá [targetId] khỏi sự kiện (server kiểm tra quyền, báo máy đó và chặn vào lại). */
+    fun sendKick(targetId: String): Boolean = sendMessage(
+        json.encodeToString(NoticeMessage.serializer(), NoticeMessage(type = SignalingType.KICK, targetId = targetId))
+    )
 
     /**
      * Gửi chuỗi tin nhắn JSON qua WebSocket

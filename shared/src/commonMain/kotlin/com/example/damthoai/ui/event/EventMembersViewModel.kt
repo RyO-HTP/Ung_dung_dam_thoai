@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.damthoai.data.AppStartPrefs
 import com.example.damthoai.data.Member
 import com.example.damthoai.data.MemberLevel
+import com.example.damthoai.data.Seat
 import com.example.damthoai.network.model.OnlineMember
 import com.example.damthoai.service.DamThoaiCallManager
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,7 +40,8 @@ internal fun initialsOf(name: String): String {
 
 /**
  * Chuyển thành viên online từ server sang model UI.
- * Ban tổ chức là Cấp 1; người khác mặc định Cấp 2 (cấp có thể đổi trong sheet sửa thành viên).
+ * Cấp suy ra từ vai trò trong QR: Trưởng ban = Cấp 1, Trưởng nhóm = Cấp 2, Thành viên = Cấp 3.
+ * Chủ sự kiện luôn là Cấp 1.
  */
 fun OnlineMember.toUiMember(myUserId: String): Member {
     val baseName = displayName?.takeIf { it.isNotBlank() } ?: userId
@@ -51,8 +53,10 @@ fun OnlineMember.toUiMember(myUserId: String): Member {
         name = name,
         roleTitle = role,
         initials = initialsOf(baseName),
-        level = if (isOrganizer) MemberLevel.LEVEL_1 else MemberLevel.LEVEL_2,
-        isOnline = true
+        level = if (isOrganizer) MemberLevel.LEVEL_1 else seat().role.memberLevel,
+        isOnline = true,
+        seat = seat(),
+        isOrganizer = isOrganizer
     )
 }
 
@@ -60,8 +64,6 @@ class EventMembersViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(EventMembersUiState())
     val uiState: StateFlow<EventMembersUiState> = _uiState.asStateFlow()
 
-    // Chỉnh sửa cục bộ của ban tổ chức (đổi cấp/vai trò) được giữ lại khi danh sách online cập nhật
-    private val localEdits = mutableMapOf<String, Member>()
     private val removedIds = mutableSetOf<String>()
 
     init {
@@ -70,10 +72,7 @@ class EventMembersViewModel : ViewModel() {
             DamThoaiCallManager.getInstance().onlineMembers.collect { online ->
                 val memberList = online
                     .filter { it.userId !in removedIds }
-                    .map { member ->
-                        val fresh = member.toUiMember(myUid)
-                        localEdits[fresh.id]?.copy(isOnline = true) ?: fresh
-                    }
+                    .map { member -> member.toUiMember(myUid) }
                 _uiState.update { it.copy(members = memberList) }
             }
         }
@@ -87,21 +86,29 @@ class EventMembersViewModel : ViewModel() {
         _uiState.update { it.copy(selectedLevel = level) }
     }
 
-    fun updateMember(updatedMember: Member) {
-        localEdits[updatedMember.id] = updatedMember
-        _uiState.update { state ->
-            state.copy(
-                members = state.members.map { member ->
-                    if (member.id == updatedMember.id) updatedMember else member
-                }
-            )
-        }
+    /** Chỉ chủ sự kiện mới được đổi vai trò/phòng ban của người khác. */
+    val canEditMembers: Boolean get() = AppStartPrefs.isOrganizer()
+
+    /**
+     * Chủ sự kiện đổi vai trò/phòng ban: gửi lên server (server kiểm tra quyền, chuyển tới máy đó
+     * và phát lại danh sách thành viên). Không sửa tạm trên máy để danh sách luôn theo server.
+     */
+    fun assignSeat(member: Member, seat: Seat): Boolean {
+        if (!canEditMembers || member.isOrganizer) return false
+        return DamThoaiCallManager.getInstance().assignSeat(member.id, seat)
     }
 
-    fun removeMember(memberId: String) {
-        removedIds.add(memberId)
-        _uiState.update { state ->
-            state.copy(members = state.members.filterNot { it.id == memberId })
+    /**
+     * Chủ sự kiện xoá người này khỏi sự kiện thật sự: server đẩy máy đó ra, chặn vào lại bằng PIN/QR
+     * và phát danh sách mới (người đó biến mất khỏi danh sách của mọi người).
+     */
+    fun kick(member: Member): Boolean {
+        if (!canEditMembers || member.isOrganizer) return false
+        val sent = DamThoaiCallManager.getInstance().kickMember(member.id)
+        if (sent) {
+            removedIds.add(member.id) // Ẩn ngay, không chờ danh sách mới từ server
+            _uiState.update { state -> state.copy(members = state.members.filterNot { it.id == member.id }) }
         }
+        return sent
     }
 }

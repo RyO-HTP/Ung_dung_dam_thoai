@@ -136,6 +136,35 @@ object AppStartPrefs {
 
     fun setOrganizer(organizer: Boolean) = prefs.putBoolean(KEY_IS_ORGANIZER, organizer)
 
+    // ---- Mã quản trị (bằng chứng là chủ sự kiện) — lưu theo từng mã PIN ----
+    private fun adminKey(pin: String) = "admin_code_$pin"
+
+    /** Mã quản trị của sự kiện [pin] trên máy này ("" nếu không có). Server chỉ công nhận chủ sự kiện khi mã đúng. */
+    fun getAdminCode(pin: String = getEventPin()): String = prefs.getString(adminKey(pin), "")
+
+    fun setAdminCode(pin: String, code: String) = prefs.putString(adminKey(pin), code.trim().uppercase())
+
+    // ---- Danh mục nhóm/phòng ban do chủ sự kiện đặt — lưu theo từng mã PIN ----
+    private fun catalogKey(pin: String) = "catalog_$pin"
+
+    /** null = chưa từng lưu cho sự kiện này (dùng danh mục mặc định). */
+    fun getCatalog(pin: String = getEventPin()): List<Channel>? =
+        prefs.getStringOrNull(catalogKey(pin))?.let(::decodeCatalog)
+
+    fun setCatalog(pin: String, catalog: List<Channel>) =
+        prefs.putString(catalogKey(pin), encodeCatalog(catalog))
+
+    /** Mỗi dòng "id<TAB>tên" (tên phòng ban không chứa tab/xuống dòng vì là ô nhập 1 dòng). */
+    internal fun encodeCatalog(catalog: List<Channel>): String =
+        catalog.joinToString("\n") { "${it.id}\t${it.name.replace('\t', ' ').replace('\n', ' ')}" }
+
+    internal fun decodeCatalog(raw: String): List<Channel> =
+        raw.lines().mapNotNull { line ->
+            val id = line.substringBefore('\t', "").trim()
+            val name = line.substringAfter('\t', "").trim()
+            if (id.isEmpty() || name.isEmpty()) null else Channel(id = id, name = name)
+        }
+
     /** Xóa toàn bộ cờ luồng khởi động để kiểm thử lại trải nghiệm người mới. */
     fun clearAll() {
         prefs.clear()

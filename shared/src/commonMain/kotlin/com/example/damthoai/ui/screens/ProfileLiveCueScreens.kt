@@ -205,13 +205,24 @@ fun UserProfileScreen(
                                 color = TextSecondary,
                                 style = DamType.Muted.copy(fontWeight = FontWeight.SemiBold)
                             )
+                            val isOrganizer = com.example.damthoai.data.AppStartPrefs.isOrganizer()
+                            val mySeat = com.example.damthoai.data.AppStartPrefs.getSeat()
                             Text(
-                                text = "Cấp 1 · Người tạo sự kiện",
+                                text = if (isOrganizer) {
+                                    "Cấp 1 · Chủ sự kiện"
+                                } else {
+                                    "${mySeat.role.levelLabel} · " +
+                                        com.example.damthoai.data.TeamChannels.channelName(mySeat.groupId, mySeat.groupName)
+                                },
                                 color = TextPrimary,
                                 style = DamType.Heading
                             )
                             Text(
-                                text = "Cấp cao nhất, không thể tự đổi. Thành viên khác tự chọn cấp của mình, bạn có thể sửa lại cho họ trong mục Thành viên.",
+                                text = if (isOrganizer) {
+                                    "Cấp cao nhất. Bạn đặt cấp và phòng ban cho mọi người bằng mã QR, và sửa lại trong mục Thành viên."
+                                } else {
+                                    "Cấp và phòng ban theo mã QR. Chỉ chủ sự kiện được thay đổi."
+                                },
                                 color = TextSecondary,
                                 style = DamType.SmallLine17
                             )

@@ -32,19 +32,14 @@ class ChannelViewModel : ViewModel() {
         val volumes: Map<String, Float> = emptyMap(),
         val muted: Set<String> = emptySet(),
         val hidden: Set<String> = emptySet(),
-        val catalog: List<Channel> = DEFAULT_CATALOG,
+        val catalog: List<Channel> = TeamChannels.DEFAULT_GROUPS,
         val menuChannelId: String? = null,
         val roleChanged: RoleChangedUiState? = null
     )
 
     companion object {
         /** Các nhóm/phòng ban mặc định của sự kiện (kênh Ban chỉ huy luôn có sẵn, không nằm ở đây). */
-        val DEFAULT_CATALOG = listOf(
-            Channel(id = "ch_02", name = "Sân khấu"),
-            Channel(id = "ch_03", name = "Kỹ thuật"),
-            Channel(id = "ch_04", name = "Hậu cần – An ninh"),
-            Channel(id = "ch_05", name = "Đón tiếp")
-        )
+        val DEFAULT_CATALOG = TeamChannels.DEFAULT_GROUPS
     }
 
     private val callManager = DamThoaiCallManager.getInstance()
@@ -74,6 +69,22 @@ class ChannelViewModel : ViewModel() {
         viewModelScope.launch {
             callManager.eventName.collect { name ->
                 local.update { it.copy(eventName = name.ifBlank { AppStartPrefs.DEFAULT_EVENT_NAME }) }
+            }
+        }
+        // Danh mục phòng ban đã lưu (trên máy / khôi phục từ server) của sự kiện hiện tại
+        viewModelScope.launch {
+            callManager.catalog.collect { list -> local.update { it.copy(catalog = list) } }
+        }
+        // Chủ sự kiện đổi vai trò/phòng ban của mình: hiện banner báo cấp mới
+        viewModelScope.launch {
+            callManager.seatChanges.collect { change ->
+                val where = TeamChannels.channelsOf(change.seat)
+                    .joinToString(" + ") { TeamChannels.channelName(it, change.seat.groupName) }
+                showRoleChangedNotification(
+                    adminName = change.byName.ifBlank { "Chủ sự kiện" },
+                    newRole = "${change.seat.role.title} · $where",
+                    level = change.seat.role.level
+                )
             }
         }
         // Quét QR vai trò mới: các kênh đã "rời" trước đó hiện lại
@@ -188,25 +199,22 @@ class ChannelViewModel : ViewModel() {
         if (name.isBlank()) return
         @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
         val newId = "ch_${kotlin.uuid.Uuid.random().toString().take(8)}"
-        local.update { it.copy(catalog = it.catalog + Channel(id = newId, name = name.trim())) }
+        callManager.updateCatalog(local.value.catalog + Channel(id = newId, name = name.trim()))
     }
 
     // 8. Đổi tên phòng ban / nhóm (Admin)
     fun renameChannel(channelId: String, newName: String) {
         if (newName.isBlank()) return
-        local.update { state ->
-            state.copy(
-                catalog = state.catalog.map { if (it.id == channelId) it.copy(name = newName.trim()) else it },
-                menuChannelId = null
-            )
-        }
+        callManager.updateCatalog(
+            local.value.catalog.map { if (it.id == channelId) it.copy(name = newName.trim()) else it }
+        )
+        local.update { it.copy(menuChannelId = null) }
     }
 
     // 9. Xóa phòng ban / nhóm (Admin)
     fun deleteChannel(channelId: String) {
-        local.update { state ->
-            state.copy(catalog = state.catalog.filterNot { it.id == channelId }, menuChannelId = null)
-        }
+        callManager.updateCatalog(local.value.catalog.filterNot { it.id == channelId })
+        local.update { it.copy(menuChannelId = null) }
     }
 
     /**

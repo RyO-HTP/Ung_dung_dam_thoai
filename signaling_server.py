@@ -50,7 +50,9 @@ SERVICE_TYPE = "_bodam._tcp.local."  # Tên dịch vụ mDNS mà app Android tì
 # ----------------------------------------------------------------------------
 connected_clients = {}  # user_id -> websocket đang mở
 client_profiles = {}    # user_id -> {"event_pin", "display_name", "role_title", "is_organizer"}
-events = {}             # event_pin -> {"event_name", "organizer_id"} (do ban tổ chức đặt)
+events = {}             # event_pin -> {"event_name", "organizer_id", "admin_code", "catalog"}
+pending_seats = {}      # (event_pin, user_id) -> vai trò chủ sự kiện vừa đặt, chờ máy đó xác nhận
+banned = {}             # event_pin -> {user_id} bị chủ sự kiện xoá (không vào lại được)
 
 # ----------------------------------------------------------------------------
 # GIÀNH LƯỢT NÓI (FLOOR CONTROL) — giống backend Go Tuần 4
@@ -64,6 +66,44 @@ FLOOR_MAX_SECONDS = float(os.environ.get("FLOOR_MAX_SECONDS", "60"))
 # Người giữ lượt không báo "vẫn đang nói" quá 5 giây (mất sóng) thì thu hồi (Go: StaleUdpSilenceMs)
 FLOOR_STALE_SECONDS = float(os.environ.get("FLOOR_STALE_SECONDS", "5"))
 floors = {}  # (event_pin, channel_id) -> {"user_id", "priority", "granted_at", "last_seen"}
+conn_counter = 0  # Tăng mỗi lần một máy mở socket mới (xem "conn_id" trong handle_register)
+
+# Lưu sự kiện (mã quản trị, chủ sự kiện, phòng ban), người bị xoá và vai trò chờ áp ra file,
+# để khởi động lại server không làm mất. Đổi đường dẫn bằng biến STATE_FILE.
+STATE_FILE = os.environ.get("STATE_FILE") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "server_state.json")
+
+
+def save_state():
+    try:
+        state = {
+            "events": events,
+            "banned": {pin: sorted(ids) for pin, ids in banned.items()},
+            "pending_seats": [[pin, uid, seat] for (pin, uid), seat in pending_seats.items()],
+        }
+        tmp = STATE_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False)
+        os.replace(tmp, STATE_FILE)
+    except OSError as e:
+        print(f"Không lưu được trạng thái ({STATE_FILE}): {e}")
+
+
+def load_state():
+    try:
+        with open(STATE_FILE, encoding="utf-8") as f:
+            state = json.load(f)
+    except FileNotFoundError:
+        return
+    except (OSError, ValueError) as e:
+        print(f"Bỏ qua file trạng thái hỏng ({STATE_FILE}): {e}")
+        return
+    events.update(state.get("events") or {})
+    for pin, ids in (state.get("banned") or {}).items():
+        banned[pin] = set(ids)
+    for pin, uid, seat in state.get("pending_seats") or []:
+        pending_seats[(pin, uid)] = seat
+    print(f"Đã nạp {len(events)} sự kiện từ {STATE_FILE}.")
 
 
 # ----------------------------------------------------------------------------
@@ -82,12 +122,25 @@ def members_of(event_pin):
             "team_role": profile.get("team_role") or "tv",
             "channel_id": profile.get("channel_id") or "ch_general",
             "channel_name": profile.get("channel_name") or "",
+            "conn_id": profile.get("conn_id") or 0,
         }
         for uid, profile in client_profiles.items()
         if uid in connected_clients and profile.get("event_pin", "") == event_pin
     ]
     members.sort(key=lambda m: (not m["is_organizer"], m["display_name"].lower()))
     return members
+
+
+def seat_assigned_payload(event_pin, seat, by_name=None):
+    """Gói "seat_assigned": báo một máy biết vai trò/phòng ban mới do chủ sự kiện đặt."""
+    if not by_name:
+        info = events.get(event_pin) or {}
+        by_name = client_profiles.get(info.get("organizer_id"), {}).get("display_name")
+    return json.dumps({
+        "type": "seat_assigned",
+        **seat,
+        "by_name": by_name or "Chủ sự kiện",
+    })
 
 
 def client_ip(ws):
@@ -124,13 +177,81 @@ async def broadcast(event_pin, payload, exclude=None):
 
 def event_info_payload(event_pin):
     """Gói "event_info": tên sự kiện do ban tổ chức đặt cho mã PIN (found=False nếu chưa có)."""
-    info = events.get(event_pin)
+    info = events.get(event_pin) or {}
     return json.dumps({
         "type": "event_info",
         "event_pin": event_pin,
-        "event_name": info["event_name"] if info else "",
-        "found": info is not None,
+        "event_name": info.get("event_name") or "",
+        "found": bool(info.get("event_name")),
+        "catalog": info.get("catalog") or [],
     })
+
+
+def kicked_payload(event_pin, by_name=None):
+    return json.dumps({
+        "type": "kicked",
+        "event_pin": event_pin,
+        "by_name": by_name or "Chủ sự kiện",
+    })
+
+
+def parse_catalog(raw):
+    """Danh mục phòng ban chủ sự kiện gửi lên: [{"id", "name"}] (None nếu không gửi/sai định dạng)."""
+    if not isinstance(raw, list):
+        return None
+    catalog = []
+    for item in raw[:100]:
+        if isinstance(item, dict):
+            cid = str(item.get("id") or "").strip()[:64]
+            name = str(item.get("name") or "").strip()[:80]
+            if cid and name and cid not in (COMMAND_CHANNEL,):
+                catalog.append({"id": cid, "name": name})
+    return catalog
+
+
+async def verify_organizer(websocket, user_id, event_pin, data):
+    """Xác thực chủ sự kiện bằng mã quản trị.
+    - Sự kiện chưa có chủ: máy đầu tiên gửi mã (không rỗng) thành chủ, mã đó gắn với sự kiện.
+    - Đúng mã + đúng máy chủ hiện tại, hoặc đúng mã + "restore" (Khôi phục): là chủ sự kiện;
+      khôi phục trên máy mới thì máy cũ mất quyền (nhận organizer_denied "revoked").
+    - Sai mã, hoặc đúng mã nhưng máy cũ (đã bị chuyển quyền) cố giành lại: không phải chủ."""
+    code = str(data.get("admin_code") or "").strip().upper()
+    info = events.get(event_pin)
+
+    def deny(reason):
+        print(f"[{user_id}] không được công nhận là chủ sự kiện {event_pin}: {reason}.")
+        return safe_send(websocket, json.dumps({
+            "type": "organizer_denied", "event_pin": event_pin, "reason": reason,
+        }))
+
+    if not code:
+        await deny("bad_code")
+        return False
+    if info is None or not info.get("admin_code"):
+        info = events.setdefault(event_pin, {"event_name": "", "catalog": None})
+        info["admin_code"] = code
+        info["organizer_id"] = user_id
+        return True
+    if code != info["admin_code"]:
+        await deny("bad_code")
+        return False
+    old_id = info.get("organizer_id")
+    if old_id and old_id != user_id:
+        if not data.get("restore"):
+            await deny("revoked")
+            return False
+        # Khôi phục trên máy mới: máy cũ mất quyền chủ sự kiện
+        old_profile = client_profiles.get(old_id)
+        if old_profile is not None:
+            old_profile["is_organizer"] = False
+        old_ws = connected_clients.get(old_id)
+        if old_ws is not None:
+            await safe_send(old_ws, json.dumps({
+                "type": "organizer_denied", "event_pin": event_pin, "reason": "revoked",
+            }))
+        print(f"[{user_id}] khôi phục quyền chủ sự kiện {event_pin} (máy cũ [{old_id}] mất quyền).")
+    info["organizer_id"] = user_id
+    return True
 
 
 async def notify_user_list(event_pin):
@@ -173,9 +294,29 @@ async def handle_register(websocket, user_id, data):
     user_id = new_user_id
     connected_clients[user_id] = websocket
     event_pin = str(data.get("event_pin") or "").strip()
-    is_organizer = bool(data.get("is_organizer"))
     display_name = str(data.get("display_name") or "").strip()
+
+    # Đã bị chủ sự kiện xoá: không cho vào lại sự kiện này (kể cả quét QR / nhập PIN lại)
+    if event_pin and user_id in banned.get(event_pin, set()):
+        await safe_send(websocket, kicked_payload(event_pin))
+        event_pin = ""
+
+    # Chủ sự kiện phải chứng minh bằng mã quản trị; sai mã thì vào như người thường
+    is_organizer = False
+    if data.get("is_organizer") and event_pin:
+        is_organizer = await verify_organizer(websocket, user_id, event_pin, data)
+
+    # Mã phiên kết nối: đổi mỗi khi máy kết nối socket MỚI (mở lại app, đổi mạng...). Máy khác
+    # thấy mã đổi thì bỏ kết nối P2P cũ (đã chết) với máy này và gọi lại ngay, không chờ hết hạn.
+    global conn_counter
+    prev_conn = client_profiles.get(user_id, {}).get("conn_id")
+    if is_first_register or prev_conn is None:
+        conn_counter += 1
+        conn_id = conn_counter
+    else:
+        conn_id = prev_conn
     client_profiles[user_id] = {
+        "conn_id": conn_id,
         "event_pin": event_pin,
         "display_name": display_name,
         "role_title": str(data.get("role_title") or "").strip(),
@@ -184,11 +325,28 @@ async def handle_register(websocket, user_id, data):
         "channel_id": str(data.get("channel_id") or "ch_general").strip(),
         "channel_name": str(data.get("channel_name") or "").strip(),
     }
+    # Chủ sự kiện đã đổi vai trò của máy này (có thể lúc máy đang offline): áp vai trò đó
+    # cho tới khi máy xác nhận bằng cách đăng ký lại đúng vai trò mới.
+    pending = pending_seats.get((event_pin, user_id))
+    if pending:
+        profile = client_profiles[user_id]
+        if all(profile.get(k) == v for k, v in pending.items()):
+            pending_seats.pop((event_pin, user_id), None)
+            save_state()
+        else:
+            profile.update(pending)
+            await safe_send(websocket, seat_assigned_payload(event_pin, pending))
 
-    # Ban tổ chức là nguồn duy nhất đặt tên sự kiện cho mã PIN
+    # Chủ sự kiện (đã xác thực) là nguồn duy nhất đặt tên sự kiện và danh mục phòng ban
     event_name = str(data.get("event_name") or "").strip()
-    if is_organizer and event_pin and event_name:
-        events[event_pin] = {"event_name": event_name, "organizer_id": user_id}
+    if is_organizer:
+        info = events[event_pin]
+        if event_name:
+            info["event_name"] = event_name
+        catalog = parse_catalog(data.get("catalog"))
+        if catalog is not None:
+            info["catalog"] = catalog
+        save_state()
 
     if is_first_register:
         print(f"[{user_id}] đã kết nối mạng từ {client_ip(websocket)} "
@@ -201,7 +359,7 @@ async def handle_register(websocket, user_id, data):
 
     if event_pin:
         await safe_send(websocket, event_info_payload(event_pin))
-        # Ban tổ chức vừa đặt/đổi tên: báo cho mọi người khác trong sự kiện
+        # Chủ sự kiện vừa đặt/đổi tên: báo cho mọi người khác trong sự kiện
         if is_organizer and event_name:
             await broadcast(event_pin, event_info_payload(event_pin), exclude=websocket)
 
@@ -362,6 +520,85 @@ async def relay_ptt(websocket, user_id, data):
     }), exclude=websocket)
 
 
+async def handle_kick(websocket, user_id, data):
+    """Gói "kick": CHỈ chủ sự kiện được xoá người khác khỏi sự kiện. Máy bị xoá nhận "kicked",
+    rời sự kiện và bị chặn vào lại (bằng PIN hay QR) cho tới khi sự kiện kết thúc."""
+    sender = client_profiles.get(user_id, {})
+    pin = sender.get("event_pin", "")
+    target_id = str(data.get("target_id") or "")
+    target = client_profiles.get(target_id)
+
+    def deny(reason):
+        print(f"[{user_id}] bị từ chối xoá [{target_id}]: {reason}.")
+        return safe_send(websocket, json.dumps({
+            "type": "set_seat_denied", "target_id": target_id, "reason": reason,
+        }))
+
+    if not sender.get("is_organizer") or not pin:
+        return await deny("not_organizer")
+    if target_id == user_id or not target_id:
+        return await deny("not_in_event")
+    if target is not None and target.get("is_organizer"):
+        return await deny("target_is_organizer")
+
+    # Chặn cả khi người đó đang offline (vào lại sẽ bị đẩy ra ngay)
+    banned.setdefault(pin, set()).add(target_id)
+    pending_seats.pop((pin, target_id), None)
+    save_state()
+    print(f"[{user_id}] xoá [{target_id}] khỏi sự kiện {pin}.")
+    if target is not None and target.get("event_pin") == pin:
+        target["event_pin"] = ""
+        target_ws = connected_clients.get(target_id)
+        if target_ws is not None:
+            await safe_send(target_ws, kicked_payload(pin, sender.get("display_name")))
+        await release_floors_of(target_id)
+    await notify_user_list(pin)
+
+
+async def handle_set_seat(websocket, user_id, data):
+    """Gói "set_seat": CHỈ chủ sự kiện được đổi vai trò/phòng ban của người khác trong sự kiện.
+    Server cập nhật hồ sơ, phát danh sách mới và báo máy đó (máy đó tự chuyển kênh)."""
+    sender = client_profiles.get(user_id, {})
+    pin = sender.get("event_pin", "")
+    target_id = str(data.get("target_id") or "")
+    target = client_profiles.get(target_id)
+    role = str(data.get("team_role") or "")
+
+    def deny(reason):
+        print(f"[{user_id}] bị từ chối đổi vai trò của [{target_id}]: {reason}.")
+        return safe_send(websocket, json.dumps({
+            "type": "set_seat_denied", "target_id": target_id, "reason": reason,
+        }))
+
+    if not sender.get("is_organizer") or not pin:
+        return await deny("not_organizer")
+    if not target or target.get("event_pin") != pin or target_id == user_id:
+        return await deny("not_in_event")
+    if target.get("is_organizer"):
+        return await deny("target_is_organizer")
+    if role not in ROLE_PRIORITY:
+        return await deny("bad_role")
+
+    if role == "ban":
+        seat = {"team_role": "ban", "channel_id": COMMAND_CHANNEL, "channel_name": "Ban chỉ huy"}
+    else:
+        seat = {
+            "team_role": role,
+            "channel_id": str(data.get("channel_id") or "ch_general").strip(),
+            "channel_name": str(data.get("channel_name") or "").strip(),
+        }
+    pending_seats[(pin, target_id)] = seat
+    save_state()
+    target.update(seat)
+    print(f"[{user_id}] đổi vai trò của [{target_id}] thành {seat}.")
+    # Lượt nói trên kênh người đó không còn thuộc về thì nhả ra
+    await release_floors_of(target_id, keep_pin=pin, keep_channels=channels_of(target))
+    target_ws = connected_clients.get(target_id)
+    if target_ws is not None:
+        await safe_send(target_ws, seat_assigned_payload(pin, seat, sender.get("display_name")))
+    await notify_user_list(pin)
+
+
 async def signaling_handler(websocket):
     """Một vòng lặp cho mỗi thiết bị kết nối, chạy tới khi socket đóng."""
     user_id = None
@@ -388,6 +625,10 @@ async def signaling_handler(websocket):
                 await handle_floor_release(user_id, data)
             elif msg_type == "floor_keepalive" and user_id:
                 await handle_floor_keepalive(user_id, data)
+            elif msg_type == "set_seat" and user_id:
+                await handle_set_seat(websocket, user_id, data)
+            elif msg_type == "kick" and user_id:
+                await handle_kick(websocket, user_id, data)
     except websockets.exceptions.ConnectionClosed:
         print(f"[{user_id}] đã ngắt kết nối đột ngột.")
     finally:
@@ -460,6 +701,7 @@ async def health_check(path, request_headers):
 
 
 async def main():
+    load_state()
     try:
         server = await websockets.serve(
             signaling_handler, "0.0.0.0", PORT,

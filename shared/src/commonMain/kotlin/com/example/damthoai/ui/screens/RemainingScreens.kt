@@ -58,8 +58,10 @@ import com.example.damthoai.data.Channel
 import com.example.damthoai.data.Event
 import com.example.damthoai.data.Member
 import com.example.damthoai.data.MemberLevel
+import com.example.damthoai.data.Seat
 import com.example.damthoai.data.TeamChannels
 import com.example.damthoai.data.TeamRole
+import com.example.damthoai.data.seatFor
 import com.example.damthoai.data.qr.ChannelQrLink
 import com.example.damthoai.ui.channels.ChannelItemUiState
 import com.example.damthoai.ui.channels.ChannelMenuSheet
@@ -660,30 +662,19 @@ fun MyQrCodeScreen(
 ) {
     val platformUi = LocalPlatformUi.current
     val clipboard = rememberTextClipboard()
-    val mySeat = remember { AppStartPrefs.getSeat() }
-
-    // Thành viên không được phát mã mời
-    if (mySeat.role == TeamRole.THANH_VIEN) {
+    // Chỉ chủ sự kiện được tạo mã QR (mã QR quyết định cấp và phòng ban của người quét)
+    if (!AppStartPrefs.isOrganizer()) {
         LaunchedEffect(Unit) {
-            AppToast.show("Thành viên không được tạo mã QR mời vào kênh.")
+            AppToast.show("Chỉ chủ sự kiện được tạo mã QR vào kênh.")
             onBack()
         }
         return
     }
 
-    // Trưởng ban: mọi nhóm, mọi vai trò. Trưởng nhóm: chỉ mời thành viên vào nhóm của mình.
-    val isLeadOnly = mySeat.role == TeamRole.TRUONG_NHOM
-    val roleOptions = if (isLeadOnly) {
-        listOf(TeamRole.THANH_VIEN)
-    } else {
-        listOf(TeamRole.THANH_VIEN, TeamRole.TRUONG_NHOM, TeamRole.TRUONG_BAN)
-    }
-    val groups = if (isLeadOnly) {
-        listOf(Channel(id = mySeat.groupId, name = TeamChannels.channelName(mySeat.groupId, mySeat.groupName)))
-    } else {
-        event.channels.filter { it.id != TeamChannels.COMMAND_ID }
-            .ifEmpty { listOf(Channel(id = TeamChannels.GENERAL_ID, name = TeamChannels.GENERAL_NAME)) }
-    }
+    // Cấp 3 Thành viên → phòng ban; Cấp 2 Trưởng nhóm → Ban chỉ huy + phòng ban; Cấp 1 Trưởng ban → Ban chỉ huy
+    val roleOptions = listOf(TeamRole.THANH_VIEN, TeamRole.TRUONG_NHOM, TeamRole.TRUONG_BAN)
+    val groups = event.channels.filter { it.id != TeamChannels.COMMAND_ID }
+        .ifEmpty { listOf(Channel(id = TeamChannels.GENERAL_ID, name = TeamChannels.GENERAL_NAME)) }
 
     var selectedRoleWire by rememberSaveable { mutableStateOf(roleOptions.first().wire) }
     val selectedRole = TeamRole.fromWire(selectedRoleWire)
@@ -699,13 +690,15 @@ fun MyQrCodeScreen(
         channelName = selectedGroup.name,
         role = selectedRole
     )
-    val targetName = if (selectedRole == TeamRole.TRUONG_BAN) TeamChannels.COMMAND_NAME else selectedGroup.name
+    val targetSeat = seatFor(selectedRole, selectedGroup.id, selectedGroup.name)
+    val targetName = TeamChannels.channelsOf(targetSeat)
+        .joinToString(" + ") { TeamChannels.channelName(it, targetSeat.groupName) }
 
     ScreenFrame("Mã QR vào kênh", onBack, modifier) {
         Text("VAI TRÒ", color = TextSecondary, style = DamType.Small.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold))
         Spacer(Modifier.height(6.dp))
         QrChipRow(
-            labels = roleOptions.map { it.wire to it.title },
+            labels = roleOptions.map { it.wire to it.levelLabel },
             selected = selectedRole.wire,
             onSelect = { selectedRoleWire = it }
         )
@@ -734,7 +727,7 @@ fun MyQrCodeScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "${selectedRole.title} · $targetName",
+                    text = "${selectedRole.levelLabel} · $targetName",
                     color = TextPrimary,
                     style = DamType.Heading.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold),
                     textAlign = TextAlign.Center
@@ -747,7 +740,7 @@ fun MyQrCodeScreen(
                 Text("MÃ PIN SỰ KIỆN", color = TextSecondary, style = DamType.Small.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold))
                 Text(text = currentPin, color = AccentCyan, style = DamType.PinBig)
                 Text(
-                    "Nhập PIN tay sẽ vào Kênh chung với vai trò thành viên; quét QR để vào đúng kênh và vai trò.",
+                    "Nhập PIN tay sẽ vào Kênh chung (Cấp 3 · Thành viên); quét QR để vào đúng cấp và phòng ban.",
                     color = TextSecondary,
                     style = DamType.Small.copy(fontSize = 11.sp),
                     textAlign = TextAlign.Center
@@ -832,27 +825,46 @@ private fun QrChipRow(labels: List<Pair<String, String>>, selected: String, onSe
 fun EventMembersScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    groups: List<Channel> = emptyList(),
     viewModel: EventMembersViewModel = viewModel { EventMembersViewModel() }
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedMemberId by remember { mutableStateOf<String?>(null) }
     val selectedMember = uiState.members.firstOrNull { it.id == selectedMemberId }
+    val canEdit = viewModel.canEditMembers
+    val myUserId = remember { AppStartPrefs.getUserId() }
 
     EventMembersContent(
         onBack = onBack,
         modifier = modifier,
         uiState = uiState,
         selectedMember = selectedMember,
+        groups = groups,
         onSearchQueryChange = viewModel::setSearchQuery,
         onLevelSelected = viewModel::selectLevel,
-        onMemberSelected = { selectedMemberId = it.id },
+        onMemberSelected = { member ->
+            when {
+                !canEdit -> AppToast.show("Chỉ chủ sự kiện được thay đổi cấp và phòng ban.")
+                member.isOrganizer || member.id == myUserId ->
+                    AppToast.show("Chủ sự kiện luôn là Cấp 1 · Ban chỉ huy.")
+                else -> selectedMemberId = member.id
+            }
+        },
         onDismissSheet = { selectedMemberId = null },
-        onSaveMember = { member ->
-            viewModel.updateMember(member)
+        onSaveMember = { member, seat ->
+            if (viewModel.assignSeat(member, seat)) {
+                AppToast.show("Đã chuyển ${member.name} sang ${seat.role.levelLabel}")
+            } else {
+                AppToast.show("Chưa kết nối máy chủ, chưa đổi được vai trò.")
+            }
             selectedMemberId = null
         },
         onRemoveMember = { member ->
-            viewModel.removeMember(member.id)
+            if (viewModel.kick(member)) {
+                AppToast.show("Đã xoá ${member.name} khỏi sự kiện")
+            } else {
+                AppToast.show("Chưa kết nối máy chủ, chưa xoá được.")
+            }
             selectedMemberId = null
         }
     )
@@ -864,11 +876,12 @@ private fun EventMembersContent(
     modifier: Modifier = Modifier,
     uiState: EventMembersUiState,
     selectedMember: Member? = null,
+    groups: List<Channel> = emptyList(),
     onSearchQueryChange: (String) -> Unit = {},
     onLevelSelected: (MemberLevel?) -> Unit = {},
     onMemberSelected: (Member) -> Unit = {},
     onDismissSheet: () -> Unit = {},
-    onSaveMember: (Member) -> Unit = {},
+    onSaveMember: (Member, Seat) -> Unit = { _, _ -> },
     onRemoveMember: (Member) -> Unit = {}
 ) {
     DamThoaiBackground(variant = BgVariant.Default, modifier = modifier) {
@@ -915,6 +928,7 @@ private fun EventMembersContent(
         selectedMember?.let { member ->
             MemberEditSheet(
                 member = member,
+                groups = groups,
                 onDismissRequest = onDismissSheet,
                 onSave = onSaveMember,
                 onRemove = onRemoveMember
@@ -968,12 +982,30 @@ private fun MemberFilterChip(text: String, selected: Boolean, onClick: () -> Uni
 @Composable
 private fun MemberEditSheet(
     member: Member,
+    groups: List<Channel>,
     onDismissRequest: () -> Unit,
-    onSave: (Member) -> Unit,
+    onSave: (Member, Seat) -> Unit,
     onRemove: (Member) -> Unit
 ) {
     var selectedLevel by remember(member.id) { mutableStateOf(member.level) }
-    var roleTitle by remember(member.id) { mutableStateOf(member.roleTitle) }
+    // Phòng ban chọn được: danh mục của chủ sự kiện + phòng ban hiện tại của người này (nếu khác)
+    val groupOptions = remember(groups, member.seat) {
+        val current = member.seat.takeIf { it.role != TeamRole.TRUONG_BAN }
+            ?.let { Channel(id = it.groupId, name = TeamChannels.channelName(it.groupId, it.groupName)) }
+        (groups.filter { it.id != TeamChannels.COMMAND_ID } + listOfNotNull(current))
+            .distinctBy { it.id }
+            .ifEmpty { listOf(Channel(id = TeamChannels.GENERAL_ID, name = TeamChannels.GENERAL_NAME)) }
+    }
+    var selectedGroupId by remember(member.id) {
+        mutableStateOf(
+            member.seat.groupId.takeIf { id -> groupOptions.any { it.id == id } } ?: groupOptions.first().id
+        )
+    }
+    val selectedRole = TeamRole.fromLevel(selectedLevel.code)
+    val selectedGroup = groupOptions.firstOrNull { it.id == selectedGroupId } ?: groupOptions.first()
+    val newSeat = seatFor(selectedRole, selectedGroup.id, selectedGroup.name)
+    val channelsText = TeamChannels.channelsOf(newSeat)
+        .joinToString(" + ") { TeamChannels.channelName(it, newSeat.groupName) }
 
     KitBottomSheet(onDismissRequest = onDismissRequest) {
         Column(
@@ -985,10 +1017,14 @@ private fun MemberEditSheet(
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text(member.name, color = TextPrimary, style = DamType.Heading17)
-                    Text("Cấp hiện tại: Cấp ${member.level.code}", color = TextSecondary, style = DamType.Small)
+                    Text(
+                        "Hiện tại: ${member.seat.role.levelLabel} · ${TeamChannels.channelName(member.seat.groupId, member.seat.groupName)}",
+                        color = TextSecondary,
+                        style = DamType.Small
+                    )
                 }
             }
-            Text("Cấp", color = TextSecondary, style = DamType.Muted)
+            Text("Cấp (1 Trưởng ban · 2 Trưởng nhóm · 3 Thành viên)", color = TextSecondary, style = DamType.Muted)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MemberLevel.entries.forEach { level ->
                     val isSelected = selectedLevel == level
@@ -1010,8 +1046,22 @@ private fun MemberEditSheet(
                     }
                 }
             }
-            GlassTextField(value = roleTitle, onValueChange = { roleTitle = it }, label = "Chức vụ", placeholder = "Nhập chức vụ")
-            PrimaryButton(text = "Lưu thay đổi", onClick = { onSave(member.copy(level = selectedLevel, roleTitle = roleTitle)) }, modifier = Modifier.fillMaxWidth())
+            // Trưởng ban luôn ở Ban chỉ huy nên không cần chọn phòng ban
+            if (selectedRole != TeamRole.TRUONG_BAN) {
+                Text("Nhóm / phòng ban", color = TextSecondary, style = DamType.Muted)
+                QrChipRow(
+                    labels = groupOptions.map { it.id to it.name },
+                    selected = selectedGroup.id,
+                    onSelect = { selectedGroupId = it }
+                )
+            }
+            Text("Sẽ vào kênh: $channelsText", color = TextSecondary, style = DamType.Small)
+            PrimaryButton(
+                text = "Lưu thay đổi",
+                enabled = newSeat != member.seat,
+                onClick = { onSave(member, newSeat) },
+                modifier = Modifier.fillMaxWidth()
+            )
             Box(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { onRemove(member) },
                 contentAlignment = Alignment.Center

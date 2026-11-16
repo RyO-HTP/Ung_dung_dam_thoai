@@ -17,6 +17,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.example.damthoai.data.qr.QrJoin
 import com.example.damthoai.hardware.AccessibilityStatus
 import com.example.damthoai.platform.AndroidPlatform
 import com.example.damthoai.platform.AndroidPlatformUi
@@ -40,6 +41,8 @@ class MainActivity : ComponentActivity() {
         // Nối dịch vụ Android (WebRTC, mDNS, âm thanh, cảnh báo...) vào phần code dùng chung
         AndroidPlatform.install(this)
         handleEmergencyAction(intent)
+        // Không xử lý lại link khi Activity tạo lại (xoay màn hình...)
+        if (savedInstanceState == null) handleJoinLink(intent)
 
         lifecycleScope.launch {
             PttController.events.collect { event ->
@@ -80,6 +83,14 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleEmergencyAction(intent)
+        handleJoinLink(intent)
+    }
+
+    /** Mã QR quét bằng Camera của máy mở link damthoai://join?... : vào đúng kênh và vai trò trong QR. */
+    private fun handleJoinLink(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (intent.action != Intent.ACTION_VIEW || data.scheme != "damthoai" || data.host != "join") return
+        QrJoin.handleExternalLink(data.toString())
     }
 
     private fun handleEmergencyAction(intent: Intent?) {

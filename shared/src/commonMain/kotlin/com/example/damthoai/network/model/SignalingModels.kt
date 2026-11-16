@@ -36,6 +36,20 @@ object SignalingType {
     const val FLOOR_STATE = "floor_state"
     /** Người giữ lượt báo "vẫn đang nói" mỗi 2 giây; im quá 5 giây (mất sóng) thì server thu hồi. */
     const val FLOOR_KEEPALIVE = "floor_keepalive"
+
+    /** Chủ sự kiện đổi vai trò/phòng ban của người khác (server chỉ nhận từ chủ sự kiện). */
+    const val SET_SEAT = "set_seat"
+    /** Server báo cho một máy: chủ sự kiện đã đổi vai trò/phòng ban của bạn. */
+    const val SEAT_ASSIGNED = "seat_assigned"
+    /** Server từ chối set_seat (không phải chủ sự kiện, người đó không còn online...). */
+    const val SET_SEAT_DENIED = "set_seat_denied"
+
+    /** Chủ sự kiện xoá một người khỏi sự kiện (server kiểm tra quyền). */
+    const val KICK = "kick"
+    /** Server báo cho một máy: bạn đã bị xoá khỏi sự kiện (và không vào lại được). */
+    const val KICKED = "kicked"
+    /** Server không công nhận máy này là chủ sự kiện (sai mã quản trị / quyền đã chuyển máy khác). */
+    const val ORGANIZER_DENIED = "organizer_denied"
 }
 
 /**
@@ -121,7 +135,36 @@ data class RegisterMessage(
     @SerialName("channel_id")
     val channelId: String? = null,
     @SerialName("channel_name")
-    val channelName: String? = null
+    val channelName: String? = null,
+    /** Mã quản trị (chỉ chủ sự kiện gửi): server chỉ công nhận chủ sự kiện khi mã khớp. */
+    @SerialName("admin_code")
+    val adminCode: String? = null,
+    /** Danh mục nhóm/phòng ban (chỉ chủ sự kiện gửi) để server lưu lại. */
+    @SerialName("catalog")
+    val catalog: List<CatalogEntry>? = null,
+    /** true khi đang "Khôi phục bằng mã quản trị" trên máy mới (máy cũ sẽ mất quyền). */
+    @SerialName("restore")
+    val restore: Boolean = false
+)
+
+/**
+ * Chủ sự kiện đổi vai trò/phòng ban của một người (gửi lên server), hoặc server báo cho
+ * người đó biết vai trò mới ([SignalingType.SEAT_ASSIGNED], kèm [byName] là tên chủ sự kiện).
+ */
+@Serializable
+data class SeatMessage(
+    @SerialName("type")
+    val type: String,
+    @SerialName("target_id")
+    val targetId: String? = null,
+    @SerialName("team_role")
+    val teamRole: String = "",
+    @SerialName("channel_id")
+    val channelId: String = "",
+    @SerialName("channel_name")
+    val channelName: String = "",
+    @SerialName("by_name")
+    val byName: String? = null
 )
 
 /**
@@ -245,7 +288,10 @@ data class OnlineMember(
     @SerialName("channel_id")
     val channelId: String? = null,
     @SerialName("channel_name")
-    val channelName: String? = null
+    val channelName: String? = null,
+    /** Mã phiên kết nối của máy này trên server; đổi = máy vừa mở socket mới (kết nối P2P cũ đã chết). */
+    @SerialName("conn_id")
+    val connId: Int? = null
 ) {
     fun seat(): Seat = Seat(
         role = TeamRole.fromWire(teamRole),
@@ -268,5 +314,30 @@ data class EventInfoMessage(
     @SerialName("event_name")
     val eventName: String? = null,
     @SerialName("found")
-    val found: Boolean = false
+    val found: Boolean = false,
+    /** Danh mục nhóm/phòng ban chủ sự kiện đã lưu trên server (để khôi phục trên máy khác). */
+    @SerialName("catalog")
+    val catalog: List<CatalogEntry>? = null
+)
+
+/** Một nhóm/phòng ban trong danh mục của chủ sự kiện. */
+@Serializable
+data class CatalogEntry(
+    @SerialName("id") val id: String,
+    @SerialName("name") val name: String
+)
+
+/**
+ * Gói server gửi riêng cho một máy:
+ * - [SignalingType.KICKED]: chủ sự kiện đã xoá bạn khỏi sự kiện ([byName]).
+ * - [SignalingType.ORGANIZER_DENIED]: server không công nhận máy này là chủ sự kiện
+ *   ([reason] "bad_code" = sai mã quản trị, "revoked" = quyền đã chuyển sang máy khác).
+ */
+@Serializable
+data class NoticeMessage(
+    @SerialName("type") val type: String,
+    @SerialName("event_pin") val eventPin: String? = null,
+    @SerialName("target_id") val targetId: String? = null,
+    @SerialName("by_name") val byName: String? = null,
+    @SerialName("reason") val reason: String? = null
 )

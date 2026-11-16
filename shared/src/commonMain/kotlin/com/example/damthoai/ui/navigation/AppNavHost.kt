@@ -76,13 +76,41 @@ fun AppNavHost(
             pinCode = pin,
             members = onlineMembers.map { it.toUiMember(myUserId) },
             ownerId = onlineMembers.firstOrNull { it.isOrganizer }?.userId.orEmpty(),
-            isOwner = AppStartPrefs.isOrganizer()
+            isOwner = AppStartPrefs.isOrganizer(),
+            // Mã quản trị chỉ hiện trên máy chủ sự kiện (để khôi phục quyền trên máy khác)
+            adminCode = AppStartPrefs.getAdminCode(pin).takeIf { AppStartPrefs.isOrganizer() && it.isNotBlank() }
         )
     }
     var channelMenuMuted by rememberSaveable { mutableStateOf(false) }
     var selectedEmergencyMemberIds by remember { mutableStateOf<Set<String>?>(null) }
     var activeEmergencyAlert by remember { mutableStateOf<EmergencyAlert?>(null) }
     var selectedQrChannelId by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // Mở app bằng link QR (Camera của máy): đã vào đúng kênh/vai trò, chuyển sang màn "Thông tin của bạn".
+    // Chưa xong giới thiệu/cấp quyền micro thì để luồng bình thường chạy tiếp (sự kiện đã được lưu).
+    val pendingQrUserInfo by com.example.damthoai.data.qr.QrJoin.pendingUserInfo.collectAsState()
+    LaunchedEffect(pendingQrUserInfo) {
+        if (!pendingQrUserInfo) return@LaunchedEffect
+        com.example.damthoai.data.qr.QrJoin.consumePendingUserInfo()
+        val ready = AppStartPrefs.isOnboardingDone() &&
+            platformUi.checkPermission(com.example.damthoai.permission.AppPermission.AUDIO) ==
+            com.example.damthoai.permission.PermissionState.GRANTED
+        if (ready) {
+            navController.navigate(AppRoute.UserInfo.route) {
+                popUpTo(navController.graph.id) { inclusive = true }
+            }
+        }
+    }
+
+    // Chủ sự kiện xoá máy này khỏi sự kiện: chuyển sang màn "Bạn đã bị xoá khỏi sự kiện"
+    LaunchedEffect(callManager) {
+        callManager.kicked.collect {
+            callManager.consumeKicked()
+            navController.navigate(AppRoute.RemovedFromEvent.route) {
+                popUpTo(navController.graph.id) { inclusive = true }
+            }
+        }
+    }
 
     // Giành lượt nói: báo "kênh đang bận", "bị chen ngang", "hết giờ nói" ở mọi màn hình
     LaunchedEffect(callManager) {
@@ -192,7 +220,7 @@ fun AppNavHost(
             UserInfoScreen(
                 onBack = { navController.popBackStack() },
                 onEnterChannel = { displayName, roleTitle ->
-                    // Lưu tên/vai trò và gửi lên server để danh sách thành viên hiển thị đúng
+                    // Lưu tên/chức vụ và gửi lên server; cấp/phòng ban lấy theo mã QR, không tự đổi
                     callManager.updateProfile(displayName, roleTitle)
                     AppStartPrefs.setHasJoinedEvent(true)
                     navController.navigate(AppRoute.ChannelList.route) {
@@ -316,7 +344,14 @@ fun AppNavHost(
         composable(AppRoute.Settings.route) {
             SettingsScreen(
                 onProfile = { navController.navigate(AppRoute.UserProfile.route) },
-                onManageEvent = { navController.navigate(AppRoute.ManageEvent.route) },
+                onManageEvent = {
+                    // Chỉ chủ sự kiện quản lý phòng ban, mã QR và vai trò thành viên
+                    if (AppStartPrefs.isOrganizer()) {
+                        navController.navigate(AppRoute.ManageEvent.route)
+                    } else {
+                        AppToast.show("Chỉ chủ sự kiện được quản lý sự kiện.")
+                    }
+                },
                 onLeaveEvent = {
                     callManager.leaveEvent()
                     navController.navigate(AppRoute.ScanQr.route) {
@@ -428,7 +463,11 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.EventMembers.route) {
-            EventMembersScreen(onBack = { navController.popBackStack() })
+            EventMembersScreen(
+                onBack = { navController.popBackStack() },
+                // Danh mục phòng ban của chủ sự kiện để chuyển người sang phòng ban khác
+                groups = sharedChannelViewModel.uiState.value.catalog
+            )
         }
         composable(AppRoute.EventEnded.route) {
             EventEndedScreen(
@@ -448,9 +487,7 @@ fun AppNavHost(
                 onReturn = {
                     AppStartPrefs.setHasJoinedEvent(false)
                     navController.navigate(AppRoute.ScanQr.route) {
-                        popUpTo(navController.graph.findStartDestination().id) {
-                            inclusive = true
-                        }
+                        popUpTo(navController.graph.id) { inclusive = true }
                         launchSingleTop = true
                     }
                 }

@@ -100,6 +100,8 @@ class WebRTCClient(private val context: Context) : RtcEngine {
      * thêm vào lúc đó sẽ bị WebRTC từ chối, nên phải xếp hàng chờ trong [pendingCandidates].
      */
     private class Peer(val pc: PeerConnection, val localTrack: AudioTrack) {
+        // Bộ gửi micro tới người này: khi không được gửi thì dừng luồng gửi (encoding.active = false)
+        var sender: RtpSender? = null
         val remoteTracks = mutableListOf<AudioTrack>()
         val pendingCandidates = mutableListOf<IceCandidate>()
         var remoteDescriptionSet = false
@@ -123,11 +125,31 @@ class WebRTCClient(private val context: Context) : RtcEngine {
     private fun allRemoteTracks(): List<AudioTrack> = peers.values.flatMap { it.remoteTracks }
 
     private fun applySending(peer: Peer) {
+        val send = isMicEnabled && peer.sending
         try {
-            peer.localTrack.setEnabled(isMicEnabled && peer.sending)
+            peer.localTrack.setEnabled(send)
+            // Không chỉ tắt track (vẫn gửi gói im lặng) mà dừng hẳn luồng gửi tới người này
+            // (encoding.active = false): người không cùng kênh đang chọn chắc chắn không nhận được tiếng.
+            // Không tháo track bằng setTrack(null): bộ gửi tạo từ addTrack sở hữu track, tháo ra là huỷ track.
+            val sender = peer.sender
+            if (sender != null) {
+                val params = sender.parameters
+                if (params.encodings.any { it.active != send }) {
+                    params.encodings.forEach { it.active = send }
+                    if (!sender.setParameters(params)) Log.w(TAG, "Không đổi được trạng thái gửi tới peer")
+                }
+            }
         } catch (e: IllegalStateException) {
             Log.w(TAG, "Audio track đã bị giải phóng: ${e.message}")
         }
+    }
+
+    /** Tiếng nhận từ một người: tắt hẳn khi âm lượng 0 (không cùng kênh đang chọn) hoặc khoá loa. */
+    private fun applyRemote(track: AudioTrack, volume: Float) {
+        try {
+            track.setEnabled(!isOutputMuted && volume > 0f)
+            track.setVolume(volume.toDouble())
+        } catch (ignored: Throwable) {}
     }
 
     /**
@@ -194,8 +216,9 @@ class WebRTCClient(private val context: Context) : RtcEngine {
         val track = rtcFactory.createAudioTrack("${LOCAL_AUDIO_TRACK_ID}_${trackCounter++}", ensureAudioSource())
         val peer = Peer(pc, track)
         peers[peerId] = peer
+        // Thêm track trước để SDP có luồng gửi âm thanh, rồi mới áp trạng thái gửi (bật/dừng luồng gửi)
+        peer.sender = pc.addTrack(track, listOf(LOCAL_STREAM_ID))
         applySending(peer)
-        pc.addTrack(track, listOf(LOCAL_STREAM_ID))
     }
 
     /** Tạo (một lần) nguồn thu micro dùng chung cho mọi PeerConnection. */
@@ -240,11 +263,7 @@ class WebRTCClient(private val context: Context) : RtcEngine {
     @Synchronized
     override fun setOutputMuted(muted: Boolean) {
         isOutputMuted = muted
-        allRemoteTracks().forEach { track ->
-            try {
-                track.setEnabled(!muted)
-            } catch (ignored: Throwable) {}
-        }
+        peers.values.forEach { peer -> peer.remoteTracks.forEach { applyRemote(it, peer.volume) } }
     }
 
     /**
@@ -255,13 +274,7 @@ class WebRTCClient(private val context: Context) : RtcEngine {
     override fun setPeerVolume(peerId: String, volume: Float) {
         val peer = peers[peerId] ?: return
         peer.volume = volume.coerceIn(0f, 1f)
-        peer.remoteTracks.forEach { applyVolume(it, peer.volume) }
-    }
-
-    private fun applyVolume(track: AudioTrack, volume: Float) {
-        try {
-            track.setVolume(volume.toDouble())
-        } catch (ignored: Throwable) {}
+        peer.remoteTracks.forEach { applyRemote(it, peer.volume) }
     }
 
     /** Ghi nhận track âm thanh từ đối tác [peerId] (Unified Plan: onAddTrack). */
@@ -272,10 +285,7 @@ class WebRTCClient(private val context: Context) : RtcEngine {
         if (!peer.remoteTracks.contains(audio)) {
             peer.remoteTracks.add(audio)
         }
-        try {
-            audio.setEnabled(!isOutputMuted)
-        } catch (ignored: Throwable) {}
-        applyVolume(audio, peer.volume)
+        applyRemote(audio, peer.volume)
     }
 
     @Synchronized

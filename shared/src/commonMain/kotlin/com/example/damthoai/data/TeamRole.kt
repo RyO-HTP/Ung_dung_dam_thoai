@@ -9,16 +9,32 @@ package com.example.damthoai.data
  *
  * [wire] là mã gửi qua máy chủ signaling và nhúng trong mã QR.
  */
-enum class TeamRole(val wire: String, val title: String) {
-    TRUONG_BAN("ban", "Trưởng ban"),
-    TRUONG_NHOM("nhom", "Trưởng nhóm"),
-    THANH_VIEN("tv", "Thành viên");
+enum class TeamRole(val wire: String, val title: String, val level: Int) {
+    TRUONG_BAN("ban", "Trưởng ban", 1),
+    TRUONG_NHOM("nhom", "Trưởng nhóm", 2),
+    THANH_VIEN("tv", "Thành viên", 3);
+
+    /** Cấp tương ứng: Trưởng ban = Cấp 1, Trưởng nhóm = Cấp 2, Thành viên = Cấp 3. */
+    val memberLevel: MemberLevel get() = MemberLevel.fromCode(level)
+
+    /** Nhãn hiển thị kiểu "Cấp 2 · Trưởng nhóm". */
+    val levelLabel: String get() = "Cấp $level · $title"
 
     companion object {
         /** Mã lạ hoặc thiếu (app/máy chủ bản cũ) được coi là thành viên. */
         fun fromWire(wire: String?): TeamRole = entries.firstOrNull { it.wire == wire } ?: THANH_VIEN
+
+        fun fromLevel(level: Int): TeamRole = entries.firstOrNull { it.level == level } ?: THANH_VIEN
     }
 }
+
+/** Chỗ ngồi đúng chuẩn cho vai trò: trưởng ban luôn ở Ban chỉ huy, người khác ở nhóm [groupId]. */
+fun seatFor(role: TeamRole, groupId: String, groupName: String): Seat =
+    if (role == TeamRole.TRUONG_BAN) {
+        Seat(role, TeamChannels.COMMAND_ID, TeamChannels.COMMAND_NAME)
+    } else {
+        Seat(role, groupId, groupName)
+    }
 
 /** Chỗ ngồi của một người trong sự kiện: vai trò + kênh nhóm (trưởng ban không thuộc nhóm nào). */
 data class Seat(
@@ -39,6 +55,14 @@ object TeamChannels {
     /** Nhóm mặc định khi vào bằng PIN (không có QR vai trò) hoặc máy bản cũ. */
     const val GENERAL_ID = "ch_general"
     const val GENERAL_NAME = "Kênh chung"
+
+    /** Các nhóm/phòng ban mặc định khi chủ sự kiện chưa tự sửa danh mục. */
+    val DEFAULT_GROUPS = listOf(
+        Channel(id = "ch_02", name = "Sân khấu"),
+        Channel(id = "ch_03", name = "Kỹ thuật"),
+        Channel(id = "ch_04", name = "Hậu cần – An ninh"),
+        Channel(id = "ch_05", name = "Đón tiếp")
+    )
 
     /** Các kênh mà một người thuộc về (nghe được và có thể chọn để phát). */
     fun channelsOf(seat: Seat): List<String> = when (seat.role) {

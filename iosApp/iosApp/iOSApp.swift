@@ -9,6 +9,11 @@ struct iOSApp: App {
         WindowGroup {
             ComposeRootView()
                 .ignoresSafeArea(.all)
+                // Mã QR quét bằng Camera của máy: vào đúng kênh và vai trò trong QR
+                .onOpenURL { url in
+                    guard url.scheme == "damthoai", url.host == "join" else { return }
+                    QrJoin.shared.handleExternalLink(url: url.absoluteString)
+                }
         }
     }
 }

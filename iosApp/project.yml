@@ -47,6 +47,10 @@ targets:
         NSCameraUsageDescription: Đàm Thoại cần camera để quét mã QR vào kênh và nháy đèn flash khi có cảnh báo khẩn cấp.
         NSLocalNetworkUsageDescription: Đàm Thoại tìm máy chủ bộ đàm trong mạng Wi-Fi nội bộ.
         NSBonjourServices: [_bodam._tcp]
+        # Quét QR bằng Camera của iPhone mở link damthoai://join?... vào đúng kênh/vai trò
+        CFBundleURLTypes:
+          - CFBundleURLName: com.example.damthoai.join
+            CFBundleURLSchemes: [damthoai]
         UIBackgroundModes: [audio, voip, push-to-talk]
         NSAppTransportSecurity:
           # Máy chủ trong LAN dùng ws:// (không mã hoá), giống bản Android

@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,10 +68,12 @@ fun UserInfoScreen(
     onEnterChannel: (displayName: String, roleTitle: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Điền sẵn tên/vai trò đã dùng lần trước
+    // Điền sẵn tên/chức vụ đã dùng lần trước
     var displayName by remember { mutableStateOf(com.example.damthoai.data.AppStartPrefs.getDisplayName()) }
     var roleTitle by remember { mutableStateOf(com.example.damthoai.data.AppStartPrefs.getRoleTitle()) }
-    var selectedLevel by remember { mutableStateOf(2) }
+    // Cấp và phòng ban do chủ sự kiện đặt trong mã QR: chỉ hiển thị, không tự chọn
+    val seat by com.example.damthoai.service.DamThoaiCallManager.getInstance().seat
+        .collectAsState()
     var nameFocused by remember { mutableStateOf(true) }
 
     DamThoaiBackground(modifier = modifier) {
@@ -118,25 +121,19 @@ fun UserInfoScreen(
             )
             Spacer(Modifier.height(14.dp))
             Column(Modifier.fillMaxWidth()) {
-                Text("Cấp của bạn", color = TextSecondary, style = DamType.Muted.copy(fontWeight = FontWeight.SemiBold))
+                Text("Cấp và kênh của bạn", color = TextSecondary, style = DamType.Muted.copy(fontWeight = FontWeight.SemiBold))
                 Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LevelOption(
-                        text = "Cấp 2 · Trưởng ban",
-                        selected = selectedLevel == 2,
-                        modifier = Modifier.weight(1f),
-                        onClick = { selectedLevel = 2 }
-                    )
-                    LevelOption(
-                        text = "Cấp 3 · CTV",
-                        selected = selectedLevel == 3,
-                        modifier = Modifier.weight(1f),
-                        onClick = { selectedLevel = 3 }
-                    )
-                }
+                val channelNames = com.example.damthoai.data.TeamChannels.channelsOf(seat)
+                    .joinToString(" + ") { com.example.damthoai.data.TeamChannels.channelName(it, seat.groupName) }
+                LevelOption(
+                    text = "${seat.role.levelLabel} · $channelNames",
+                    selected = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {}
+                )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "Chọn đúng cấp của bạn. Nếu chọn sai, Tổng đạo diễn sẽ chỉnh lại. Cấp 1 chỉ do người tạo sự kiện cấp.",
+                    "Cấp và phòng ban theo mã QR do chủ sự kiện cấp. Chỉ chủ sự kiện được thay đổi.",
                     color = TextSecondary,
                     style = DamType.SmallLine16
                 )

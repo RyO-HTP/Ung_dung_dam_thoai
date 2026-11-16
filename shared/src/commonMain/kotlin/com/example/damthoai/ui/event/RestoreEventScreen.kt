@@ -61,6 +61,7 @@ fun RestoreEventScreen(
 ) {
     val clipboard = rememberTextClipboard()
     var adminCode by rememberSaveable { mutableStateOf("") }
+    var pin by rememberSaveable { mutableStateOf(com.example.damthoai.data.AppStartPrefs.getEventPin()) }
     var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
 
     DamThoaiBackground(modifier = modifier) {
@@ -123,6 +124,40 @@ fun RestoreEventScreen(
             )
 
             Spacer(Modifier.height(26.dp))
+            Text(
+                "Mã PIN sự kiện (6 số)",
+                modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
+                color = TextSecondary,
+                style = DamType.Body.copy(fontWeight = FontWeight.SemiBold)
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(GlassBg)
+                    .border(1.dp, AccentCyan, RoundedCornerShape(18.dp))
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
+            ) {
+                BasicTextField(
+                    value = pin,
+                    onValueChange = { value ->
+                        pin = value.filter { it.isDigit() }.take(6)
+                        errorMessage = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    textStyle = DamType.MonoInput.copy(color = TextPrimary),
+                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
+                    cursorBrush = SolidColor(AccentCyan),
+                    decorationBox = { inner ->
+                        Box {
+                            if (pin.isEmpty()) Text("VD: 240826", color = TextPlaceholder, style = DamType.MonoInput)
+                            inner()
+                        }
+                    }
+                )
+            }
+            Spacer(Modifier.height(14.dp))
             Text(
                 "Mã quản trị",
                 modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
@@ -212,16 +247,25 @@ fun RestoreEventScreen(
             PrimaryButton(
                 text = "Khôi phục",
                 onClick = {
-                    // Kiểm tra mã quản trị đơn giản tại local thay vì gọi Repository giả lập cũ
-                    if (adminCode.isBlank()) {
-                        errorMessage = "Mã quản trị không được để trống."
-                    } else {
-                        errorMessage = null
-                        onRestore()
+                    when {
+                        pin.length != 6 -> errorMessage = "Mã PIN sự kiện phải đủ 6 số."
+                        adminCode.isBlank() -> errorMessage = "Mã quản trị không được để trống."
+                        else -> {
+                            errorMessage = null
+                            // Server kiểm tra mã quản trị: đúng thì máy này thành chủ sự kiện (máy cũ mất quyền),
+                            // sai thì vào như thành viên và báo "Mã quản trị không đúng".
+                            com.example.damthoai.service.DamThoaiCallManager.getInstance().joinEvent(
+                                pin = pin,
+                                asOrganizer = true,
+                                adminCode = adminCode.trim(),
+                                restore = true
+                            )
+                            onRestore()
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = adminCode.isNotBlank(),
+                enabled = adminCode.isNotBlank() && pin.length == 6,
             )
         }
     }

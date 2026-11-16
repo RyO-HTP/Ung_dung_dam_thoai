@@ -22,3 +22,7 @@ iosApp/iosApp/iosApp.entitlements
 xcuserdata/
 *.xcworkspace/xcuserdata/
 .kotlin/
+
+# Trạng thái signaling server (sự kiện, mã quản trị, người bị xoá)
+server_state.json
+server_state.json.tmp

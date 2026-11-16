@@ -338,7 +338,9 @@ fun CreateEventScreen(
                         callManager.joinEvent(
                             pin = eventPinCode,
                             eventNameHint = eventName.ifBlank { null },
-                            asOrganizer = true
+                            asOrganizer = true,
+                            // Server chỉ công nhận chủ sự kiện khi gửi đúng mã quản trị này
+                            adminCode = adminCode
                         )
                         showSuccessSheet = false
                         onEventCreated()

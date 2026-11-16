@@ -351,28 +351,8 @@ private fun QrScanTab(
             ) {
                 platformUi.QrCameraScanner(
                     onQrDetected = { rawQr ->
-                        val parseResult = com.example.damthoai.data.qr.QrTokenParser.parse(rawQr)
-                        if (parseResult !is com.example.damthoai.data.qr.QrParseResult.Valid) {
-                            // Mã QR không phải của Đàm Thoại / sai định dạng / hết hạn: không cho vào sự kiện
-                            Log.w("QrScanTab", "Mã QR không hợp lệ: $parseResult")
-                            AppToast.show("Mã QR không hợp lệ hoặc đã hết hạn. Vui lòng quét lại.")
-                            return@QrCameraScanner
-                        }
-                        val payload = parseResult.payload
-                        val pin = payload.pinCode.ifBlank { payload.eventId.toString() }
-                        // Chỉ dùng tên trong QR nếu đó là tên thật do ban tổ chức đặt (không phải tên tạm)
-                        val nameHint = payload.eventName.takeIf {
-                            it.isNotBlank() &&
-                                it != AppStartPrefs.DEFAULT_EVENT_NAME &&
-                                !it.startsWith("Kênh tần số")
-                        }
                         // QR kênh kèm vai trò: vào đúng kênh, đúng vai trò (trưởng ban / trưởng nhóm / thành viên)
-                        com.example.damthoai.service.DamThoaiCallManager.getInstance()
-                            .joinEvent(pin = pin, eventNameHint = nameHint, asOrganizer = false, seat = payload.seat())
-                        payload.seat()?.let { seat ->
-                            AppToast.show("Đã vào ${seat.groupName.ifBlank { "kênh" }} · ${seat.role.title}")
-                        }
-                        onQrScanned()
+                        if (com.example.damthoai.data.qr.QrJoin.join(rawQr)) onQrScanned()
                     },
                     onError = { err -> Log.e("QrScanTab", err) },
                     torchEnabled = false,

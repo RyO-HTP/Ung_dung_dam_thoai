@@ -1,6 +1,7 @@
 package com.example.damthoai.service
 
 import com.example.damthoai.data.AppStartPrefs
+import com.example.damthoai.data.Channel
 import com.example.damthoai.data.Seat
 import com.example.damthoai.data.TeamChannels
 import com.example.damthoai.data.TeamRole
@@ -15,6 +16,7 @@ import com.example.damthoai.network.ServerLocator
 import com.example.damthoai.network.SignalingClient
 import com.example.damthoai.network.SignalingConnectionState
 import com.example.damthoai.network.SignalingEvent
+import com.example.damthoai.network.model.CatalogEntry
 import com.example.damthoai.network.model.OnlineMember
 import com.example.damthoai.network.model.RegisterMessage
 import com.example.damthoai.platform.NetworkMonitor
@@ -83,6 +85,13 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
         private const val SEARCH_RETRY_BASE_MS = 5000L
         private const val SEARCH_RETRY_MAX_MS = 30_000L
         private const val RECALL_DELAY_MS = 2000L
+        // Kết nối P2P không thông trong khoảng này (offer/answer lạc...) thì bỏ và gọi lại.
+        // Đủ dài cho TURN qua 4G (thường < 5s), đủ ngắn để không phải chờ lâu.
+        private const val PEER_CONNECT_TIMEOUT_MS = 15_000L
+        // Offer đến trước danh sách thành viên: giữ tối đa chừng này rồi bỏ (bên gọi sẽ tự gọi lại)
+        private const val EARLY_OFFER_MAX_AGE_MS = 10_000L
+        // Kết nối đã thông rồi rớt (DISCONNECTED) quá chừng này mà không tự hồi phục thì tạo lại
+        private const val PEER_DISCONNECTED_TIMEOUT_MS = 12_000L
 
         private var instance: DamThoaiCallManager? = null
 
@@ -128,10 +137,36 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
     private val connectedPeers = mutableSetOf<String>()
     // peerId -> các kênh dùng chung với người đó (quyết định gửi tiếng và âm lượng nghe)
     private val peerChannels = mutableMapOf<String, Set<String>>()
+    // peerId -> mã phiên kết nối server của người đó lúc tạo kết nối (đổi = họ vừa kết nối lại)
+    private val peerConnIds = mutableMapOf<String, Int?>()
+    // Offer đến trước danh sách thành viên có người gửi: giữ lại tối đa EARLY_OFFER_MAX_AGE_MS
+    private data class EarlyOffer(val sdp: String, val receivedAt: Long)
+    private val earlyOffers = mutableMapOf<String, EarlyOffer>()
+    // Mã phiên kết nối server của chính máy này (đổi = mình vừa kết nối lại)
+    private var myConnId: Int? = null
+    // peerId -> trạng thái ICE gần nhất (để biết kết nối rớt có tự hồi phục không)
+    private val peerIceStates = mutableMapOf<String, RtcIceState>()
 
     // Vai trò + nhóm của máy này
     private val _seat = MutableStateFlow(AppStartPrefs.getSeat())
     val seat: StateFlow<Seat> = _seat.asStateFlow()
+
+    /** Chủ sự kiện vừa đổi vai trò của mình (UI hiện banner "vai trò đã đổi"). */
+    data class SeatChange(val seat: Seat, val byName: String)
+    private val _seatChanges = MutableSharedFlow<SeatChange>(extraBufferCapacity = 4)
+    val seatChanges: SharedFlow<SeatChange> = _seatChanges.asSharedFlow()
+
+    // Đang khôi phục quyền chủ sự kiện bằng mã quản trị (gửi "restore" tới khi server công nhận)
+    private var restoring = false
+
+    /** Chủ sự kiện đã xoá máy này khỏi sự kiện (UI chuyển sang màn "Bạn đã bị xoá"). */
+    private val _kicked = MutableSharedFlow<String>(replay = 1, extraBufferCapacity = 1)
+    val kicked: SharedFlow<String> = _kicked.asSharedFlow()
+    fun consumeKicked() = _kicked.resetReplayCache()
+
+    /** Danh mục nhóm/phòng ban của sự kiện hiện tại (chủ sự kiện dùng để tạo QR, chuyển người). */
+    private val _catalog = MutableStateFlow(AppStartPrefs.getCatalog() ?: TeamChannels.DEFAULT_GROUPS)
+    val catalog: StateFlow<List<Channel>> = _catalog.asStateFlow()
 
     // Kênh đang phát mic (PTT chỉ tới người cùng kênh này)
     private val _talkChannelId = MutableStateFlow(defaultTalkChannel(AppStartPrefs.getSeat()))
@@ -231,12 +266,24 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
         pin: String,
         eventNameHint: String? = null,
         asOrganizer: Boolean = false,
-        seat: Seat? = null
+        seat: Seat? = null,
+        adminCode: String? = null,
+        restore: Boolean = false
     ) {
+        // Khôi phục quyền trên máy mới: báo server chuyển quyền chủ sự kiện sang máy này
+        restoring = restore && asOrganizer
         val previousPin = AppStartPrefs.getEventPin()
         AppStartPrefs.setEventPin(pin)
         AppStartPrefs.setOrganizer(asOrganizer)
         AppStartPrefs.setHasJoinedEvent(true)
+        if (asOrganizer) {
+            // Mã quản trị là bằng chứng chủ sự kiện với server (tạo mới hoặc nhập khi khôi phục)
+            when {
+                !adminCode.isNullOrBlank() -> AppStartPrefs.setAdminCode(pin, adminCode)
+                AppStartPrefs.getAdminCode(pin).isBlank() -> AppStartPrefs.setAdminCode(pin, newAdminCode())
+            }
+        }
+        _catalog.value = AppStartPrefs.getCatalog(pin) ?: TeamChannels.DEFAULT_GROUPS
         // Vai trò: theo mã QR; người tạo sự kiện là trưởng ban; vào bằng PIN sự kiện khác thì
         // là thành viên kênh chung; vào lại cùng sự kiện bằng PIN thì giữ vai trò cũ.
         val newSeat = when {
@@ -267,6 +314,31 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
      */
     fun updateProfile(displayName: String, roleTitle: String) {
         AppStartPrefs.setProfile(displayName, roleTitle)
+        signalingClient.updateRegistration(buildRegistration(AppStartPrefs.getUserId()))
+    }
+
+    /**
+     * CHỈ chủ sự kiện: đổi vai trò/phòng ban của [targetUserId]. Server kiểm tra quyền, cập nhật
+     * danh sách thành viên và chuyển lệnh tới máy đó (máy đó tự chuyển kênh).
+     * @return false nếu máy này không phải chủ sự kiện hoặc chưa kết nối máy chủ.
+     */
+    fun assignSeat(targetUserId: String, seat: Seat): Boolean {
+        if (!AppStartPrefs.isOrganizer() || targetUserId == AppStartPrefs.getUserId()) return false
+        return signalingClient.sendSetSeat(targetUserId, seat)
+    }
+
+    /** CHỈ chủ sự kiện: xoá [targetUserId] khỏi sự kiện (server báo máy đó và chặn vào lại). */
+    fun kickMember(targetUserId: String): Boolean {
+        if (!AppStartPrefs.isOrganizer() || targetUserId == AppStartPrefs.getUserId()) return false
+        return signalingClient.sendKick(targetUserId)
+    }
+
+    /** Chủ sự kiện sửa danh mục nhóm/phòng ban: lưu trên máy và gửi lên server để giữ lại. */
+    fun updateCatalog(catalog: List<Channel>) {
+        if (!AppStartPrefs.isOrganizer()) return
+        val pin = AppStartPrefs.getEventPin()
+        AppStartPrefs.setCatalog(pin, catalog)
+        _catalog.value = catalog
         signalingClient.updateRegistration(buildRegistration(AppStartPrefs.getUserId()))
     }
 
@@ -307,8 +379,27 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
                 AppStartPrefs.getEventName()
             } else {
                 null
+            },
+            adminCode = if (organizer) AppStartPrefs.getAdminCode().ifBlank { null } else null,
+            restore = organizer && restoring,
+            // Chỉ gửi danh mục khi chủ sự kiện đã tự sửa (chưa sửa thì giữ bản đang có trên server)
+            catalog = if (organizer) {
+                AppStartPrefs.getCatalog()?.map { CatalogEntry(it.id, it.name) }
+            } else {
+                null
             }
         )
+    }
+
+    /** Bị xoá khỏi sự kiện hoặc mất quyền chủ sự kiện: về vai trò thành viên Kênh chung. */
+    private fun dropToMember() {
+        AppStartPrefs.setOrganizer(false)
+        applySeat(Seat(TeamRole.THANH_VIEN, TeamChannels.GENERAL_ID, TeamChannels.GENERAL_NAME))
+    }
+
+    private fun newAdminCode(): String {
+        val chars = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
+        return "ADM-" + (1..6).map { chars.random() }.joinToString("")
     }
 
     // ------------------------------------------------------------------
@@ -459,6 +550,49 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
                 rtc.updateIceServers(event.iceServers)
             }
 
+            is SignalingEvent.SeatAssigned -> {
+                // Chủ sự kiện đổi vai trò/phòng ban của mình: chuyển kênh ngay và báo lại server
+                if (AppStartPrefs.isOrganizer()) return
+                val changed = _seat.value != event.seat
+                applySeat(event.seat)
+                signalingClient.updateRegistration(buildRegistration(AppStartPrefs.getUserId()))
+                if (changed) _seatChanges.tryEmit(SeatChange(event.seat, event.byName))
+            }
+
+            is SignalingEvent.Kicked -> {
+                if (event.eventPin.isNotBlank() && event.eventPin != AppStartPrefs.getEventPin()) return
+                Log.w(TAG, "Bị ${event.byName} xoá khỏi sự kiện ${event.eventPin}")
+                dropToMember()
+                leaveEvent()
+                _kicked.tryEmit(event.byName)
+            }
+
+            is SignalingEvent.OrganizerDenied -> {
+                if (event.eventPin != AppStartPrefs.getEventPin() || !AppStartPrefs.isOrganizer()) return
+                dropToMember()
+                signalingClient.updateRegistration(buildRegistration(AppStartPrefs.getUserId()))
+                _floorNotices.tryEmit(
+                    if (event.reason == "revoked") {
+                        "Quyền chủ sự kiện đã được khôi phục trên máy khác. Máy này giờ là thành viên."
+                    } else {
+                        "Mã quản trị không đúng. Bạn vào sự kiện với vai trò thành viên."
+                    }
+                )
+            }
+
+            is SignalingEvent.CatalogReceived -> {
+                // Khôi phục trên máy mới: lấy danh mục phòng ban chủ sự kiện đã lưu trên server
+                val pin = AppStartPrefs.getEventPin()
+                if (event.eventPin != pin || !AppStartPrefs.isOrganizer() || AppStartPrefs.getCatalog(pin) != null) return
+                val list = event.catalog.map { Channel(id = it.id, name = it.name) }
+                AppStartPrefs.setCatalog(pin, list)
+                _catalog.value = list
+            }
+
+            is SignalingEvent.SetSeatDenied -> {
+                _floorNotices.tryEmit("Máy chủ từ chối: người này không còn trong sự kiện hoặc bạn không phải chủ sự kiện")
+            }
+
             is SignalingEvent.EventInfoReceived -> {
                 val myPin = AppStartPrefs.getEventPin()
                 if (event.eventPin != myPin) return
@@ -475,6 +609,12 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
                 val sender = event.senderId
                 if (sender.isNullOrBlank()) {
                     Log.w(TAG, "Bỏ qua Offer không có sender_id")
+                    return
+                }
+                // Offer đến trước danh sách thành viên có người gửi: giữ lại, xử lý khi danh sách tới
+                if (_onlineMembers.value.none { it.userId == sender }) {
+                    Log.d(TAG, "Offer từ $sender đến trước danh sách thành viên: giữ lại chờ xử lý")
+                    earlyOffers[sender] = EarlyOffer(event.sdp, currentTimeMillis())
                     return
                 }
                 // Phân tầng vai trò: chỉ nhận cuộc gọi từ người được phép đàm thoại với mình
@@ -510,12 +650,17 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
                 Log.d(TAG, "Nhận danh sách online (${event.users.size} người): ${event.users}")
                 _onlineUsers.value = event.users
                 _onlineMembers.value = event.members
+                // Server đã công nhận máy này là chủ sự kiện: xong bước khôi phục
+                if (restoring && event.members.any { it.userId == AppStartPrefs.getUserId() && it.isOrganizer }) {
+                    restoring = false
+                }
                 // Người đã rời thì không còn "đang nói"
                 val online = event.users.toSet()
                 _speakers.value = _speakers.value
                     .mapValues { (_, ids) -> ids.filter { it in online }.toSet() }
                     .filterValues { it.isNotEmpty() }
                 evaluatePeers(event.members)
+                processEarlyOffers()
             }
 
             is SignalingEvent.FloorGranted -> floor.onGranted(event.channelId)
@@ -536,14 +681,15 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
      * Người giữ lượt nói trên một kênh đổi (server phát cho cả sự kiện).
      * - Cập nhật "ai đang nói" cho các kênh mình thuộc về.
      * - Mình đang nói mà lượt sang người khác (bị chen ngang / hết giờ): tắt mic.
-     * - (a) Trả lời nhanh: có người bắt đầu nói trên kênh khác kênh đang phát (và mình không giữ PTT)
-     *   → tự chuyển kênh phát sang kênh đó, bấm PTT là trả lời đúng người vừa gọi.
+     * - Có người bắt đầu nói trên kênh KHÁC kênh mình đang chọn (trưởng nhóm thuộc 2 kênh):
+     *   KHÔNG tự chuyển kênh (giữ đúng kênh người dùng đã chọn), chỉ báo để họ tự chạm chuyển.
      */
     private fun handleFloorState(event: SignalingEvent.FloorState) {
         floor.onState(event.channelId, event.holderId, event.preemptedId, event.reason)
 
         if (event.channelId !in TeamChannels.channelsOf(_seat.value)) return
         val holder = event.holderId
+        val previousHolder = _speakers.value[event.channelId]?.firstOrNull()
         _speakers.value = if (holder == null) {
             _speakers.value - event.channelId
         } else {
@@ -551,9 +697,10 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
         }
 
         val me = AppStartPrefs.getUserId()
-        if (holder != null && holder != me && !_isPttPressed.value && _talkChannelId.value != event.channelId) {
-            Log.d(TAG, "$holder đang nói trên ${event.channelId}: tự chuyển kênh phát để trả lời")
-            setTalkChannel(event.channelId)
+        if (holder != null && holder != me && holder != previousHolder && _talkChannelId.value != event.channelId) {
+            val channelName = TeamChannels.channelName(event.channelId, _seat.value.groupName)
+            Log.d(TAG, "$holder đang nói trên ${event.channelId} (không phải kênh đang chọn): chỉ báo")
+            _floorNotices.tryEmit("${memberLabel(holder, withRole = true)} đang gọi trên $channelName. Chạm kênh đó để chuyển mic và nghe.")
         }
     }
 
@@ -569,23 +716,24 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
         if (_isPttPressed.value) floor.switchChannel(channelId)
     }
 
-    /**
-     * Âm lượng nghe theo kênh (0 = tắt loa kênh đó). Người dùng chung nhiều kênh với mình
-     * nghe theo kênh to nhất.
-     */
+    /** Âm lượng nghe theo kênh (0 = tắt loa kênh đó). */
     fun setChannelVolume(channelId: String, volume: Float) {
         channelVolumes[channelId] = volume.coerceIn(0f, 1f)
         applyPeerAudio()
     }
 
-    /** Áp lại cho mọi kết nối: gửi tiếng (đúng kênh phát) và âm lượng nghe (theo kênh). */
+    /**
+     * Áp lại cho mọi kết nối theo KÊNH ĐANG CHỌN (trưởng nhóm thuộc 2 kênh nhưng mỗi lúc chỉ ở 1 kênh):
+     * - chỉ gửi tiếng mình tới người có chung kênh đang chọn;
+     * - chỉ nghe người có chung kênh đang chọn (người chỉ chung kênh kia: âm lượng 0).
+     * Kết nối P2P vẫn giữ để chuyển kênh tức thì, nhưng âm thanh hai chiều với kênh cũ đã ngắt.
+     */
     private fun applyPeerAudio() {
         val talk = _talkChannelId.value
         peerSessions.keys.forEach { peerId ->
-            val channels = peerChannels[peerId].orEmpty()
-            rtc.setPeerSending(peerId, talk in channels)
-            val volume = channels.maxOfOrNull { channelVolumes[it] ?: 1f } ?: 0f
-            rtc.setPeerVolume(peerId, volume)
+            val inActiveChannel = talk in peerChannels[peerId].orEmpty()
+            rtc.setPeerSending(peerId, inActiveChannel)
+            rtc.setPeerVolume(peerId, if (inActiveChannel) channelVolumes[talk] ?: 1f else 0f)
         }
     }
 
@@ -607,6 +755,24 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
         peerSessions.keys.filter { it !in allowed }.forEach { gone ->
             Log.d(TAG, "Đóng kết nối với $gone (đã rời hoặc không còn cùng kênh)")
             closePeer(gone, "Đối tác đã rời kênh")
+        }
+        // Máy kia vừa mở socket mới (mở lại app / đổi mạng): kết nối P2P cũ với máy đó đã chết.
+        // Cả hai bên cùng bỏ kết nối cũ để bên gọi tạo kết nối mới ngay, không chờ ICE báo lỗi (~30s).
+        val connIds = members.associate { it.userId to it.connId }
+        // Chính máy này vừa kết nối lại: các máy kia đã bỏ kết nối cũ với mình → mình cũng bỏ hết
+        val myConn = connIds[myUid]
+        if (myConn != null && myConnId != null && myConn != myConnId && peerSessions.isNotEmpty()) {
+            Log.d(TAG, "Máy này vừa kết nối lại máy chủ (phiên $myConnId → $myConn): tạo lại mọi kết nối P2P")
+            peerSessions.keys.toList().forEach { closePeer(it, null) }
+        }
+        if (myConn != null) myConnId = myConn
+        peerSessions.keys.filter { it in allowed }.forEach { peer ->
+            val known = peerConnIds[peer]
+            val now = connIds[peer]
+            if (known != null && now != null && known != now) {
+                Log.d(TAG, "$peer vừa kết nối lại (phiên $known → $now): tạo lại kết nối P2P")
+                closePeer(peer, null)
+            }
         }
         // Kênh dùng chung có thể đổi (VD đối tác đổi nhóm): cập nhật rồi áp lại âm thanh
         allowed.forEach { (id, channels) -> if (peerSessions.containsKey(id)) peerChannels[id] = channels }
@@ -655,7 +821,10 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
      */
     private fun handleIncomingOffer(senderUserId: String, offerSdpStr: String) {
         val existing = peerSessions[senderUserId]
-        val isRenegotiation = existing != null && rtc.hasPeerConnection(senderUserId)
+        // Chỉ dùng lại kết nối đang THÔNG (ICE Restart khi đổi mạng). Kết nối chưa từng thông
+        // (offer trước bị lạc/hết hạn) thì bỏ, tạo mới cho offer mới.
+        val isRenegotiation = existing != null && rtc.hasPeerConnection(senderUserId) &&
+            senderUserId in connectedPeers
         val session = if (isRenegotiation) {
             existing!!
         } else {
@@ -732,16 +901,29 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
                 Log.d(TAG, "Trạng thái ICE Connection với $targetUserId: $state")
                 scope.launch {
                     if (peerSessions[targetUserId] != session) return@launch
+                    peerIceStates[targetUserId] = state
                     when (state) {
                         RtcIceState.CONNECTED,
                         RtcIceState.COMPLETED -> {
                             connectedPeers.add(targetUserId)
                             publishCallState()
+                            // Luồng gửi chỉ có sau khi đàm phán xong: áp lại gửi/nghe theo kênh đang chọn
+                            applyPeerAudio()
                         }
                         RtcIceState.FAILED -> {
                             onPeerFailed(targetUserId, session, "Mất kết nối mạng P2P")
                         }
-                        // DISCONNECTED thường tự hồi phục (đổi mạng); để handover/ICE xử lý
+                        // DISCONNECTED thường tự hồi phục (đổi mạng). Nhưng khi dò mạng liên tục,
+                        // ICE có thể kẹt DISCONNECTED mãi không sang FAILED → quá hạn thì gọi lại.
+                        RtcIceState.DISCONNECTED -> {
+                            delay(PEER_DISCONNECTED_TIMEOUT_MS)
+                            if (peerSessions[targetUserId] == session &&
+                                peerIceStates[targetUserId] == RtcIceState.DISCONNECTED
+                            ) {
+                                Log.w(TAG, "Kết nối với $targetUserId mất quá lâu: tạo lại")
+                                onPeerFailed(targetUserId, session, "Mất kết nối mạng P2P")
+                            }
+                        }
                         else -> {}
                     }
                 }
@@ -749,8 +931,37 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
         })
         // Kênh dùng chung quyết định có gửi tiếng tới người này và nghe họ to bao nhiêu
         peerChannels[targetUserId] = allowedChannelsWith(targetUserId)
+        peerConnIds[targetUserId] = _onlineMembers.value.firstOrNull { it.userId == targetUserId }?.connId
         applyPeerAudio()
+        // Hết hạn chờ: không thông được trong PEER_CONNECT_TIMEOUT_MS (offer/answer lạc, máy kia
+        // từ chối...) thì bỏ kết nối này và gọi lại, thay vì kẹt "đang gọi" mãi.
+        scope.launch {
+            delay(PEER_CONNECT_TIMEOUT_MS)
+            if (peerSessions[targetUserId] == session && targetUserId !in connectedPeers) {
+                Log.w(TAG, "Không kết nối được với $targetUserId sau ${PEER_CONNECT_TIMEOUT_MS / 1000}s: thử lại")
+                onPeerFailed(targetUserId, session, "Hết thời gian kết nối")
+            }
+        }
         return session
+    }
+
+    /** Xử lý các offer đến trước danh sách thành viên (giờ đã biết người gửi). */
+    private fun processEarlyOffers() {
+        if (earlyOffers.isEmpty()) return
+        val now = currentTimeMillis()
+        val known = _onlineMembers.value.map { it.userId }.toSet()
+        earlyOffers.entries.toList().forEach { (sender, offer) ->
+            when {
+                now - offer.receivedAt > EARLY_OFFER_MAX_AGE_MS -> earlyOffers.remove(sender)
+                sender in known -> {
+                    earlyOffers.remove(sender)
+                    if (allowedChannelsWith(sender).isNotEmpty()) {
+                        Log.d(TAG, "Xử lý Offer đến sớm từ $sender")
+                        handleIncomingOffer(sender, offer.sdp)
+                    }
+                }
+            }
+        }
     }
 
     /** Kết nối tới một thành viên lỗi: đóng riêng kết nối đó và thử gọi lại sau một lúc nếu họ vẫn online. */
@@ -769,6 +980,8 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
         if (peerSessions.remove(peerId) == null) return
         connectedPeers.remove(peerId)
         peerChannels.remove(peerId)
+        peerConnIds.remove(peerId)
+        peerIceStates.remove(peerId)
         rtc.closePeer(peerId)
         if (peerSessions.isEmpty() && reason != null) {
             _callState.value = CallState.CallEnded(reason)
@@ -783,6 +996,9 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
         peerSessions.clear()
         connectedPeers.clear()
         peerChannels.clear()
+        peerConnIds.clear()
+        peerIceStates.clear()
+        earlyOffers.clear()
         rtc.close()
         if (hadPeers || reason == null) {
             _callState.value = if (reason == null) CallState.Idle else CallState.CallEnded(reason)
