@@ -4,6 +4,7 @@ import com.example.damthoai.data.AppStartPrefs
 import com.example.damthoai.data.Seat
 import com.example.damthoai.data.TeamChannels
 import com.example.damthoai.data.TeamRole
+import com.example.damthoai.hardware.HandsFreeSettings
 import com.example.damthoai.hardware.PttController
 import com.example.damthoai.hardware.PttEvent
 import com.example.damthoai.hardware.audio.AudioRoute
@@ -182,6 +183,17 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
                     is PttEvent.PttPressed -> setPushToTalkPressed(true)
                     is PttEvent.PttReleased -> setPushToTalkPressed(false)
                 }
+            }
+        }
+        // Tiếng bíp khi được lượt nói: phát đúng lúc mic mở (cả khi mở mic không cần máy chủ)
+        scope.launch {
+            var wasTalking = false
+            floor.status.collect { status ->
+                val talking = status is FloorStatus.Talking
+                if (talking && !wasTalking && HandsFreeSettings.beepHapticEnabled.value) {
+                    platform.pttTones.playTalkPermit()
+                }
+                wasTalking = talking
             }
         }
         // Đổi sự kiện giành lượt nói thành câu báo có tên người

@@ -35,6 +35,17 @@ interface CallAudioSession {
     fun release()
 }
 
+/** Âm báo PTT của hệ điều hành. */
+interface PttTones {
+    /** Tiếng bíp "được lượt nói": phát đúng lúc mic mở, báo người dùng bắt đầu nói được. */
+    fun playTalkPermit()
+
+    /** Không phát gì (máy ảo, unit test). */
+    object None : PttTones {
+        override fun playTalkPermit() {}
+    }
+}
+
 /**
  * Tập hợp các dịch vụ riêng của từng nền tảng. Gọi [install] một lần khi khởi động app
  * (Android: MainActivity/Application, iOS: MainViewController) TRƯỚC khi dùng DamThoaiCallManager.
@@ -49,6 +60,7 @@ class PlatformServices(
     val cloudSignalingUrl: String,
     /** Hệ điều hành cho phép dùng phím âm lượng làm PTT không (iOS: không). */
     val supportsVolumeKeyPtt: Boolean,
+    val pttTones: PttTones = PttTones.None,
 ) {
     companion object {
         private var current: PlatformServices? = null

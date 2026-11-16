@@ -55,6 +55,9 @@ object AndroidPlatform {
                 callAudio = AndroidCallAudioSession(appContext),
                 cloudSignalingUrl = BuildConfig.CLOUD_SIGNALING_URL,
                 supportsVolumeKeyPtt = true,
+                pttTones = object : com.example.damthoai.platform.PttTones {
+                    override fun playTalkPermit() = com.example.damthoai.hardware.RogerBeepPlayer.playTalkPermit()
+                },
             )
         )
 

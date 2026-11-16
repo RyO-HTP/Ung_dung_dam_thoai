@@ -40,6 +40,7 @@ object IosPlatform {
                 callAudio = audio,
                 cloudSignalingUrl = CLOUD_SIGNALING_URL,
                 supportsVolumeKeyPtt = false,
+                pttTones = IosPttTones,
             )
         )
         AudioRouteGuard.backend = audio
