@@ -84,6 +84,11 @@ fun AppNavHost(
     var activeEmergencyAlert by remember { mutableStateOf<EmergencyAlert?>(null) }
     var selectedQrChannelId by rememberSaveable { mutableStateOf<String?>(null) }
 
+    // Giành lượt nói: báo "kênh đang bận", "bị chen ngang", "hết giờ nói" ở mọi màn hình
+    LaunchedEffect(callManager) {
+        callManager.floorNotices.collect { AppToast.show(it) }
+    }
+
     LaunchedEffect(navController) {
         var previousAlert: EmergencyAlert? = null
         EmergencyAlertManager.currentAlert.collect { alert ->

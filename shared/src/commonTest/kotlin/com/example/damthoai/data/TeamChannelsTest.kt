@@ -14,19 +14,25 @@ class TeamChannelsTest {
     private val tvB = Seat(TeamRole.THANH_VIEN, "ch_03")
 
     @Test
-    fun truongBanChiNoiVoiTruongNhom() {
+    fun truongBanNoiVoiTruongNhomVaTruongBan() {
         assertEquals(setOf(TeamChannels.COMMAND_ID), TeamChannels.sharedChannels(ban, nhomA))
         assertEquals(setOf(TeamChannels.COMMAND_ID), TeamChannels.sharedChannels(nhomB, ban))
+        assertEquals(setOf(TeamChannels.COMMAND_ID), TeamChannels.sharedChannels(ban, ban2))
         assertTrue(TeamChannels.sharedChannels(ban, tvA).isEmpty())
-        assertTrue(TeamChannels.sharedChannels(ban, ban2).isEmpty())
     }
 
     @Test
-    fun truongNhomNoiVoiThanhVienCungNhom() {
+    fun truongNhomNoiVoiThanhVienCungNhomVaTruongNhomKhac() {
         assertEquals(setOf("ch_02"), TeamChannels.sharedChannels(nhomA, tvA))
         assertEquals(setOf("ch_02"), TeamChannels.sharedChannels(tvA, nhomA))
         assertTrue(TeamChannels.sharedChannels(nhomA, tvB).isEmpty())
-        assertTrue(TeamChannels.sharedChannels(nhomA, nhomB).isEmpty())
+        // Cùng cấp: các trưởng nhóm nói với nhau qua Ban chỉ huy
+        assertEquals(setOf(TeamChannels.COMMAND_ID), TeamChannels.sharedChannels(nhomA, nhomB))
+        // Hai trưởng nhóm cùng nhóm: chung cả Ban chỉ huy lẫn kênh nhóm
+        assertEquals(
+            setOf(TeamChannels.COMMAND_ID, "ch_02"),
+            TeamChannels.sharedChannels(nhomA, Seat(TeamRole.TRUONG_NHOM, "ch_02"))
+        )
     }
 
     @Test

@@ -52,6 +52,17 @@ connected_clients = {}  # user_id -> websocket đang mở
 client_profiles = {}    # user_id -> {"event_pin", "display_name", "role_title", "is_organizer"}
 events = {}             # event_pin -> {"event_name", "organizer_id"} (do ban tổ chức đặt)
 
+# ----------------------------------------------------------------------------
+# GIÀNH LƯỢT NÓI (FLOOR CONTROL) — giống backend Go Tuần 4
+# ----------------------------------------------------------------------------
+# Mỗi kênh của mỗi sự kiện chỉ một người nói tại một thời điểm. Vai trò cao hơn được chen ngang
+# (thu hồi lượt của người thấp hơn); ngang hàng thì ai bấm trước nói trước, người sau bị báo "bận".
+ROLE_PRIORITY = {"ban": 3, "nhom": 2, "tv": 1}
+COMMAND_CHANNEL = "ch_01"
+# Giới hạn nói 60 giây chống kẹt phím (giống MaxSpeakDurationMs bên Go); đổi được qua biến môi trường
+FLOOR_MAX_SECONDS = float(os.environ.get("FLOOR_MAX_SECONDS", "60"))
+floors = {}  # (event_pin, channel_id) -> {"user_id", "priority", "token"}
+
 
 # ----------------------------------------------------------------------------
 # HÀM TIỆN ÍCH
@@ -195,6 +206,13 @@ async def handle_register(websocket, user_id, data):
     await notify_user_list(event_pin)
     if previous_pin is not None and previous_pin != event_pin:
         await notify_user_list(previous_pin)  # Nhóm cũ: bớt một người
+
+    # Đổi sự kiện/vai trò: thu hồi lượt nói ở những kênh không còn thuộc về
+    await release_floors_of(user_id, keep_pin=event_pin, keep_channels=channels_of(client_profiles[user_id]))
+    # Cho máy vừa vào biết kênh nào đang có người nói
+    for (pin, channel_id), current in list(floors.items()):
+        if pin == event_pin:
+            await safe_send(websocket, floor_state_payload(channel_id, current["user_id"]))
     return user_id
 
 
@@ -214,6 +232,95 @@ async def route_peer_message(user_id, msg_type, data):
         # Không lưu lại để gửi sau: SDP/ICE cũ đến muộn sẽ làm hỏng phiên WebRTC mới.
         # Khi máy kia vào lại, danh sách user_list mới sẽ kích hoạt cuộc gọi lại từ đầu.
         print(f"[{user_id}] gửi {msg_type} tới [{target_id}] đang offline, bỏ qua.")
+
+
+def channels_of(profile):
+    """Các kênh một người thuộc về (giống TeamChannels.channelsOf bên app)."""
+    role = profile.get("team_role") or "tv"
+    group = profile.get("channel_id") or "ch_general"
+    if role == "ban":
+        return {COMMAND_CHANNEL}
+    if role == "nhom":
+        return {COMMAND_CHANNEL, group}
+    return {group}
+
+
+def floor_state_payload(channel_id, holder_id, preempted_id=None, reason=""):
+    return json.dumps({
+        "type": "floor_state",
+        "channel_id": channel_id,
+        "holder_id": holder_id,
+        "preempted_id": preempted_id,
+        "reason": reason,
+    })
+
+
+async def handle_floor_request(websocket, user_id, data):
+    """Xin lượt nói trên một kênh. Trả "floor_granted" hoặc "floor_denied" cho người xin,
+    và phát "floor_state" (ai đang giữ lượt) cho cả sự kiện khi lượt đổi chủ."""
+    profile = client_profiles.get(user_id, {})
+    pin = profile.get("event_pin", "")
+    channel_id = str(data.get("channel_id") or "")
+    if channel_id not in channels_of(profile):
+        await safe_send(websocket, json.dumps({
+            "type": "floor_denied", "channel_id": channel_id, "holder_id": None, "reason": "not_member",
+        }))
+        return
+
+    key = (pin, channel_id)
+    priority = ROLE_PRIORITY.get(profile.get("team_role") or "tv", 1)
+    current = floors.get(key)
+    held_by_other = current is not None and current["user_id"] != user_id and current["user_id"] in connected_clients
+    if held_by_other and priority <= current["priority"]:
+        # Ngang hoặc thấp hơn người đang nói: phải chờ
+        await safe_send(websocket, json.dumps({
+            "type": "floor_denied", "channel_id": channel_id, "holder_id": current["user_id"], "reason": "busy",
+        }))
+        return
+
+    preempted = current["user_id"] if held_by_other else None
+    token = object()
+    floors[key] = {"user_id": user_id, "priority": priority, "token": token}
+    # Hết 60 giây mà chưa nhả: tự thu hồi (máy kẹt phím, mất mạng...)
+    asyncio.get_running_loop().call_later(
+        FLOOR_MAX_SECONDS, lambda: asyncio.ensure_future(expire_floor(key, token))
+    )
+    if preempted:
+        print(f"[{user_id}] chen ngang lượt nói của [{preempted}] trên kênh {channel_id}.")
+    await safe_send(websocket, json.dumps({"type": "floor_granted", "channel_id": channel_id}))
+    await broadcast(pin, floor_state_payload(channel_id, user_id, preempted, "preempted" if preempted else ""))
+
+
+async def handle_floor_release(user_id, data):
+    """Nhả lượt nói (chỉ người đang giữ mới nhả được)."""
+    pin = client_profiles.get(user_id, {}).get("event_pin", "")
+    await release_floor((pin, str(data.get("channel_id") or "")), user_id)
+
+
+async def release_floor(key, user_id, reason="released"):
+    current = floors.get(key)
+    if current is None or current["user_id"] != user_id:
+        return
+    del floors[key]
+    await broadcast(key[0], floor_state_payload(key[1], None, reason=reason))
+
+
+async def expire_floor(key, token):
+    current = floors.get(key)
+    if current is not None and current["token"] is token:
+        print(f"[{current['user_id']}] giữ lượt nói quá {FLOOR_MAX_SECONDS}s trên {key[1]}, tự thu hồi.")
+        await release_floor(key, current["user_id"], reason="timeout")
+
+
+async def release_floors_of(user_id, keep_pin=None, keep_channels=()):
+    """Thu hồi mọi lượt nói của một người (ngắt kết nối, hoặc đổi sự kiện/vai trò).
+    Giữ lại lượt trên các kênh người đó vẫn thuộc về (VD kết nối lại cùng vai trò)."""
+    for key, current in list(floors.items()):
+        if current["user_id"] != user_id:
+            continue
+        if key[0] == keep_pin and key[1] in keep_channels:
+            continue
+        await release_floor(key, user_id, reason="left")
 
 
 async def relay_ptt(websocket, user_id, data):
@@ -248,6 +355,10 @@ async def signaling_handler(websocket):
                 await route_peer_message(user_id, msg_type, data)
             elif msg_type == "ptt" and user_id:
                 await relay_ptt(websocket, user_id, data)
+            elif msg_type == "floor_request" and user_id:
+                await handle_floor_request(websocket, user_id, data)
+            elif msg_type == "floor_release" and user_id:
+                await handle_floor_release(user_id, data)
     except websockets.exceptions.ConnectionClosed:
         print(f"[{user_id}] đã ngắt kết nối đột ngột.")
     finally:
@@ -256,6 +367,7 @@ async def signaling_handler(websocket):
             del connected_clients[user_id]
             profile = client_profiles.pop(user_id, {})
             await notify_user_list(profile.get("event_pin", ""))
+            await release_floors_of(user_id)  # Mất kết nối: nhả lượt nói cho người khác
 
 
 # ----------------------------------------------------------------------------

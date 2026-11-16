@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import com.example.damthoai.network.SignalingConnectionState
 import com.example.damthoai.service.CallState
 import com.example.damthoai.service.DamThoaiCallManager
+import com.example.damthoai.service.FloorStatus
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.damthoai.data.CallContent
@@ -108,10 +109,13 @@ fun ActiveCallScreen(
     val liveCue: LiveCue? = null
 
     val isScreenPttPressed = remember { mutableStateOf(false) }
-    val displayState = if (state == CallUiState.CallIdle && isScreenPttPressed.value) {
-        CallUiState.CallTalk
-    } else {
-        state
+    // Trạng thái nút PTT theo lượt nói thật (server quyết định), cho mọi nguồn bấm: màn hình, phím cứng, tai nghe
+    val floorStatus by callManager.floorStatus.collectAsState()
+    val displayState = when (floorStatus) {
+        is FloorStatus.Talking, is FloorStatus.Requesting -> CallUiState.CallTalk
+        is FloorStatus.Busy -> CallUiState.CallBusy
+        is FloorStatus.Cut -> CallUiState.CallCut
+        FloorStatus.Idle -> state
     }
 
     val content = CallContent(

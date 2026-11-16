@@ -60,6 +60,17 @@ sealed class SignalingEvent {
         val eventName: String,
         val found: Boolean
     ) : SignalingEvent()
+    /** Server cho mình giữ lượt nói trên [channelId]. */
+    data class FloorGranted(val channelId: String) : SignalingEvent()
+    /** Server từ chối: [holderId] đang nói ("busy") hoặc mình không thuộc kênh ("not_member"). */
+    data class FloorDenied(val channelId: String, val holderId: String?, val reason: String) : SignalingEvent()
+    /** Ai đang giữ lượt trên [channelId] (null = kênh trống); [preemptedId] vừa bị chen ngang. */
+    data class FloorState(
+        val channelId: String,
+        val holderId: String?,
+        val preemptedId: String?,
+        val reason: String
+    ) : SignalingEvent()
     /** Một thành viên bắt đầu/ngừng nói trên [channelId]. */
     data class PttReceived(
         val senderId: String,
@@ -252,6 +263,23 @@ class SignalingClient(
                     }
                 }
 
+                SignalingType.FLOOR_GRANTED,
+                SignalingType.FLOOR_DENIED,
+                SignalingType.FLOOR_STATE -> {
+                    val floor = json.decodeFromString(FloorMessage.serializer(), jsonStr)
+                    if (floor.channelId.isBlank()) return
+                    _events.tryEmit(
+                        when (baseMsg.type) {
+                            SignalingType.FLOOR_GRANTED -> SignalingEvent.FloorGranted(floor.channelId)
+                            SignalingType.FLOOR_DENIED ->
+                                SignalingEvent.FloorDenied(floor.channelId, floor.holderId, floor.reason.orEmpty())
+                            else -> SignalingEvent.FloorState(
+                                floor.channelId, floor.holderId, floor.preemptedId, floor.reason.orEmpty()
+                            )
+                        }
+                    )
+                }
+
                 else -> {
                     Log.w(TAG, "Loại gói tin không xác định: ${baseMsg.type}")
                 }
@@ -325,6 +353,14 @@ class SignalingClient(
         val msg = PttMessage(channelId = channelId, talking = talking)
         return sendMessage(json.encodeToString(PttMessage.serializer(), msg))
     }
+
+    /** Xin lượt nói trên [channelId] (server trả floor_granted / floor_denied). */
+    fun requestFloor(channelId: String): Boolean =
+        sendMessage(json.encodeToString(FloorMessage.serializer(), FloorMessage(SignalingType.FLOOR_REQUEST, channelId)))
+
+    /** Nhả lượt nói trên [channelId]. */
+    fun releaseFloor(channelId: String): Boolean =
+        sendMessage(json.encodeToString(FloorMessage.serializer(), FloorMessage(SignalingType.FLOOR_RELEASE, channelId)))
 
     /**
      * Gửi chuỗi tin nhắn JSON qua WebSocket

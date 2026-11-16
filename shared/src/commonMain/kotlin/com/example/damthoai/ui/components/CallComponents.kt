@@ -84,7 +84,6 @@ fun PttButton(
     onPress: () -> Unit = {},
     onRelease: (Boolean) -> Unit = {}
 ) {
-    val enabled = state != CallBusy && state != CallCut
     val label = when (state) {
         CallOffline -> "GIỮ ĐỂ GHI"
         CallBusy -> "KÊNH ĐANG BẬN"
@@ -92,22 +91,22 @@ fun PttButton(
         CallUiState.CallTalk, CallUiState.CallTake -> "ĐANG PHÁT"
         else -> "GIỮ ĐỂ NÓI"
     }
-    val pointerModifier = if (enabled) {
-        Modifier.pointerInput(enabled) {
-            detectTapGestures(
-                onPress = {
-                    onPress()
-                    var wasReleased = false
-                    try {
-                        wasReleased = tryAwaitRelease()
-                    } finally {
-                        onRelease(wasReleased)
-                    }
+    // Luôn nhận cử chỉ, kể cả khi "bận"/"bị chiếm quyền": trạng thái đó xuất hiện ngay lúc người dùng
+    // đang giữ nút. Nếu gỡ bộ bắt cử chỉ giữa chừng, lần nhả sẽ bị mất và PTT kẹt ở trạng thái bấm.
+    val latestOnPress by androidx.compose.runtime.rememberUpdatedState(onPress)
+    val latestOnRelease by androidx.compose.runtime.rememberUpdatedState(onRelease)
+    val pointerModifier = Modifier.pointerInput(Unit) {
+        detectTapGestures(
+            onPress = {
+                latestOnPress()
+                var wasReleased = false
+                try {
+                    wasReleased = tryAwaitRelease()
+                } finally {
+                    latestOnRelease(wasReleased)
                 }
-            )
-        }
-    } else {
-        Modifier
+            }
+        )
     }
 
     Box(

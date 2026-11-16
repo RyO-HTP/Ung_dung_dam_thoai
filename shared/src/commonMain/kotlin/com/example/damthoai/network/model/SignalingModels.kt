@@ -26,7 +26,35 @@ object SignalingType {
     const val EVENT_INFO = "event_info"
     /** Báo bắt đầu/ngừng nói trên một kênh (server chuyển cho cả sự kiện, máy nhận tự lọc theo kênh). */
     const val PTT = "ptt"
+
+    // Giành lượt nói (server quyết định): app gửi request/release, server trả granted/denied
+    // cho người xin và phát floor_state (ai đang giữ lượt) cho cả sự kiện.
+    const val FLOOR_REQUEST = "floor_request"
+    const val FLOOR_RELEASE = "floor_release"
+    const val FLOOR_GRANTED = "floor_granted"
+    const val FLOOR_DENIED = "floor_denied"
+    const val FLOOR_STATE = "floor_state"
 }
+
+/**
+ * Gói tin giành lượt nói, dùng chung cho cả 5 loại floor_*.
+ * - floor_denied: [holderId] = người đang giữ lượt, [reason] = "busy" / "not_member".
+ * - floor_state: [holderId] null = kênh trống; [preemptedId] = người vừa bị chen ngang;
+ *   [reason] = "preempted" / "released" / "timeout" / "left".
+ */
+@Serializable
+data class FloorMessage(
+    @SerialName("type")
+    val type: String,
+    @SerialName("channel_id")
+    val channelId: String = "",
+    @SerialName("holder_id")
+    val holderId: String? = null,
+    @SerialName("preempted_id")
+    val preemptedId: String? = null,
+    @SerialName("reason")
+    val reason: String? = null
+)
 
 /**
  * Gói tin trạng thái PTT: { "type": "ptt", "channel_id": "ch_02", "talking": true }.

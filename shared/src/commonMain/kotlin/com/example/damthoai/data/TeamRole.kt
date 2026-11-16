@@ -2,8 +2,9 @@ package com.example.damthoai.data
 
 /**
  * Vai trò phân tầng trong sự kiện.
- * - Trưởng ban: chỉ đàm thoại với trưởng nhóm (qua kênh "Ban chỉ huy").
- * - Trưởng nhóm: đàm thoại với trưởng ban (kênh "Ban chỉ huy") và thành viên nhóm mình (kênh nhóm).
+ * - Trưởng ban: đàm thoại với trưởng nhóm và các trưởng ban khác (kênh "Ban chỉ huy").
+ * - Trưởng nhóm: đàm thoại với trưởng ban, các trưởng nhóm khác (kênh "Ban chỉ huy")
+ *   và thành viên nhóm mình (kênh nhóm).
  * - Thành viên: chỉ đàm thoại trong kênh nhóm của mình (với thành viên và trưởng nhóm của nhóm đó).
  *
  * [wire] là mã gửi qua máy chủ signaling và nhúng trong mã QR.
@@ -47,23 +48,14 @@ object TeamChannels {
     }
 
     /**
-     * Các kênh hai người dùng để nói chuyện với nhau; rỗng = KHÔNG được kết nối.
-     * - Trưởng ban ↔ trưởng nhóm: kênh Ban chỉ huy.
-     * - Trưởng nhóm ↔ thành viên cùng nhóm: kênh nhóm.
-     * - Thành viên ↔ thành viên cùng nhóm: kênh nhóm.
-     * Mọi cặp khác (trưởng ban ↔ thành viên, trưởng ban ↔ trưởng ban, trưởng nhóm ↔ trưởng nhóm,
-     * khác nhóm) không kết nối.
+     * Các kênh hai người dùng để nói chuyện với nhau (các kênh cả hai cùng thuộc về);
+     * rỗng = KHÔNG được kết nối.
+     * - Trưởng ban ↔ trưởng ban, trưởng ban ↔ trưởng nhóm, trưởng nhóm ↔ trưởng nhóm: Ban chỉ huy.
+     * - Trưởng nhóm ↔ thành viên cùng nhóm, thành viên ↔ thành viên cùng nhóm: kênh nhóm.
+     * - Trưởng ban ↔ thành viên, hoặc thành viên khác nhóm: không có kênh chung → không kết nối.
      */
-    fun sharedChannels(a: Seat, b: Seat): Set<String> {
-        val roles = setOf(a.role, b.role)
-        val sameGroup = a.groupId == b.groupId
-        return when {
-            roles == setOf(TeamRole.TRUONG_BAN, TeamRole.TRUONG_NHOM) -> setOf(COMMAND_ID)
-            roles == setOf(TeamRole.TRUONG_NHOM, TeamRole.THANH_VIEN) && sameGroup -> setOf(a.groupId)
-            a.role == TeamRole.THANH_VIEN && b.role == TeamRole.THANH_VIEN && sameGroup -> setOf(a.groupId)
-            else -> emptySet()
-        }
-    }
+    fun sharedChannels(a: Seat, b: Seat): Set<String> =
+        channelsOf(a).toSet() intersect channelsOf(b).toSet()
 
     fun channelName(channelId: String, groupName: String = ""): String = when (channelId) {
         COMMAND_ID -> COMMAND_NAME

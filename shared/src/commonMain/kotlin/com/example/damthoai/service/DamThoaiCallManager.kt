@@ -30,7 +30,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -140,6 +143,21 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
     // Kênh -> âm lượng nghe hiệu dụng (0 = tắt loa kênh đó). Kênh chưa đặt = 1.
     private val channelVolumes = mutableMapOf<String, Float>()
 
+    // Giành lượt nói: server quyết định ai được nói trên mỗi kênh, trưởng ban được chen ngang
+    private val floor = FloorController(
+        scope = scope,
+        myUserId = { AppStartPrefs.getUserId() },
+        isOnline = { signalingClient.isConnected() },
+        sendRequest = { signalingClient.requestFloor(it) },
+        sendRelease = { signalingClient.releaseFloor(it) },
+        setMicOpen = { rtc.setMicrophoneEnabled(it) }
+    )
+    val floorStatus: StateFlow<FloorStatus> = floor.status
+
+    // Câu báo cho người dùng (kênh bận, bị chen ngang, hết giờ nói) — UI hiện dạng toast
+    private val _floorNotices = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val floorNotices: SharedFlow<String> = _floorNotices.asSharedFlow()
+
     // Đã chọn tuyến âm thanh cho phiên hiện tại chưa (không ghi đè lựa chọn của người dùng)
     private var audioSessionStarted = false
 
@@ -166,6 +184,24 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
                 }
             }
         }
+        // Đổi sự kiện giành lượt nói thành câu báo có tên người
+        scope.launch {
+            floor.notices.collect { notice ->
+                val text = when (notice) {
+                    is FloorNotice.Busy -> "Kênh đang bận: ${memberLabel(notice.holderId)} đang nói"
+                    is FloorNotice.Preempted -> "${memberLabel(notice.byId, withRole = true)} đã giành lượt nói"
+                    FloorNotice.Timeout -> "Đã nói quá 60 giây. Nhả PTT rồi bấm lại để nói tiếp"
+                }
+                _floorNotices.tryEmit(text)
+            }
+        }
+    }
+
+    /** Tên hiển thị của một thành viên (kèm vai trò nếu cần). */
+    private fun memberLabel(userId: String?, withRole: Boolean = false): String {
+        val member = _onlineMembers.value.firstOrNull { it.userId == userId } ?: return "Người khác"
+        val name = member.displayName?.takeIf { it.isNotBlank() } ?: member.userId
+        return if (withRole) "$name (${member.seat().role.title})" else name
     }
 
     // ------------------------------------------------------------------
@@ -469,7 +505,11 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
                 evaluatePeers(event.members)
             }
 
-            is SignalingEvent.PttReceived -> handlePttReceived(event)
+            is SignalingEvent.FloorGranted -> floor.onGranted(event.channelId)
+            is SignalingEvent.FloorDenied -> floor.onDenied(event.channelId, event.holderId)
+            is SignalingEvent.FloorState -> handleFloorState(event)
+            // Gói "ptt" của app bản cũ: đã thay bằng floor_state, bỏ qua
+            is SignalingEvent.PttReceived -> {}
         }
     }
 
@@ -480,34 +520,40 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
     }
 
     /**
-     * Một thành viên bắt đầu/ngừng nói. Chỉ xét kênh mình thuộc về và người được phép nghe trên kênh đó.
-     * (a) Trả lời nhanh: khi có người bắt đầu nói trên một kênh khác kênh đang phát (và mình không
-     * đang giữ PTT), tự chuyển kênh phát sang kênh đó → bấm PTT là trả lời đúng người vừa gọi.
+     * Người giữ lượt nói trên một kênh đổi (server phát cho cả sự kiện).
+     * - Cập nhật "ai đang nói" cho các kênh mình thuộc về.
+     * - Mình đang nói mà lượt sang người khác (bị chen ngang / hết giờ): tắt mic.
+     * - (a) Trả lời nhanh: có người bắt đầu nói trên kênh khác kênh đang phát (và mình không giữ PTT)
+     *   → tự chuyển kênh phát sang kênh đó, bấm PTT là trả lời đúng người vừa gọi.
      */
-    private fun handlePttReceived(event: SignalingEvent.PttReceived) {
-        if (event.channelId !in allowedChannelsWith(event.senderId)) return
-        val current = _speakers.value[event.channelId].orEmpty()
-        val updated = if (event.talking) current + event.senderId else current - event.senderId
-        _speakers.value = (_speakers.value + (event.channelId to updated)).filterValues { it.isNotEmpty() }
+    private fun handleFloorState(event: SignalingEvent.FloorState) {
+        floor.onState(event.channelId, event.holderId, event.preemptedId, event.reason)
 
-        if (event.talking && !_isPttPressed.value && _talkChannelId.value != event.channelId) {
-            Log.d(TAG, "${event.senderId} đang nói trên ${event.channelId}: tự chuyển kênh phát để trả lời")
+        if (event.channelId !in TeamChannels.channelsOf(_seat.value)) return
+        val holder = event.holderId
+        _speakers.value = if (holder == null) {
+            _speakers.value - event.channelId
+        } else {
+            _speakers.value + (event.channelId to setOf(holder))
+        }
+
+        val me = AppStartPrefs.getUserId()
+        if (holder != null && holder != me && !_isPttPressed.value && _talkChannelId.value != event.channelId) {
+            Log.d(TAG, "$holder đang nói trên ${event.channelId}: tự chuyển kênh phát để trả lời")
             setTalkChannel(event.channelId)
         }
     }
 
     /**
      * Chọn kênh phát mic. Chỉ chọn được kênh mình thuộc về.
-     * Đổi kênh khi đang giữ PTT: ngừng nói ở kênh cũ, nói tiếp ở kênh mới.
+     * Đổi kênh khi đang giữ PTT: trả lượt kênh cũ, xin lượt kênh mới.
      */
     fun setTalkChannel(channelId: String) {
         if (channelId !in TeamChannels.channelsOf(_seat.value)) return
-        val previous = _talkChannelId.value
-        if (previous == channelId) return
-        if (_isPttPressed.value) signalingClient.sendPtt(previous, talking = false)
+        if (_talkChannelId.value == channelId) return
         _talkChannelId.value = channelId
-        if (_isPttPressed.value) signalingClient.sendPtt(channelId, talking = true)
         applyPeerAudio()
+        if (_isPttPressed.value) floor.switchChannel(channelId)
     }
 
     /**
@@ -748,10 +794,11 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
     fun setPushToTalkPressed(isPressed: Boolean) {
         val wasPressed = _isPttPressed.value
         _isPttPressed.value = isPressed
-        rtc.setMicrophoneEnabled(isPressed)
-        // Báo cả kênh đang phát biết mình bắt đầu/ngừng nói (hiện "X đang nói", để người nghe trả lời nhanh)
-        if (wasPressed != isPressed && signalingClient.isConnected()) {
-            signalingClient.sendPtt(_talkChannelId.value, talking = isPressed)
+        when {
+            // Bấm: xin lượt nói; mic chỉ mở khi server cho (hoặc không có server)
+            isPressed && !wasPressed -> floor.press(_talkChannelId.value)
+            // Nhả (kể cả gọi lại khi kết thúc phiên): luôn tắt mic, trả lượt
+            !isPressed -> floor.release()
         }
     }
 
