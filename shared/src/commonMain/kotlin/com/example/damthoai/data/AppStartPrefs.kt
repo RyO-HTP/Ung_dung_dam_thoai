@@ -114,6 +114,23 @@ object AppStartPrefs {
         prefs.putString(KEY_ROLE_TITLE, roleTitle.trim())
     }
 
+    private const val KEY_TEAM_ROLE = "team_role"
+    private const val KEY_GROUP_ID = "group_channel_id"
+    private const val KEY_GROUP_NAME = "group_channel_name"
+
+    /** Vai trò + kênh nhóm hiện tại (mặc định: thành viên kênh chung). */
+    fun getSeat(): Seat = Seat(
+        role = TeamRole.fromWire(prefs.getStringOrNull(KEY_TEAM_ROLE)),
+        groupId = prefs.getString(KEY_GROUP_ID, TeamChannels.GENERAL_ID),
+        groupName = prefs.getString(KEY_GROUP_NAME, TeamChannels.GENERAL_NAME)
+    )
+
+    fun setSeat(seat: Seat) {
+        prefs.putString(KEY_TEAM_ROLE, seat.role.wire)
+        prefs.putString(KEY_GROUP_ID, seat.groupId)
+        prefs.putString(KEY_GROUP_NAME, seat.groupName)
+    }
+
     /** true nếu thiết bị này là ban tổ chức (đã tạo sự kiện hiện tại). */
     fun isOrganizer(): Boolean = prefs.getBoolean(KEY_IS_ORGANIZER, false)
 

@@ -60,6 +60,12 @@ sealed class SignalingEvent {
         val eventName: String,
         val found: Boolean
     ) : SignalingEvent()
+    /** Một thành viên bắt đầu/ngừng nói trên [channelId]. */
+    data class PttReceived(
+        val senderId: String,
+        val channelId: String,
+        val talking: Boolean
+    ) : SignalingEvent()
 }
 
 /**
@@ -238,6 +244,14 @@ class SignalingClient(
                     )
                 }
 
+                SignalingType.PTT -> {
+                    val ptt = json.decodeFromString(PttMessage.serializer(), jsonStr)
+                    val sender = ptt.senderId
+                    if (!sender.isNullOrBlank() && ptt.channelId.isNotBlank()) {
+                        _events.tryEmit(SignalingEvent.PttReceived(sender, ptt.channelId, ptt.talking))
+                    }
+                }
+
                 else -> {
                     Log.w(TAG, "Loại gói tin không xác định: ${baseMsg.type}")
                 }
@@ -304,6 +318,12 @@ class SignalingClient(
             candidate = candidate
         )
         return sendMessage(json.encodeToString(IceCandidateSignalingMessage.serializer(), msg))
+    }
+
+    /** Báo cho cả sự kiện biết mình bắt đầu/ngừng nói trên [channelId]. */
+    fun sendPtt(channelId: String, talking: Boolean): Boolean {
+        val msg = PttMessage(channelId = channelId, talking = talking)
+        return sendMessage(json.encodeToString(PttMessage.serializer(), msg))
     }
 
     /**

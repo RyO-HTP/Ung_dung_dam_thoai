@@ -92,9 +92,14 @@ fun ActiveCallScreen(
     val networkStatus = networkStatusOverride ?: observedNetworkStatus
     val peerStatusText = when (val current = callState) {
         is CallState.InCall -> {
-            val peerName = onlineMembers.firstOrNull { it.userId == current.peerUserId }
-                ?.displayName?.takeIf { it.isNotBlank() } ?: current.peerUserId
-            "Đã kết nối với $peerName"
+            val ids = current.peerUserIds
+            if (ids.size == 1) {
+                val peerName = onlineMembers.firstOrNull { it.userId == ids[0] }
+                    ?.displayName?.takeIf { it.isNotBlank() } ?: ids[0]
+                "Đã kết nối với $peerName"
+            } else {
+                "Đã kết nối với ${ids.size} người"
+            }
         }
         is CallState.Calling -> "Đang kết nối âm thanh..."
         else -> if (onlineMembers.size <= 1) "Chờ thành viên khác vào kênh" else "Đang chờ kết nối"

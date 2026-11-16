@@ -3,7 +3,10 @@ package com.example.damthoai.ui.channels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -108,11 +111,26 @@ fun ChannelMenuSheet(
                         style = DamType.Heading18
                     )
                     Text(
-                        "MC · kênh chuyên trách",
+                        "${channelItem.members.size} người đang trong kênh",
                         color = TextSecondary,
                         style = DamType.Body
                     )
                 }
+            }
+
+            // Danh sách ai đang trong kênh
+            Spacer(Modifier.height(16.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 260.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (channelItem.members.isEmpty()) {
+                    Text("Chưa có ai online trong kênh", color = TextSecondary, style = DamType.Body)
+                }
+                channelItem.members.forEach { member -> ChannelMemberRow(member) }
             }
 
             Spacer(Modifier.height(24.dp))
@@ -176,6 +194,47 @@ fun ChannelMenuSheet(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ChannelMemberRow(member: ChannelMemberUi) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(IconBoxBg)
+                .then(if (member.isTalking) Modifier.border(1.5.dp, AccentCyan, CircleShape) else Modifier),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                member.displayName.trim().take(1).uppercase(),
+                color = TextPrimary,
+                style = DamType.Body.copy(fontSize = 13.sp)
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                member.displayName + if (member.isMe) " (bạn)" else "",
+                color = TextPrimary,
+                style = DamType.Heading16.copy(fontSize = 14.sp),
+                maxLines = 1
+            )
+            Text(
+                listOf(member.teamRoleTitle, member.roleTitle).filter { it.isNotBlank() }.joinToString(" · "),
+                color = TextSecondary,
+                style = DamType.Body.copy(fontSize = 12.sp),
+                maxLines = 1
+            )
+        }
+        if (member.isTalking) {
+            Text("Đang nói", color = AccentCyan, style = DamType.Body.copy(fontSize = 12.sp))
         }
     }
 }

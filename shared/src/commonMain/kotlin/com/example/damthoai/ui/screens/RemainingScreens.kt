@@ -58,6 +58,9 @@ import com.example.damthoai.data.Channel
 import com.example.damthoai.data.Event
 import com.example.damthoai.data.Member
 import com.example.damthoai.data.MemberLevel
+import com.example.damthoai.data.TeamChannels
+import com.example.damthoai.data.TeamRole
+import com.example.damthoai.data.qr.ChannelQrLink
 import com.example.damthoai.ui.channels.ChannelItemUiState
 import com.example.damthoai.ui.channels.ChannelMenuSheet
 import com.example.damthoai.ui.components.AvatarCircle
@@ -458,6 +461,13 @@ private fun ManageEventContent(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(channel.name, color = TextPrimary, style = DamType.Body)
                 }
+                // Mã QR riêng của kênh này
+                IconBox(
+                    iconRes = Res.drawable.ic_qr,
+                    contentDescription = "Mã QR ${channel.name}",
+                    onClick = { onChannelQrCode(channel.id) }
+                )
+                Spacer(Modifier.width(6.dp))
                 IconBox(
                     iconRes = Res.drawable.ic_dots,
                     contentDescription = null,
@@ -650,49 +660,66 @@ fun MyQrCodeScreen(
 ) {
     val platformUi = LocalPlatformUi.current
     val clipboard = rememberTextClipboard()
-    val currentMember = event.members.firstOrNull { it.id == event.ownerId } ?: event.members.firstOrNull()
-    val userLevel = currentMember?.level ?: MemberLevel.LEVEL_1
+    val mySeat = remember { AppStartPrefs.getSeat() }
 
-    if (userLevel == MemberLevel.LEVEL_3) {
+    // Thành viên không được phát mã mời
+    if (mySeat.role == TeamRole.THANH_VIEN) {
         LaunchedEffect(Unit) {
-            AppToast.show("Cấp 3 không được phép truy cập màn hình này.")
+            AppToast.show("Thành viên không được tạo mã QR mời vào kênh.")
             onBack()
         }
         return
     }
 
-    val channels = event.channels.ifEmpty { listOf(Channel(id = "ch_01", name = "Toàn sự kiện")) }
-    var selectedChannelId by rememberSaveable { mutableStateOf(channel?.id ?: channels.first().id) }
-    val selectedChannel = channels.firstOrNull { it.id == selectedChannelId } ?: channels.first()
+    // Trưởng ban: mọi nhóm, mọi vai trò. Trưởng nhóm: chỉ mời thành viên vào nhóm của mình.
+    val isLeadOnly = mySeat.role == TeamRole.TRUONG_NHOM
+    val roleOptions = if (isLeadOnly) {
+        listOf(TeamRole.THANH_VIEN)
+    } else {
+        listOf(TeamRole.THANH_VIEN, TeamRole.TRUONG_NHOM, TeamRole.TRUONG_BAN)
+    }
+    val groups = if (isLeadOnly) {
+        listOf(Channel(id = mySeat.groupId, name = TeamChannels.channelName(mySeat.groupId, mySeat.groupName)))
+    } else {
+        event.channels.filter { it.id != TeamChannels.COMMAND_ID }
+            .ifEmpty { listOf(Channel(id = TeamChannels.GENERAL_ID, name = TeamChannels.GENERAL_NAME)) }
+    }
 
-    ScreenFrame("Mã QR của ban", onBack, modifier) {
-        if (channels.isNotEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                channels.forEach { ch ->
-                    val selected = ch.id == selectedChannel.id
-                    Box(
-                        modifier = Modifier
-                            .height(34.dp)
-                            .clip(CircleShape)
-                            .background(if (selected) AccentCyan else GlassBg)
-                            .border(1.dp, if (selected) AccentCyan else GlassBorder, CircleShape)
-                            .clickable { selectedChannelId = ch.id }
-                            .padding(horizontal = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = ch.name,
-                            color = if (selected) TextPrimary else TextSecondary,
-                            style = DamType.Small.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
+    var selectedRoleWire by rememberSaveable { mutableStateOf(roleOptions.first().wire) }
+    val selectedRole = TeamRole.fromWire(selectedRoleWire)
+    var selectedChannelId by rememberSaveable { mutableStateOf(channel?.id ?: groups.first().id) }
+    val selectedGroup = groups.firstOrNull { it.id == selectedChannelId } ?: groups.first()
+
+    val currentPin = AppStartPrefs.getEventPin().ifBlank { event.pinCode }
+    // Mỗi tổ hợp (kênh, vai trò) cho một mã riêng; quét vào đúng kênh, đúng vai trò
+    val qrContent = ChannelQrLink.build(
+        pin = currentPin,
+        eventName = event.name,
+        channelId = selectedGroup.id,
+        channelName = selectedGroup.name,
+        role = selectedRole
+    )
+    val targetName = if (selectedRole == TeamRole.TRUONG_BAN) TeamChannels.COMMAND_NAME else selectedGroup.name
+
+    ScreenFrame("Mã QR vào kênh", onBack, modifier) {
+        Text("VAI TRÒ", color = TextSecondary, style = DamType.Small.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold))
+        Spacer(Modifier.height(6.dp))
+        QrChipRow(
+            labels = roleOptions.map { it.wire to it.title },
+            selected = selectedRole.wire,
+            onSelect = { selectedRoleWire = it }
+        )
+        Spacer(Modifier.height(12.dp))
+
+        // Trưởng ban luôn vào Ban chỉ huy nên không cần chọn nhóm
+        if (selectedRole != TeamRole.TRUONG_BAN) {
+            Text("NHÓM / PHÒNG BAN", color = TextSecondary, style = DamType.Small.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold))
+            Spacer(Modifier.height(6.dp))
+            QrChipRow(
+                labels = groups.map { it.id to it.name },
+                selected = selectedGroup.id,
+                onSelect = { selectedChannelId = it }
+            )
             Spacer(Modifier.height(12.dp))
         }
 
@@ -707,28 +734,23 @@ fun MyQrCodeScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "Mã vào kênh ${selectedChannel.name}",
+                    text = "${selectedRole.title} · $targetName",
                     color = TextPrimary,
                     style = DamType.Heading.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold),
                     textAlign = TextAlign.Center
                 )
-
-                val currentPin = AppStartPrefs.getEventPin().ifBlank { event.pinCode }
-                val encodedName = event.name.encodeURLParameter(spaceToPlus = true)
-                val qrContent = selectedChannel.qrPayload.ifBlank {
-                    "damthoai://join?channel=${selectedChannel.id}&pin=$currentPin&name=$encodedName"
-                }
                 QrCodeImage(
                     content = qrContent,
                     size = 200.dp,
-                    contentDescription = null
+                    contentDescription = "Mã QR ${selectedRole.title} $targetName"
                 )
-
-                Text("MÃ PIN", color = TextSecondary, style = DamType.Small.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold))
+                Text("MÃ PIN SỰ KIỆN", color = TextSecondary, style = DamType.Small.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold))
+                Text(text = currentPin, color = AccentCyan, style = DamType.PinBig)
                 Text(
-                    text = selectedChannel.pin.ifBlank { currentPin },
-                    color = AccentCyan,
-                    style = DamType.PinBig
+                    "Nhập PIN tay sẽ vào Kênh chung với vai trò thành viên; quét QR để vào đúng kênh và vai trò.",
+                    color = TextSecondary,
+                    style = DamType.Small.copy(fontSize = 11.sp),
+                    textAlign = TextAlign.Center
                 )
             }
         }
@@ -746,10 +768,7 @@ fun MyQrCodeScreen(
                     .clip(RoundedCornerShape(18.dp))
                     .background(GlassBg)
                     .border(1.5.dp, AccentCyan, RoundedCornerShape(18.dp))
-                    .clickable {
-                        val link = selectedChannel.qrPayload.ifBlank { "damthoai://join?channel=${selectedChannel.id}&pin=${selectedChannel.pin}" }
-                        clipboard.copy(link)
-                    },
+                    .clickable { clipboard.copy(qrContent) },
                 contentAlignment = Alignment.Center
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
@@ -765,10 +784,7 @@ fun MyQrCodeScreen(
                     .height(48.dp)
                     .clip(RoundedCornerShape(18.dp))
                     .background(PrimaryBrush)
-                    .clickable {
-                        val link = selectedChannel.qrPayload.ifBlank { "damthoai://join?channel=${selectedChannel.id}&pin=${selectedChannel.pin}" }
-                        platformUi.shareText(link, "Chia sẻ mã QR kênh")
-                    },
+                    .clickable { platformUi.shareText(qrContent, "Chia sẻ mã QR kênh") },
                 contentAlignment = Alignment.Center
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
@@ -776,6 +792,37 @@ fun MyQrCodeScreen(
                     Spacer(Modifier.width(8.dp))
                     Text("Chia sẻ", color = TextPrimary, style = DamType.Button.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold))
                 }
+            }
+        }
+    }
+}
+
+/** Hàng chip chọn một giá trị (id → nhãn). */
+@Composable
+private fun QrChipRow(labels: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        labels.forEach { (id, label) ->
+            val isSelected = id == selected
+            Box(
+                modifier = Modifier
+                    .height(34.dp)
+                    .clip(CircleShape)
+                    .background(if (isSelected) AccentCyan else GlassBg)
+                    .border(1.dp, if (isSelected) AccentCyan else GlassBorder, CircleShape)
+                    .clickable { onSelect(id) }
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = label,
+                    color = if (isSelected) TextPrimary else TextSecondary,
+                    style = DamType.Small.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }

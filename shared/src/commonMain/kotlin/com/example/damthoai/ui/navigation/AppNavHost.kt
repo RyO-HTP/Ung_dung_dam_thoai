@@ -377,8 +377,15 @@ fun AppNavHost(
                         navController.popBackStack()
                     }
                 },
-                onQrCode = { navController.navigate(AppRoute.MyQrCode.route) },
-                onChannelQrCode = { _ -> navController.navigate(AppRoute.MyQrCode.route) },
+                onQrCode = {
+                    selectedQrChannelId = null
+                    navController.navigate(AppRoute.MyQrCode.route)
+                },
+                // Mở đúng QR của kênh được bấm (trước đây bỏ qua id nên kênh nào cũng ra cùng một mã)
+                onChannelQrCode = { channelId ->
+                    selectedQrChannelId = channelId
+                    navController.navigate(AppRoute.MyQrCode.route)
+                },
                 onMembers = { navController.navigate(AppRoute.EventMembers.route) },
                 onLiveCue = { navController.navigate(AppRoute.LiveCueDraft.route) },
                 onEndEvent = {
@@ -388,7 +395,7 @@ fun AppNavHost(
                 onNavigateToActiveCall = {
                     navController.navigate(AppRoute.ActiveCall.route)
                 },
-                channels = channelUiState.channels.map { it.channel },
+                channels = channelUiState.catalog,
                 event = currentEvent,
                 onAddChannel = { channelViewModel.addChannel(it) },
                 onRenameChannel = { id, name -> channelViewModel.renameChannel(id, name) },
@@ -410,7 +417,9 @@ fun AppNavHost(
             MyQrCodeScreen(
                 onBack = { navController.popBackStack() },
                 onShare = {},
-                event = currentEvent.copy(channels = sharedChannelViewModel.uiState.value.channels.map { it.channel })
+                // Danh mục nhóm/phòng ban để tạo QR từng kênh (không phải các kênh mình đang ở)
+                event = currentEvent.copy(channels = sharedChannelViewModel.uiState.value.catalog),
+                channel = sharedChannelViewModel.uiState.value.catalog.firstOrNull { it.id == selectedQrChannelId }
             )
         }
         composable(AppRoute.EventMembers.route) {

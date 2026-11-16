@@ -4,6 +4,8 @@ import Shared
 
 /// Âm thanh P2P WebRTC cho PTT trên iOS — tương đương WebRTCClient.kt bên Android.
 /// Cài đặt IosRtcBackend (shared/src/iosMain/.../ios/IosRtcEngine.kt).
+/// Dạng MESH: mỗi thành viên khác trong kênh một RTCPeerConnection (khóa bằng peerId),
+/// tất cả dùng chung một track micro.
 final class WebRTCEngine: NSObject, IosRtcBackend, RTCPeerConnectionDelegate {
     private static let localAudioTrackId = "ARDAMSa0"
     private static let localStreamId = "ARDAMS"
@@ -16,25 +18,57 @@ final class WebRTCEngine: NSObject, IosRtcBackend, RTCPeerConnectionDelegate {
         )
     }()
 
+    /// Một kết nối tới một thành viên. ICE candidate có thể đến trước khi đặt xong
+    /// remote description: xếp hàng chờ trong pendingCandidates.
+    private final class Peer {
+        let id: String
+        let pc: RTCPeerConnection
+        let listener: IosPeerListener
+        let localTrack: RTCAudioTrack
+        var remoteTracks: [RTCAudioTrack] = []
+        var pendingCandidates: [RTCIceCandidate] = []
+        var remoteDescriptionSet = false
+        /// Có gửi tiếng mình tới người này không (chỉ người cùng kênh đang phát)
+        var sending = false
+        /// Âm lượng nghe người này (0...1), theo âm lượng kênh chung
+        var volume: Double = 1.0
+
+        init(id: String, pc: RTCPeerConnection, listener: IosPeerListener, localTrack: RTCAudioTrack) {
+            self.id = id
+            self.pc = pc
+            self.listener = listener
+            self.localTrack = localTrack
+        }
+    }
+
     private let lock = NSLock()
-    private var peerConnection: RTCPeerConnection?
-    private var peerListener: IosPeerListener?
-    private var localAudioTrack: RTCAudioTrack?
-    private var remoteAudioTracks: [RTCAudioTrack] = []
+    private var peers: [String: Peer] = [:]
+    // Nguồn thu micro DÙNG CHUNG; mỗi peer một track riêng từ nguồn này để bật/tắt gửi theo từng người
+    private var audioSource: RTCAudioSource?
+    private var trackCounter = 0
     private var iceServers: [RTCIceServer] = [RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"])]
 
     private var micEnabled = false
     private var outputMuted = false
-    private var remoteVolume: Double = 1.0
 
-    // ICE candidate của đối tác có thể đến trước khi đặt xong remote description: xếp hàng chờ
-    private var pendingRemoteCandidates: [RTCIceCandidate] = []
-    private var remoteDescriptionSet = false
+    /// Gọi khi đang giữ lock.
+    private func applySending(_ peer: Peer) {
+        peer.localTrack.isEnabled = micEnabled && peer.sending
+    }
 
     private func locked<T>(_ body: () -> T) -> T {
         lock.lock()
         defer { lock.unlock() }
         return body()
+    }
+
+    /// Tìm Peer sở hữu RTCPeerConnection (gọi khi đang giữ lock).
+    private func peerFor(_ pc: RTCPeerConnection) -> Peer? {
+        peers.values.first { $0.pc === pc }
+    }
+
+    private var allRemoteTracks: [RTCAudioTrack] {
+        peers.values.flatMap { $0.remoteTracks }
     }
 
     // MARK: IosRtcBackend
@@ -48,12 +82,14 @@ final class WebRTCEngine: NSObject, IosRtcBackend, RTCPeerConnectionDelegate {
         locked { iceServers = mapped }
     }
 
-    func hasPeerConnection() -> Bool {
-        locked { peerConnection != nil }
+    func hasPeerConnection(peerId: String) -> Bool {
+        locked { peers[peerId] != nil }
     }
 
-    func createPeerConnection(listener: IosPeerListener) {
-        close()
+    func createPeerConnection(peerId: String, listener: IosPeerListener) {
+        // Chỉ đóng kết nối cũ của ĐÚNG peer này; các thành viên khác giữ nguyên
+        locked({ peers.removeValue(forKey: peerId) })?.pc.close()
+
         let config = RTCConfiguration()
         config.iceServers = locked { iceServers }
         config.sdpSemantics = .unifiedPlan
@@ -62,10 +98,25 @@ final class WebRTCEngine: NSObject, IosRtcBackend, RTCPeerConnectionDelegate {
 
         let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
         guard let pc = Self.factory.peerConnection(with: config, constraints: constraints, delegate: self) else {
-            NSLog("[WebRTCEngine] Không tạo được PeerConnection")
+            NSLog("[WebRTCEngine] Không tạo được PeerConnection tới \(peerId)")
             return
         }
 
+        let track: RTCAudioTrack = locked {
+            // Track micro riêng cho peer này (cùng nguồn thu), mặc định chưa gửi
+            trackCounter += 1
+            let track = Self.factory.audioTrack(with: ensureAudioSource(), trackId: "\(Self.localAudioTrackId)_\(trackCounter)")
+            let peer = Peer(id: peerId, pc: pc, listener: listener, localTrack: track)
+            peers[peerId] = peer
+            applySending(peer)
+            return track
+        }
+        pc.add(track, streamIds: [Self.localStreamId])
+    }
+
+    /// Tạo (một lần) nguồn thu micro dùng chung (gọi khi đang giữ lock).
+    private func ensureAudioSource() -> RTCAudioSource {
+        if let existing = audioSource { return existing }
         let audioConstraints = RTCMediaConstraints(
             mandatoryConstraints: nil,
             optionalConstraints: [
@@ -75,27 +126,21 @@ final class WebRTCEngine: NSObject, IosRtcBackend, RTCPeerConnectionDelegate {
             ]
         )
         let source = Self.factory.audioSource(with: audioConstraints)
-        let track = Self.factory.audioTrack(with: source, trackId: Self.localAudioTrackId)
-        locked {
-            track.isEnabled = micEnabled // Mặc định tắt mic khi chưa giữ phím PTT
-            peerConnection = pc
-            peerListener = listener
-            localAudioTrack = track
-        }
-        pc.add(track, streamIds: [Self.localStreamId])
+        audioSource = source
+        return source
     }
 
-    func createOffer(callback: SdpCallback) {
-        makeOffer(iceRestart: false, callback: callback)
+    func createOffer(peerId: String, callback: SdpCallback) {
+        makeOffer(peerId: peerId, iceRestart: false, callback: callback)
     }
 
-    func restartIce(callback: SdpCallback) {
-        makeOffer(iceRestart: true, callback: callback)
+    func restartIce(peerId: String, callback: SdpCallback) {
+        makeOffer(peerId: peerId, iceRestart: true, callback: callback)
     }
 
-    private func makeOffer(iceRestart: Bool, callback: SdpCallback) {
-        guard let pc = locked({ peerConnection }) else {
-            return deliverError(callback, "Chưa có PeerConnection")
+    private func makeOffer(peerId: String, iceRestart: Bool, callback: SdpCallback) {
+        guard let pc = locked({ peers[peerId]?.pc }) else {
+            return deliverError(callback, "Chưa có PeerConnection tới \(peerId)")
         }
         var mandatory = ["OfferToReceiveAudio": "true"]
         if iceRestart { mandatory["IceRestart"] = "true" }
@@ -105,9 +150,9 @@ final class WebRTCEngine: NSObject, IosRtcBackend, RTCPeerConnectionDelegate {
         }
     }
 
-    func createAnswer(callback: SdpCallback) {
-        guard let pc = locked({ peerConnection }) else {
-            return deliverError(callback, "Chưa có PeerConnection")
+    func createAnswer(peerId: String, callback: SdpCallback) {
+        guard let pc = locked({ peers[peerId]?.pc }) else {
+            return deliverError(callback, "Chưa có PeerConnection tới \(peerId)")
         }
         let constraints = RTCMediaConstraints(mandatoryConstraints: ["OfferToReceiveAudio": "true"], optionalConstraints: nil)
         pc.answer(for: constraints) { [weak self] sdp, error in
@@ -131,11 +176,12 @@ final class WebRTCEngine: NSObject, IosRtcBackend, RTCPeerConnectionDelegate {
         }
     }
 
-    func setRemoteDescription(isOffer: Bool, sdp: String, callback: CompletionCallback) {
-        guard let pc = locked({ peerConnection }) else {
-            DispatchQueue.main.async { callback.onError(message: "Chưa có PeerConnection") }
+    func setRemoteDescription(peerId: String, isOffer: Bool, sdp: String, callback: CompletionCallback) {
+        guard let peer = locked({ peers[peerId] }) else {
+            DispatchQueue.main.async { callback.onError(message: "Chưa có PeerConnection tới \(peerId)") }
             return
         }
+        let pc = peer.pc
         let description = RTCSessionDescription(type: isOffer ? .offer : .answer, sdp: sdp)
         pc.setRemoteDescription(description) { [weak self] error in
             guard let self else { return }
@@ -144,10 +190,10 @@ final class WebRTCEngine: NSObject, IosRtcBackend, RTCPeerConnectionDelegate {
                 return
             }
             let queued: [RTCIceCandidate] = self.locked {
-                guard self.peerConnection === pc else { return [] }
-                self.remoteDescriptionSet = true
-                let items = self.pendingRemoteCandidates
-                self.pendingRemoteCandidates.removeAll()
+                guard self.peers[peerId] === peer else { return [] }
+                peer.remoteDescriptionSet = true
+                let items = peer.pendingCandidates
+                peer.pendingCandidates.removeAll()
                 return items
             }
             queued.forEach { pc.add($0) { _ in } }
@@ -155,72 +201,88 @@ final class WebRTCEngine: NSObject, IosRtcBackend, RTCPeerConnectionDelegate {
         }
     }
 
-    func addIceCandidate(sdpMid: String?, sdpMLineIndex: Int32, candidate: String) {
+    func addIceCandidate(peerId: String, sdpMid: String?, sdpMLineIndex: Int32, candidate: String) {
         let ice = RTCIceCandidate(sdp: candidate, sdpMLineIndex: sdpMLineIndex, sdpMid: sdpMid)
         let pcReady: RTCPeerConnection? = locked {
-            guard let pc = peerConnection, remoteDescriptionSet else {
-                pendingRemoteCandidates.append(ice)
+            guard let peer = peers[peerId] else { return nil }
+            guard peer.remoteDescriptionSet else {
+                peer.pendingCandidates.append(ice)
                 return nil
             }
-            return pc
+            return peer.pc
         }
         pcReady?.add(ice) { error in
-            if let error { NSLog("[WebRTCEngine] Lỗi thêm ICE: \(error.localizedDescription)") }
+            if let error { NSLog("[WebRTCEngine] Lỗi thêm ICE (\(peerId)): \(error.localizedDescription)") }
         }
+    }
+
+    func closePeer(peerId: String) {
+        let pc: RTCPeerConnection? = locked {
+            let removed = peers.removeValue(forKey: peerId)
+            if peers.isEmpty { audioSource = nil } // Không còn ai: nhả micro
+            return removed?.pc
+        }
+        pc?.close()
     }
 
     func setMicrophoneEnabled(enabled: Bool) {
         locked {
             micEnabled = enabled
-            localAudioTrack?.isEnabled = enabled
+            peers.values.forEach(applySending)
+        }
+    }
+
+    func setPeerSending(peerId: String, enabled: Bool) {
+        locked {
+            guard let peer = peers[peerId] else { return }
+            peer.sending = enabled
+            applySending(peer)
         }
     }
 
     func setOutputMuted(muted: Bool) {
         locked {
             outputMuted = muted
-            remoteAudioTracks.forEach { $0.isEnabled = !muted }
+            allRemoteTracks.forEach { $0.isEnabled = !muted }
         }
     }
 
-    func setRemoteVolume(volume: Float) {
+    func setPeerVolume(peerId: String, volume: Float) {
         locked {
-            remoteVolume = Double(min(max(volume, 0), 1))
-            remoteAudioTracks.forEach(applyVolume)
+            guard let peer = peers[peerId] else { return }
+            peer.volume = Double(min(max(volume, 0), 1))
+            peer.remoteTracks.forEach { applyVolume($0, peer.volume) }
         }
     }
 
     /// RTCAudioSource.volume nhận 0...10 (1 = mức gốc)
-    private func applyVolume(_ track: RTCAudioTrack) {
-        track.source.volume = remoteVolume
+    private func applyVolume(_ track: RTCAudioTrack, _ volume: Double) {
+        track.source.volume = volume
     }
 
     func close() {
-        let pc: RTCPeerConnection? = locked {
-            let current = peerConnection
-            peerConnection = nil
-            peerListener = nil
-            localAudioTrack = nil
-            remoteAudioTracks.removeAll()
-            pendingRemoteCandidates.removeAll()
-            remoteDescriptionSet = false
-            return current
+        let pcs: [RTCPeerConnection] = locked {
+            let all = peers.values.map { $0.pc }
+            peers.removeAll()
+            audioSource = nil
+            return all
         }
-        pc?.close()
+        pcs.forEach { $0.close() }
     }
 
     private func deliverError(_ callback: SdpCallback, _ message: String) {
         DispatchQueue.main.async { callback.onError(message: message) }
     }
 
-    private func registerRemoteTrack(_ track: RTCMediaStreamTrack?) {
+    private func registerRemoteTrack(_ track: RTCMediaStreamTrack?, from pc: RTCPeerConnection) {
         guard let audio = track as? RTCAudioTrack else { return }
         locked {
-            if !remoteAudioTracks.contains(where: { $0 === audio }) {
-                remoteAudioTracks.append(audio)
+            guard let peer = peerFor(pc) else { return }
+            if !peer.remoteTracks.contains(where: { $0 === audio }) {
+                peer.remoteTracks.append(audio)
             }
             audio.isEnabled = !outputMuted
-            applyVolume(audio)
+            applyVolume(audio, peer.volume)
         }
     }
 
@@ -229,17 +291,18 @@ final class WebRTCEngine: NSObject, IosRtcBackend, RTCPeerConnectionDelegate {
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState) {}
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {
-        stream.audioTracks.forEach { registerRemoteTrack($0) }
+        stream.audioTracks.forEach { registerRemoteTrack($0, from: peerConnection) }
     }
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {
         locked {
-            remoteAudioTracks.removeAll { track in stream.audioTracks.contains { $0 === track } }
+            guard let peer = peerFor(peerConnection) else { return }
+            peer.remoteTracks.removeAll { track in stream.audioTracks.contains { $0 === track } }
         }
     }
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didAdd rtpReceiver: RTCRtpReceiver, streams mediaStreams: [RTCMediaStream]) {
-        registerRemoteTrack(rtpReceiver.track)
+        registerRemoteTrack(rtpReceiver.track, from: peerConnection)
     }
 
     func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {}
@@ -255,14 +318,15 @@ final class WebRTCEngine: NSObject, IosRtcBackend, RTCPeerConnectionDelegate {
         case .failed: name = "failed"
         default: name = "closed"
         }
-        guard let listener = locked({ self.peerConnection === peerConnection ? peerListener : nil }) else { return }
+        // PeerConnection đã bị thay/đóng thì không báo nữa
+        guard let listener = locked({ peerFor(peerConnection)?.listener }) else { return }
         DispatchQueue.main.async { listener.onIceConnectionState(state: name) }
     }
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {}
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
-        guard let listener = locked({ self.peerConnection === peerConnection ? peerListener : nil }) else { return }
+        guard let listener = locked({ peerFor(peerConnection)?.listener }) else { return }
         listener.onIceCandidate(sdpMid: candidate.sdpMid, sdpMLineIndex: candidate.sdpMLineIndex, candidate: candidate.sdp)
     }
 

@@ -366,8 +366,12 @@ private fun QrScanTab(
                                 it != AppStartPrefs.DEFAULT_EVENT_NAME &&
                                 !it.startsWith("Kênh tần số")
                         }
+                        // QR kênh kèm vai trò: vào đúng kênh, đúng vai trò (trưởng ban / trưởng nhóm / thành viên)
                         com.example.damthoai.service.DamThoaiCallManager.getInstance()
-                            .joinEvent(pin = pin, eventNameHint = nameHint, asOrganizer = false)
+                            .joinEvent(pin = pin, eventNameHint = nameHint, asOrganizer = false, seat = payload.seat())
+                        payload.seat()?.let { seat ->
+                            AppToast.show("Đã vào ${seat.groupName.ifBlank { "kênh" }} · ${seat.role.title}")
+                        }
                         onQrScanned()
                     },
                     onError = { err -> Log.e("QrScanTab", err) },

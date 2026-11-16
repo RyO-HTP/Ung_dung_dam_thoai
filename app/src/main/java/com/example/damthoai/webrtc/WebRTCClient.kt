@@ -94,23 +94,41 @@ class WebRTCClient(private val context: Context) : RtcEngine {
         }
     }
 
-    private var peerConnection: PeerConnection? = null
+    /**
+     * Một kết nối P2P tới một thành viên (mesh: mỗi thành viên khác trong kênh một [Peer]).
+     * ICE candidate của đối tác có thể đến trước khi setRemoteDescription hoàn tất;
+     * thêm vào lúc đó sẽ bị WebRTC từ chối, nên phải xếp hàng chờ trong [pendingCandidates].
+     */
+    private class Peer(val pc: PeerConnection, val localTrack: AudioTrack) {
+        val remoteTracks = mutableListOf<AudioTrack>()
+        val pendingCandidates = mutableListOf<IceCandidate>()
+        var remoteDescriptionSet = false
+        // Có gửi tiếng mình tới người này không (chỉ người cùng kênh đang phát mới được gửi)
+        var sending = false
+        // Âm lượng nghe người này (0..1), theo âm lượng của kênh chung
+        var volume = 1.0f
+    }
+
+    private val peers = mutableMapOf<String, Peer>()
     private val rtcFactory = getOrCreateFactory(context)
     private var iceServers: List<PeerConnection.IceServer> = listOf(
         PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer()
     )
-    private var audioTrack: AudioTrack? = null
+    // Nguồn thu micro DÙNG CHUNG; mỗi peer có track riêng từ nguồn này để bật/tắt gửi theo từng người
     private var audioSource: AudioSource? = null
+    private var trackCounter = 0
     private var isOutputMuted: Boolean = false
-    // Âm lượng nghe (0..1, 1 = mức gốc) áp vào mọi AudioTrack nhận từ đối tác
-    private var remoteVolume: Float = 1.0f
     private var isMicEnabled: Boolean = false
-    private val remoteAudioTracks = mutableListOf<AudioTrack>()
 
-    // ICE candidate của đối tác có thể đến trước khi setRemoteDescription hoàn tất;
-    // thêm vào lúc đó sẽ bị WebRTC từ chối, nên phải xếp hàng chờ.
-    private val pendingRemoteCandidates = mutableListOf<IceCandidate>()
-    private var remoteDescriptionSet = false
+    private fun allRemoteTracks(): List<AudioTrack> = peers.values.flatMap { it.remoteTracks }
+
+    private fun applySending(peer: Peer) {
+        try {
+            peer.localTrack.setEnabled(isMicEnabled && peer.sending)
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "Audio track đã bị giải phóng: ${e.message}")
+        }
+    }
 
     /**
      * Cập nhật danh sách ICE Servers nhận từ Signaling Server
@@ -128,17 +146,17 @@ class WebRTCClient(private val context: Context) : RtcEngine {
         }
     }
 
-    /** true nếu đang có PeerConnection hoạt động. */
+    /** true nếu đang có PeerConnection tới [peerId]. */
     @Synchronized
-    override fun hasPeerConnection(): Boolean = peerConnection != null
+    override fun hasPeerConnection(peerId: String): Boolean = peers.containsKey(peerId)
 
     /**
-     * Khởi tạo PeerConnection và chuẩn bị kênh Audio cho PTT.
-     * Luôn đóng PeerConnection cũ trước (tránh rò rỉ và 2 phiên chạy song song).
+     * Khởi tạo PeerConnection tới [peerId] và gắn track micro dùng chung.
+     * Chỉ đóng PeerConnection cũ của ĐÚNG peer này; kết nối tới các thành viên khác giữ nguyên.
      */
     @Synchronized
-    override fun createPeerConnection(listener: RtcPeerListener) {
-        createPeerConnection(object : CustomPeerConnectionObserver(this) {
+    override fun createPeerConnection(peerId: String, listener: RtcPeerListener) {
+        createPeerConnection(peerId, object : CustomPeerConnectionObserver(this, peerId) {
             override fun onIceCandidate(p0: IceCandidate?) {
                 p0?.let { listener.onIceCandidate(it.sdpMid, it.sdpMLineIndex, it.sdp) }
             }
@@ -159,8 +177,8 @@ class WebRTCClient(private val context: Context) : RtcEngine {
     }
 
     @Synchronized
-    fun createPeerConnection(observer: PeerConnection.Observer) {
-        closeInternal()
+    fun createPeerConnection(peerId: String, observer: PeerConnection.Observer) {
+        closePeerInternal(peerId)
 
         val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
@@ -169,23 +187,34 @@ class WebRTCClient(private val context: Context) : RtcEngine {
         }
         val pc = rtcFactory.createPeerConnection(rtcConfig, observer)
         if (pc == null) {
-            Log.e(TAG, "Không tạo được PeerConnection")
+            Log.e(TAG, "Không tạo được PeerConnection tới $peerId")
             return
         }
-        peerConnection = pc
+        // Track micro riêng cho peer này (cùng nguồn thu), mặc định chưa gửi
+        val track = rtcFactory.createAudioTrack("${LOCAL_AUDIO_TRACK_ID}_${trackCounter++}", ensureAudioSource())
+        val peer = Peer(pc, track)
+        peers[peerId] = peer
+        applySending(peer)
+        pc.addTrack(track, listOf(LOCAL_STREAM_ID))
+    }
 
-        // Tạo Audio Source và Track, GẮN VÀO PeerConnection để âm thanh thực sự được gửi đi
+    /** Tạo (một lần) nguồn thu micro dùng chung cho mọi PeerConnection. */
+    private fun ensureAudioSource(): AudioSource {
+        audioSource?.let { return it }
         val audioConstraints = MediaConstraints().apply {
             optional.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
             optional.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
             optional.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
         }
-        val source = rtcFactory.createAudioSource(audioConstraints)
-        val track = rtcFactory.createAudioTrack(LOCAL_AUDIO_TRACK_ID, source)
-        track.setEnabled(isMicEnabled) // Mặc định tắt mic khi chưa giữ phím PTT
-        pc.addTrack(track, listOf(LOCAL_STREAM_ID))
-        audioSource = source
-        audioTrack = track
+        return rtcFactory.createAudioSource(audioConstraints).also { audioSource = it }
+    }
+
+    /** Bật/tắt gửi tiếng mình tới [peerId] (chỉ có tác dụng khi đang giữ PTT). */
+    @Synchronized
+    override fun setPeerSending(peerId: String, enabled: Boolean) {
+        val peer = peers[peerId] ?: return
+        peer.sending = enabled
+        applySending(peer)
     }
 
     /**
@@ -195,11 +224,7 @@ class WebRTCClient(private val context: Context) : RtcEngine {
     @Synchronized
     override fun setMicrophoneEnabled(enabled: Boolean) {
         isMicEnabled = enabled
-        try {
-            audioTrack?.setEnabled(enabled)
-        } catch (e: IllegalStateException) {
-            Log.w(TAG, "Audio track đã bị giải phóng: ${e.message}")
-        }
+        peers.values.forEach { applySending(it) }
         try {
             com.example.damthoai.hardware.diagnostics.FieldTestLogger.recordMicrophoneState(
                 open = enabled,
@@ -215,7 +240,7 @@ class WebRTCClient(private val context: Context) : RtcEngine {
     @Synchronized
     override fun setOutputMuted(muted: Boolean) {
         isOutputMuted = muted
-        remoteAudioTracks.forEach { track ->
+        allRemoteTracks().forEach { track ->
             try {
                 track.setEnabled(!muted)
             } catch (ignored: Throwable) {}
@@ -223,61 +248,68 @@ class WebRTCClient(private val context: Context) : RtcEngine {
     }
 
     /**
-     * Đặt âm lượng nghe tiếng đối tác (0 = im lặng, 1 = mức gốc). Áp ngay cho track hiện có
-     * và cho cả track nhận được sau này (khi cuộc gọi được nối lại).
+     * Đặt âm lượng nghe tiếng của [peerId] (0 = im lặng, 1 = mức gốc). Áp ngay cho track hiện có
+     * và cho cả track nhận được sau này.
      */
     @Synchronized
-    override fun setRemoteVolume(volume: Float) {
-        remoteVolume = volume.coerceIn(0f, 1f)
-        remoteAudioTracks.forEach { applyVolume(it) }
+    override fun setPeerVolume(peerId: String, volume: Float) {
+        val peer = peers[peerId] ?: return
+        peer.volume = volume.coerceIn(0f, 1f)
+        peer.remoteTracks.forEach { applyVolume(it, peer.volume) }
     }
 
-    private fun applyVolume(track: AudioTrack) {
+    private fun applyVolume(track: AudioTrack, volume: Float) {
         try {
-            track.setVolume(remoteVolume.toDouble())
+            track.setVolume(volume.toDouble())
         } catch (ignored: Throwable) {}
     }
 
-    /** Ghi nhận track âm thanh từ đối tác (Unified Plan: onAddTrack). */
+    /** Ghi nhận track âm thanh từ đối tác [peerId] (Unified Plan: onAddTrack). */
     @Synchronized
-    fun handleRemoteTrack(track: MediaStreamTrack?) {
+    fun handleRemoteTrack(peerId: String, track: MediaStreamTrack?) {
         val audio = track as? AudioTrack ?: return
-        if (!remoteAudioTracks.contains(audio)) {
-            remoteAudioTracks.add(audio)
+        val peer = peers[peerId] ?: return
+        if (!peer.remoteTracks.contains(audio)) {
+            peer.remoteTracks.add(audio)
         }
         try {
             audio.setEnabled(!isOutputMuted)
         } catch (ignored: Throwable) {}
-        applyVolume(audio)
+        applyVolume(audio, peer.volume)
     }
 
     @Synchronized
-    fun handleRemoteStreamAdded(stream: MediaStream?) {
-        stream?.audioTracks?.forEach { handleRemoteTrack(it) }
+    fun handleRemoteStreamAdded(peerId: String, stream: MediaStream?) {
+        stream?.audioTracks?.forEach { handleRemoteTrack(peerId, it) }
     }
 
     @Synchronized
-    fun handleRemoteStreamRemoved(stream: MediaStream?) {
+    fun handleRemoteStreamRemoved(peerId: String, stream: MediaStream?) {
+        val peer = peers[peerId] ?: return
         stream?.audioTracks?.forEach { track ->
             if (track != null) {
-                remoteAudioTracks.remove(track)
+                peer.remoteTracks.remove(track)
             }
         }
     }
 
+    @Synchronized
+    private fun pcOf(peerId: String): PeerConnection? = peers[peerId]?.pc
+
     /**
-     * Tạo Offer SDP để gửi đi
+     * Tạo Offer SDP gửi tới [peerId]
      */
-    override fun createOffer(onSuccess: (sdp: String) -> Unit, onError: (String) -> Unit) {
-        createOfferInternal(MediaConstraints(), { onSuccess(it.description) }, onError)
+    override fun createOffer(peerId: String, onSuccess: (sdp: String) -> Unit, onError: (String) -> Unit) {
+        createOfferInternal(peerId, MediaConstraints(), { onSuccess(it.description) }, onError)
     }
 
     private fun createOfferInternal(
+        peerId: String,
         constraints: MediaConstraints,
         onSuccess: (SessionDescription) -> Unit,
         onError: (String) -> Unit
     ) {
-        val pc = synchronized(this) { peerConnection } ?: return onError("Chưa có PeerConnection")
+        val pc = pcOf(peerId) ?: return onError("Chưa có PeerConnection tới $peerId")
         constraints.mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
         pc.createOffer(object : SimpleSdpObserver() {
             override fun onCreateSuccess(desc: SessionDescription?) {
@@ -296,10 +328,10 @@ class WebRTCClient(private val context: Context) : RtcEngine {
     }
 
     /**
-     * Tạo Answer SDP phản hồi Offer
+     * Tạo Answer SDP phản hồi Offer của [peerId]
      */
-    override fun createAnswer(onSuccess: (sdp: String) -> Unit, onError: (String) -> Unit) {
-        val pc = synchronized(this) { peerConnection } ?: return onError("Chưa có PeerConnection")
+    override fun createAnswer(peerId: String, onSuccess: (sdp: String) -> Unit, onError: (String) -> Unit) {
+        val pc = pcOf(peerId) ?: return onError("Chưa có PeerConnection tới $peerId")
         val constraints = MediaConstraints().apply {
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
         }
@@ -319,26 +351,25 @@ class WebRTCClient(private val context: Context) : RtcEngine {
     }
 
     /**
-     * Thiết lập Remote Description từ đối tác gửi tới.
+     * Thiết lập Remote Description từ [peerId].
      * Sau khi thành công, thêm các ICE candidate đã xếp hàng.
      */
-    override fun setRemoteDescription(type: SdpType, sdp: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
-        val sdpType = if (type == SdpType.OFFER) SessionDescription.Type.OFFER else SessionDescription.Type.ANSWER
-        setRemoteDescription(SessionDescription(sdpType, sdp), onSuccess, onError)
-    }
-
-    fun setRemoteDescription(
-        sdp: SessionDescription,
+    override fun setRemoteDescription(
+        peerId: String,
+        type: SdpType,
+        sdp: String,
         onSuccess: () -> Unit,
-        onError: (String) -> Unit = { Log.e(TAG, "Lỗi đặt remote description: $it") }
+        onError: (String) -> Unit
     ) {
-        val pc = synchronized(this) { peerConnection } ?: return onError("Chưa có PeerConnection")
+        val sdpType = if (type == SdpType.OFFER) SessionDescription.Type.OFFER else SessionDescription.Type.ANSWER
+        val peer = synchronized(this) { peers[peerId] } ?: return onError("Chưa có PeerConnection tới $peerId")
+        val pc = peer.pc
         pc.setRemoteDescription(object : SimpleSdpObserver() {
             override fun onSetSuccess() {
                 val queued = synchronized(this@WebRTCClient) {
-                    if (peerConnection !== pc) return
-                    remoteDescriptionSet = true
-                    pendingRemoteCandidates.toList().also { pendingRemoteCandidates.clear() }
+                    if (peers[peerId] !== peer) return
+                    peer.remoteDescriptionSet = true
+                    peer.pendingCandidates.toList().also { peer.pendingCandidates.clear() }
                 }
                 queued.forEach { pc.addIceCandidate(it) }
                 onSuccess()
@@ -346,61 +377,67 @@ class WebRTCClient(private val context: Context) : RtcEngine {
             override fun onSetFailure(error: String?) {
                 onError(error ?: "Lỗi đặt remote description")
             }
-        }, sdp)
+        }, SessionDescription(sdpType, sdp))
     }
 
     /**
-     * Thêm ICE Candidate nhận được từ mạng (xếp hàng nếu chưa có remote description)
+     * Thêm ICE Candidate của [peerId] (xếp hàng nếu chưa có remote description)
      */
-    override fun addIceCandidate(sdpMid: String?, sdpMLineIndex: Int, candidate: String) {
-        addIceCandidate(IceCandidate(sdpMid, sdpMLineIndex, candidate))
-    }
-
     @Synchronized
-    fun addIceCandidate(candidate: IceCandidate) {
-        val pc = peerConnection
-        if (pc == null || !remoteDescriptionSet) {
-            pendingRemoteCandidates.add(candidate)
+    override fun addIceCandidate(peerId: String, sdpMid: String?, sdpMLineIndex: Int, candidate: String) {
+        val peer = peers[peerId] ?: return
+        val ice = IceCandidate(sdpMid, sdpMLineIndex, candidate)
+        if (!peer.remoteDescriptionSet) {
+            peer.pendingCandidates.add(ice)
             return
         }
-        pc.addIceCandidate(candidate)
+        peer.pc.addIceCandidate(ice)
     }
 
     /**
-     * Khởi động lại ICE (ICE Restart) khi chuyển từ Wi-Fi sang 4G (Seamless Handover).
+     * Khởi động lại ICE (ICE Restart) với [peerId] khi chuyển từ Wi-Fi sang 4G (Seamless Handover).
      * Bắt buộc WebRTC dò tìm lại đường truyền mạng mà không cần ngắt cuộc gọi.
      */
-    override fun restartIce(onSuccess: (sdp: String) -> Unit, onError: (String) -> Unit) {
+    override fun restartIce(peerId: String, onSuccess: (sdp: String) -> Unit, onError: (String) -> Unit) {
         val constraints = MediaConstraints().apply {
             // Cờ bắt buộc khởi động lại dò tìm ICE
             mandatory.add(MediaConstraints.KeyValuePair("IceRestart", "true"))
         }
-        createOfferInternal(constraints, { onSuccess(it.description) }, onError)
+        createOfferInternal(peerId, constraints, { onSuccess(it.description) }, onError)
+    }
+
+    /** Đóng kết nối với một thành viên; khi không còn ai thì giải phóng luôn micro. */
+    @Synchronized
+    override fun closePeer(peerId: String) {
+        closePeerInternal(peerId)
+        if (peers.isEmpty()) releaseLocalTrack()
     }
 
     /**
-     * Đóng và giải phóng tài nguyên WebRTC
+     * Đóng và giải phóng toàn bộ tài nguyên WebRTC
      */
     @Synchronized
     override fun close() {
-        closeInternal()
+        peers.keys.toList().forEach { closePeerInternal(it) }
+        releaseLocalTrack()
     }
 
-    private fun closeInternal() {
-        remoteAudioTracks.clear()
-        pendingRemoteCandidates.clear()
-        remoteDescriptionSet = false
-        // Thứ tự giống mẫu AppRTC: giải phóng PeerConnection trước (nó tự giải phóng sender/track),
-        // sau đó mới giải phóng AudioSource. Không dispose audioTrack riêng để tránh giải phóng 2 lần.
-        peerConnection?.let { pc ->
-            try {
-                pc.dispose()
-            } catch (e: Throwable) {
-                Log.w(TAG, "Lỗi giải phóng PeerConnection: ${e.message}")
-            }
+    private fun closePeerInternal(peerId: String) {
+        val peer = peers.remove(peerId) ?: return
+        // pc.dispose() tự giải phóng sender (chỉ nhả tham chiếu của nó tới track micro dùng chung)
+        try {
+            peer.pc.dispose()
+        } catch (e: Throwable) {
+            Log.w(TAG, "Lỗi giải phóng PeerConnection tới $peerId: ${e.message}")
         }
-        peerConnection = null
-        audioTrack = null
+    }
+
+    /**
+     * Giải phóng micro dùng chung (gọi sau khi mọi PeerConnection đã đóng).
+     * Giống mẫu AppRTC: không dispose audioTrack riêng (sender của PeerConnection đã nhả nó),
+     * chỉ giải phóng AudioSource.
+     */
+    private fun releaseLocalTrack() {
         audioSource?.let { source ->
             try {
                 source.dispose()
@@ -411,7 +448,6 @@ class WebRTCClient(private val context: Context) : RtcEngine {
         audioSource = null
     }
 
-    fun startCall() {}
     fun endCall() { close() }
 }
 
@@ -423,9 +459,10 @@ open class SimpleSdpObserver : SdpObserver {
     override fun onSetFailure(p0: String?) {}
 }
 
-// Lớp phụ trợ cho PeerConnection.Observer
+// Lớp phụ trợ cho PeerConnection.Observer (gắn với một thành viên [peerId])
 open class CustomPeerConnectionObserver(
-    private val webRTCClient: WebRTCClient? = null
+    private val webRTCClient: WebRTCClient? = null,
+    private val peerId: String = ""
 ) : PeerConnection.Observer {
     override fun onSignalingChange(p0: PeerConnection.SignalingState?) {}
     override fun onIceConnectionChange(p0: PeerConnection.IceConnectionState?) {}
@@ -434,13 +471,13 @@ open class CustomPeerConnectionObserver(
     override fun onIceCandidate(p0: org.webrtc.IceCandidate?) {}
     override fun onIceCandidatesRemoved(p0: Array<out org.webrtc.IceCandidate>?) {}
     override fun onAddStream(p0: org.webrtc.MediaStream?) {
-        webRTCClient?.handleRemoteStreamAdded(p0)
+        webRTCClient?.handleRemoteStreamAdded(peerId, p0)
     }
     override fun onRemoveStream(p0: org.webrtc.MediaStream?) {
-        webRTCClient?.handleRemoteStreamRemoved(p0)
+        webRTCClient?.handleRemoteStreamRemoved(peerId, p0)
     }
     override fun onAddTrack(receiver: RtpReceiver?, mediaStreams: Array<out MediaStream>?) {
-        webRTCClient?.handleRemoteTrack(receiver?.track())
+        webRTCClient?.handleRemoteTrack(peerId, receiver?.track())
     }
     override fun onDataChannel(p0: org.webrtc.DataChannel?) {}
     override fun onRenegotiationNeeded() {}

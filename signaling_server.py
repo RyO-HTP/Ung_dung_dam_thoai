@@ -65,6 +65,10 @@ def members_of(event_pin):
             "display_name": profile.get("display_name") or uid,
             "role_title": profile.get("role_title") or "",
             "is_organizer": bool(profile.get("is_organizer")),
+            # Phân tầng vai trò: app dùng để biết ai cùng kênh nào, ai được đàm thoại với ai
+            "team_role": profile.get("team_role") or "tv",
+            "channel_id": profile.get("channel_id") or "ch_general",
+            "channel_name": profile.get("channel_name") or "",
         }
         for uid, profile in client_profiles.items()
         if uid in connected_clients and profile.get("event_pin", "") == event_pin
@@ -163,6 +167,9 @@ async def handle_register(websocket, user_id, data):
         "display_name": display_name,
         "role_title": str(data.get("role_title") or "").strip(),
         "is_organizer": is_organizer,
+        "team_role": str(data.get("team_role") or "tv").strip(),
+        "channel_id": str(data.get("channel_id") or "ch_general").strip(),
+        "channel_name": str(data.get("channel_name") or "").strip(),
     }
 
     # Ban tổ chức là nguồn duy nhất đặt tên sự kiện cho mã PIN
@@ -209,6 +216,18 @@ async def route_peer_message(user_id, msg_type, data):
         print(f"[{user_id}] gửi {msg_type} tới [{target_id}] đang offline, bỏ qua.")
 
 
+async def relay_ptt(websocket, user_id, data):
+    """Gói "ptt": báo bắt đầu/ngừng nói trên một kênh. Gửi cho cả sự kiện; app mỗi máy tự lọc
+    theo kênh và luật vai trò (chỉ hiện/trả lời người được phép đàm thoại với mình)."""
+    my_pin = client_profiles.get(user_id, {}).get("event_pin", "")
+    await broadcast(my_pin, json.dumps({
+        "type": "ptt",
+        "sender_id": user_id,  # Server tự gắn người gửi: thiết bị không giả mạo được
+        "channel_id": str(data.get("channel_id") or ""),
+        "talking": bool(data.get("talking")),
+    }), exclude=websocket)
+
+
 async def signaling_handler(websocket):
     """Một vòng lặp cho mỗi thiết bị kết nối, chạy tới khi socket đóng."""
     user_id = None
@@ -227,6 +246,8 @@ async def signaling_handler(websocket):
                 user_id = await handle_register(websocket, user_id, data)
             elif msg_type in ("offer", "answer", "ice_candidate") and user_id:
                 await route_peer_message(user_id, msg_type, data)
+            elif msg_type == "ptt" and user_id:
+                await relay_ptt(websocket, user_id, data)
     except websockets.exceptions.ConnectionClosed:
         print(f"[{user_id}] đã ngắt kết nối đột ngột.")
     finally:

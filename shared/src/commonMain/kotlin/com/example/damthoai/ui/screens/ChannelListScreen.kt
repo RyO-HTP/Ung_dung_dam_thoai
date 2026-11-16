@@ -152,11 +152,20 @@ fun ChannelListScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        uiState.eventName,
-                        color = TextSecondary,
-                        style = DamType.Muted
-                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            uiState.eventName,
+                            color = TextSecondary,
+                            style = DamType.Muted
+                        )
+                        if (uiState.myRoleLabel.isNotBlank()) {
+                            Text(
+                                uiState.myRoleLabel,
+                                color = AccentCyan,
+                                style = DamType.Small11Bold
+                            )
+                        }
+                    }
                     Row(
                         modifier = Modifier
                             .clip(CircleShape)
@@ -198,7 +207,8 @@ fun ChannelListScreen(
                         onCardClick = onNavigateToActiveCall,
                         onMicClick = { viewModel.selectMicChannel(item.channel.id) },
                         onMenuClick = { viewModel.openChannelMenu(item) },
-                        onVolumeChange = { viewModel.updateChannelVolume(item.channel.id, it) }
+                        onVolumeChange = { viewModel.updateChannelVolume(item.channel.id, it) },
+                        onToggleMute = { viewModel.toggleMuteChannel(item.channel.id, !item.isMuted) }
                     )
                     Spacer(Modifier.height(8.dp))
                 }
@@ -256,7 +266,8 @@ private fun ChannelCardItem(
     onCardClick: () -> Unit,
     onMicClick: () -> Unit,
     onMenuClick: () -> Unit,
-    onVolumeChange: (Float) -> Unit
+    onVolumeChange: (Float) -> Unit,
+    onToggleMute: () -> Unit = {}
 ) {
     val shape = RoundedCornerShape(24.dp)
     val speakingGlow by animateFloatAsState(
@@ -369,10 +380,12 @@ private fun ChannelCardItem(
                             SpeakingWaveform()
                         }
                     } else {
+                        // Bấm để xem ai đang trong kênh
                         Text(
-                            "Không ai đang nói",
+                            "${item.channel.activeMembers} người trong kênh · Xem",
                             color = TextSecondary,
-                            style = DamType.Small.copy(fontSize = 11.sp)
+                            style = DamType.Small.copy(fontSize = 11.sp),
+                            modifier = Modifier.clickable(onClick = onMenuClick)
                         )
                     }
                 }
@@ -448,17 +461,26 @@ private fun ChannelCardItem(
                     .height(20.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    painter = painterResource(Res.drawable.ic_vol),
-                    contentDescription = null,
-                    tint = TextSecondary,
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(Modifier.width(8.dp))
+                // Nút loa: bấm để tắt/bật nghe kênh này
+                Box(
+                    Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .clickable(onClick = onToggleMute),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(if (item.isMuted) Res.drawable.ic_mute else Res.drawable.ic_vol),
+                        contentDescription = if (item.isMuted) "Bật loa kênh" else "Tắt loa kênh",
+                        tint = if (item.isMuted) AccentRed else TextSecondary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
                 Slider(
-                    value = item.volume,
+                    value = if (item.isMuted) 0f else item.volume,
                     onValueChange = onVolumeChange,
-                    enabled = !item.isDucked80,
+                    enabled = !item.isDucked80 && !item.isMuted,
                     modifier = Modifier.weight(1f),
                     thumb = {
                         Box(
@@ -519,7 +541,7 @@ private fun ChannelCardItem(
                 } else {
                     val isLowVolume = item.volume < 0.30f
                     Text(
-                        text = "${(item.volume * 100).toInt()}%",
+                        text = if (item.isMuted) "Tắt" else "${(item.volume * 100).toInt()}%",
                         modifier = Modifier.width(38.dp),
                         color = if (isLowVolume) TextSecondary.copy(alpha = 0.6f) else TextSecondary,
                         style = DamType.Small,

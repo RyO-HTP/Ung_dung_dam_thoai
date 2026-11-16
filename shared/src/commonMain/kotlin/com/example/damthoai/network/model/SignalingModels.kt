@@ -1,5 +1,8 @@
 package com.example.damthoai.network.model
 
+import com.example.damthoai.data.Seat
+import com.example.damthoai.data.TeamChannels
+import com.example.damthoai.data.TeamRole
 import com.example.damthoai.platform.IceServerSpec
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -21,7 +24,27 @@ object SignalingType {
     const val ICE_CANDIDATE = "ice_candidate"
     const val USER_LIST = "user_list"
     const val EVENT_INFO = "event_info"
+    /** Báo bắt đầu/ngừng nói trên một kênh (server chuyển cho cả sự kiện, máy nhận tự lọc theo kênh). */
+    const val PTT = "ptt"
 }
+
+/**
+ * Gói tin trạng thái PTT: { "type": "ptt", "channel_id": "ch_02", "talking": true }.
+ * Server tự gắn sender_id.
+ */
+@Serializable
+data class PttMessage(
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
+    @SerialName("type")
+    val type: String = SignalingType.PTT,
+    @SerialName("sender_id")
+    val senderId: String? = null,
+    @SerialName("channel_id")
+    val channelId: String = "",
+    @SerialName("talking")
+    val talking: Boolean = false
+)
 
 /**
  * Gói tin cơ bản để xác định loại thông điệp (type)
@@ -57,7 +80,15 @@ data class RegisterMessage(
     val isOrganizer: Boolean = false,
     /** Tên sự kiện do ban tổ chức đặt (chỉ ban tổ chức gửi). */
     @SerialName("event_name")
-    val eventName: String? = null
+    val eventName: String? = null,
+    /** Vai trò phân tầng: "ban" / "nhom" / "tv" (xem TeamRole). */
+    @SerialName("team_role")
+    val teamRole: String? = null,
+    /** Kênh nhóm của người này (trưởng ban: kênh Ban chỉ huy). */
+    @SerialName("channel_id")
+    val channelId: String? = null,
+    @SerialName("channel_name")
+    val channelName: String? = null
 )
 
 /**
@@ -174,8 +205,21 @@ data class OnlineMember(
     @SerialName("role_title")
     val roleTitle: String? = null,
     @SerialName("is_organizer")
-    val isOrganizer: Boolean = false
-)
+    val isOrganizer: Boolean = false,
+    /** Server/app bản cũ không gửi các trường dưới: coi là thành viên kênh chung. */
+    @SerialName("team_role")
+    val teamRole: String? = null,
+    @SerialName("channel_id")
+    val channelId: String? = null,
+    @SerialName("channel_name")
+    val channelName: String? = null
+) {
+    fun seat(): Seat = Seat(
+        role = TeamRole.fromWire(teamRole),
+        groupId = channelId?.takeIf { it.isNotBlank() } ?: TeamChannels.GENERAL_ID,
+        groupName = channelName.orEmpty()
+    )
+}
 
 /**
  * Thông tin sự kiện server trả về sau khi đăng ký bằng mã PIN.

@@ -10,6 +10,9 @@
  */
 package com.example.damthoai.data.qr
 
+import com.example.damthoai.data.Seat
+import com.example.damthoai.data.TeamChannels
+import com.example.damthoai.data.TeamRole
 import com.example.damthoai.network.SignalingJson
 import com.example.damthoai.platform.currentTimeMillis
 import com.example.damthoai.util.Log
@@ -35,8 +38,49 @@ data class QrTokenPayload(
     @SerialName("primaryChCode") val primaryChCode: String, // "ch_01" đến "ch_05"
     @SerialName("listenCh") val listenCh: List<Long>,
     @SerialName("uiMode") val uiMode: String, // "EASY_SINGLE_BUTTON" hoặc "PRO_MULTI_CHANNEL"
-    @SerialName("exp") val exp: Long // Thời điểm hết hạn (giây Unix)
-)
+    @SerialName("exp") val exp: Long, // Thời điểm hết hạn (giây Unix)
+    /** Vai trò phân tầng nhúng trong QR kênh: "ban" / "nhom" / "tv" (null = QR cũ, không kèm vai trò). */
+    @SerialName("teamRole") val teamRole: String? = null
+) {
+    /** Chỗ ngồi (vai trò + nhóm) mà mã QR này cấp; null nếu QR không kèm vai trò. */
+    fun seat(): Seat? = teamRole?.let { wire ->
+        val role = TeamRole.fromWire(wire)
+        if (role == TeamRole.TRUONG_BAN) {
+            Seat(role, TeamChannels.COMMAND_ID, TeamChannels.COMMAND_NAME)
+        } else {
+            Seat(role, primaryChCode, deptTitle)
+        }
+    }
+}
+
+/** Tạo nội dung mã QR vào kênh: mỗi tổ hợp (kênh, vai trò) cho một mã khác nhau. */
+object ChannelQrLink {
+    fun build(pin: String, eventName: String, channelId: String, channelName: String, role: TeamRole): String {
+        fun enc(value: String) = percentEncode(value)
+        val (chId, chName) = if (role == TeamRole.TRUONG_BAN) {
+            TeamChannels.COMMAND_ID to TeamChannels.COMMAND_NAME
+        } else {
+            channelId to channelName
+        }
+        return "damthoai://join?pin=${enc(pin)}&name=${enc(eventName)}" +
+            "&channel=${enc(chId)}&cname=${enc(chName)}&role=${role.wire}"
+    }
+}
+
+/** Mã hoá %XX theo UTF-8 cho tham số query (ngược với [percentDecode]). */
+internal fun percentEncode(value: String): String = buildString {
+    value.encodeToByteArray().forEach { b ->
+        val c = b.toInt() and 0xFF
+        val ch = c.toChar()
+        if (ch.isLetterOrDigit() && c < 0x80 || ch in "-_.~") {
+            append(ch)
+        } else {
+            append('%')
+            append("0123456789ABCDEF"[c shr 4])
+            append("0123456789ABCDEF"[c and 0x0F])
+        }
+    }
+}
 
 /**
  * Kết quả phân tích cú pháp mã QR.
@@ -132,6 +176,9 @@ object QrTokenParser {
                     Log.w(TAG, "Deep link chứa PIN không hợp lệ: $extractedPin")
                     return QrParseResult.Malformed
                 }
+                // QR kênh mới kèm vai trò (role) và tên kênh (cname): vào đúng kênh, đúng vai trò
+                val teamRole = extractQueryParam(trimmed, "role")?.trim()?.takeIf { it.isNotEmpty() }
+                val channelName = extractQueryParam(trimmed, "cname")?.trim()?.takeIf { it.isNotEmpty() }
                 val pinPayload = QrTokenPayload(
                     eventId = extractedPin.toLongOrNull() ?: 100000L,
                     // Tên sự kiện do ban tổ chức đặt được nhúng trong QR (tham số "name")
@@ -139,8 +186,9 @@ object QrTokenParser {
                         ?: "Sự kiện Đàm Thoại",
                     pinCode = extractedPin,
                     deptCode = "JOIN",
-                    deptTitle = "Ban Điều Phối",
-                    roleTitle = "Thành viên kênh",
+                    deptTitle = channelName ?: "Ban Điều Phối",
+                    roleTitle = teamRole?.let { TeamRole.fromWire(it).title } ?: "Thành viên kênh",
+                    teamRole = teamRole,
                     userLevel = 2,
                     priority = 1,
                     primaryCh = 101L,
