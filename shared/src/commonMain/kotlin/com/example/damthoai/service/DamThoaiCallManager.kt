@@ -151,7 +151,8 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
         isOnline = { signalingClient.isConnected() },
         sendRequest = { signalingClient.requestFloor(it) },
         sendRelease = { signalingClient.releaseFloor(it) },
-        setMicOpen = { rtc.setMicrophoneEnabled(it) }
+        setMicOpen = { rtc.setMicrophoneEnabled(it) },
+        sendKeepalive = { signalingClient.sendFloorKeepalive(it) }
     )
     val floorStatus: StateFlow<FloorStatus> = floor.status
 

@@ -49,12 +49,17 @@ class FloorController(
     private val sendRequest: (channelId: String) -> Unit,
     private val sendRelease: (channelId: String) -> Unit,
     private val setMicOpen: (Boolean) -> Unit,
+    /** Báo server "vẫn đang nói" (server thu hồi lượt nếu im quá 5 giây — máy mất sóng giữa chừng). */
+    private val sendKeepalive: (channelId: String) -> Unit = {},
     private val replyTimeoutMs: Long = REPLY_TIMEOUT_MS
 ) {
     companion object {
         private const val TAG = "FloorController"
         const val REPLY_TIMEOUT_MS = 1500L
+        const val KEEPALIVE_INTERVAL_MS = 2000L
     }
+
+    private var keepaliveJob: Job? = null
 
     private val _status = MutableStateFlow<FloorStatus>(FloorStatus.Idle)
     val status: StateFlow<FloorStatus> = _status.asStateFlow()
@@ -86,6 +91,7 @@ class FloorController(
     /** Nhả PTT: tắt mic, trả lượt (nếu đang xin hoặc đang giữ). */
     fun release() {
         replyTimeout?.cancel()
+        keepaliveJob?.cancel()
         setMicOpen(false)
         val channel = when (val s = _status.value) {
             is FloorStatus.Requesting -> s.channelId
@@ -136,5 +142,14 @@ class FloorController(
         replyTimeout?.cancel()
         _status.value = FloorStatus.Talking(channelId)
         setMicOpen(true)
+        // Đang giữ lượt: cứ 2 giây báo "vẫn đang nói"; dừng ngay khi không còn nói trên kênh này
+        keepaliveJob?.cancel()
+        keepaliveJob = scope.launch {
+            while (true) {
+                delay(KEEPALIVE_INTERVAL_MS)
+                if (_status.value != FloorStatus.Talking(channelId)) break
+                if (isOnline()) sendKeepalive(channelId)
+            }
+        }
     }
 }

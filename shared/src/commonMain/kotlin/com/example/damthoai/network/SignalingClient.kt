@@ -355,8 +355,16 @@ class SignalingClient(
     }
 
     /** Xin lượt nói trên [channelId] (server trả floor_granted / floor_denied). */
-    fun requestFloor(channelId: String): Boolean =
-        sendMessage(json.encodeToString(FloorMessage.serializer(), FloorMessage(SignalingType.FLOOR_REQUEST, channelId)))
+    fun requestFloor(channelId: String): Boolean = sendMessage(
+        json.encodeToString(
+            FloorMessage.serializer(),
+            FloorMessage(SignalingType.FLOOR_REQUEST, channelId, keepalive = true)
+        )
+    )
+
+    /** Báo "vẫn đang nói" trên [channelId] (gửi định kỳ khi đang giữ lượt). */
+    fun sendFloorKeepalive(channelId: String): Boolean =
+        sendMessage(json.encodeToString(FloorMessage.serializer(), FloorMessage(SignalingType.FLOOR_KEEPALIVE, channelId)))
 
     /** Nhả lượt nói trên [channelId]. */
     fun releaseFloor(channelId: String): Boolean =

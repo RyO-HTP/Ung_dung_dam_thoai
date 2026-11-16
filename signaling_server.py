@@ -61,7 +61,9 @@ ROLE_PRIORITY = {"ban": 3, "nhom": 2, "tv": 1}
 COMMAND_CHANNEL = "ch_01"
 # Giới hạn nói 60 giây chống kẹt phím (giống MaxSpeakDurationMs bên Go); đổi được qua biến môi trường
 FLOOR_MAX_SECONDS = float(os.environ.get("FLOOR_MAX_SECONDS", "60"))
-floors = {}  # (event_pin, channel_id) -> {"user_id", "priority", "token"}
+# Người giữ lượt không báo "vẫn đang nói" quá 5 giây (mất sóng) thì thu hồi (Go: StaleUdpSilenceMs)
+FLOOR_STALE_SECONDS = float(os.environ.get("FLOOR_STALE_SECONDS", "5"))
+floors = {}  # (event_pin, channel_id) -> {"user_id", "priority", "granted_at", "last_seen"}
 
 
 # ----------------------------------------------------------------------------
@@ -279,12 +281,15 @@ async def handle_floor_request(websocket, user_id, data):
         return
 
     preempted = current["user_id"] if held_by_other else None
-    token = object()
-    floors[key] = {"user_id": user_id, "priority": priority, "token": token}
-    # Hết 60 giây mà chưa nhả: tự thu hồi (máy kẹt phím, mất mạng...)
-    asyncio.get_running_loop().call_later(
-        FLOOR_MAX_SECONDS, lambda: asyncio.ensure_future(expire_floor(key, token))
-    )
+    now = asyncio.get_running_loop().time()
+    floors[key] = {
+        "user_id": user_id,
+        "priority": priority,
+        "granted_at": now,
+        # App mới gửi "keepalive": true và cứ 2 giây báo "vẫn đang nói"; im quá FLOOR_STALE_SECONDS
+        # (mất sóng giữa chừng) thì tự thu hồi. App cũ không gửi: chỉ áp giới hạn 60 giây.
+        "last_seen": now if data.get("keepalive") else None,
+    }
     if preempted:
         print(f"[{user_id}] chen ngang lượt nói của [{preempted}] trên kênh {channel_id}.")
     await safe_send(websocket, json.dumps({"type": "floor_granted", "channel_id": channel_id}))
@@ -305,11 +310,33 @@ async def release_floor(key, user_id, reason="released"):
     await broadcast(key[0], floor_state_payload(key[1], None, reason=reason))
 
 
-async def expire_floor(key, token):
-    current = floors.get(key)
-    if current is not None and current["token"] is token:
-        print(f"[{current['user_id']}] giữ lượt nói quá {FLOOR_MAX_SECONDS}s trên {key[1]}, tự thu hồi.")
-        await release_floor(key, current["user_id"], reason="timeout")
+async def handle_floor_keepalive(user_id, data):
+    """Người giữ lượt báo "vẫn đang nói" (app gửi mỗi 2 giây khi đang giữ PTT)."""
+    pin = client_profiles.get(user_id, {}).get("event_pin", "")
+    current = floors.get((pin, str(data.get("channel_id") or "")))
+    if current is not None and current["user_id"] == user_id:
+        current["last_seen"] = asyncio.get_running_loop().time()
+
+
+async def floor_watchdog():
+    """Mỗi 0,5 giây thu hồi lượt nói bị kẹt (giống RunWatchdogLoop bên Go):
+    - giữ quá FLOOR_MAX_SECONDS (kẹt phím trong túi...) → reason "timeout";
+    - không báo "vẫn đang nói" quá FLOOR_STALE_SECONDS (mất sóng) → reason "stale"."""
+    while True:
+        await asyncio.sleep(0.5)
+        now = asyncio.get_running_loop().time()
+        for key, current in list(floors.items()):
+            reason = None
+            if now - current["granted_at"] >= FLOOR_MAX_SECONDS:
+                reason = "timeout"
+            elif current["last_seen"] is not None and now - current["last_seen"] >= FLOOR_STALE_SECONDS:
+                reason = "stale"
+            if reason:
+                print(f"[{current['user_id']}] tự thu hồi lượt nói trên {key[1]} ({reason}).")
+                try:
+                    await release_floor(key, current["user_id"], reason=reason)
+                except Exception as e:  # Không để một lỗi làm chết vòng giám sát
+                    print(f"Lỗi thu hồi lượt nói {key}: {e!r}")
 
 
 async def release_floors_of(user_id, keep_pin=None, keep_channels=()):
@@ -359,6 +386,8 @@ async def signaling_handler(websocket):
                 await handle_floor_request(websocket, user_id, data)
             elif msg_type == "floor_release" and user_id:
                 await handle_floor_release(user_id, data)
+            elif msg_type == "floor_keepalive" and user_id:
+                await handle_floor_keepalive(user_id, data)
     except websockets.exceptions.ConnectionClosed:
         print(f"[{user_id}] đã ngắt kết nối đột ngột.")
     finally:
@@ -436,11 +465,18 @@ async def main():
             signaling_handler, "0.0.0.0", PORT,
             process_request=health_check,
             ping_interval=20, ping_timeout=20,  # Dọn kết nối chết (máy mất sóng không kịp báo đóng)
+            # Thiết bị đóng kết nối: chỉ chờ 1 giây để TCP đóng hẳn (mặc định 10 giây). Qua proxy
+            # của Render, TCP phía server không bao giờ đóng sớm nên luôn phải chờ hết thời gian này
+            # → người đang giữ lượt rời đi thì 10 giây sau mới trả lượt cho người khác.
+            close_timeout=1,
         )
     except OSError as e:
         print(f"KHÔNG mở được cổng {PORT}: {e}")
         print("Có thể một server khác đang chạy. Tắt cửa sổ server cũ rồi chạy lại.")
         sys.exit(1)
+
+    # Vòng giám sát lượt nói (hết 60 giây / mất sóng); giữ tham chiếu để task không bị dọn
+    watchdog = asyncio.ensure_future(floor_watchdog())
 
     if ON_CLOUD:
         print(f"Signaling Server (đám mây) đang chạy trên cổng {PORT}")

@@ -16,6 +16,7 @@ class FloorControllerTest {
     private class Harness(scope: TestScope, var online: Boolean = true) {
         val requests = mutableListOf<String>()
         val releases = mutableListOf<String>()
+        val keepalives = mutableListOf<String>()
         var micOpen = false
         val controller = FloorController(
             scope = scope.backgroundScope,
@@ -23,8 +24,46 @@ class FloorControllerTest {
             isOnline = { online },
             sendRequest = { requests += it },
             sendRelease = { releases += it },
-            setMicOpen = { micOpen = it }
+            setMicOpen = { micOpen = it },
+            sendKeepalive = { keepalives += it }
         )
+    }
+
+    @Test
+    fun dangGiuLuotThiBaoVanDangNoiMoi2Giay() = runTest {
+        val h = Harness(this)
+        h.controller.press("ch_02")
+        h.controller.onGranted("ch_02")
+        advanceTimeBy(FloorController.KEEPALIVE_INTERVAL_MS * 3 + 1)
+        runCurrent()
+        assertEquals(listOf("ch_02", "ch_02", "ch_02"), h.keepalives)
+
+        // Nhả PTT: ngừng báo
+        h.controller.release()
+        advanceTimeBy(FloorController.KEEPALIVE_INTERVAL_MS * 3)
+        runCurrent()
+        assertEquals(3, h.keepalives.size)
+    }
+
+    @Test
+    fun biChenNgangThiNgungBaoVanDangNoi() = runTest {
+        val h = Harness(this)
+        h.controller.press("ch_02")
+        h.controller.onGranted("ch_02")
+        h.controller.onState("ch_02", holderId = "boss", preemptedId = "me", reason = "preempted")
+        advanceTimeBy(FloorController.KEEPALIVE_INTERVAL_MS * 3)
+        runCurrent()
+        assertTrue(h.keepalives.isEmpty())
+    }
+
+    @Test
+    fun chuaDuocLuotThiKhongBaoVanDangNoi() = runTest {
+        val h = Harness(this)
+        h.controller.press("ch_02")
+        h.controller.onDenied("ch_02", holderId = "other")
+        advanceTimeBy(FloorController.KEEPALIVE_INTERVAL_MS * 3)
+        runCurrent()
+        assertTrue(h.keepalives.isEmpty())
     }
 
     @Test

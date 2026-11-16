@@ -34,6 +34,8 @@ object SignalingType {
     const val FLOOR_GRANTED = "floor_granted"
     const val FLOOR_DENIED = "floor_denied"
     const val FLOOR_STATE = "floor_state"
+    /** Người giữ lượt báo "vẫn đang nói" mỗi 2 giây; im quá 5 giây (mất sóng) thì server thu hồi. */
+    const val FLOOR_KEEPALIVE = "floor_keepalive"
 }
 
 /**
@@ -53,7 +55,10 @@ data class FloorMessage(
     @SerialName("preempted_id")
     val preemptedId: String? = null,
     @SerialName("reason")
-    val reason: String? = null
+    val reason: String? = null,
+    /** Chỉ trong floor_request: true = app sẽ gửi floor_keepalive, server được thu hồi khi im lặng. */
+    @SerialName("keepalive")
+    val keepalive: Boolean? = null
 )
 
 /**
