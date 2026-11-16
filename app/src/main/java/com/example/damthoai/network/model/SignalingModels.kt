@@ -12,6 +12,9 @@ object SignalingType {
     const val OFFER = "offer"
     const val ANSWER = "answer"
     const val ICE_CANDIDATE = "ice_candidate"
+    const val ICE_CANDIDATES_REMOVED = "ice_candidates_removed" // Tuần 3: ICE Gathering liên tục
+    const val HANGUP = "hangup"
+    const val NETWORK_CHANGE = "network_change" // Tuần 4: Seamless Handover
 }
 
 /**
@@ -114,4 +117,47 @@ data class IceCandidateSignalingMessage(
     val sdpMLineIndex: Int = 0,
     @SerializedName("candidate")
     val candidate: String
+)
+
+/**
+ * Một ICE candidate dạng rút gọn (dùng trong danh sách candidate bị thu hồi)
+ */
+data class IceCandidatePayload(
+    @SerializedName("sdpMid")
+    val sdpMid: String? = null,
+    @SerializedName("sdpMLineIndex")
+    val sdpMLineIndex: Int = 0,
+    @SerializedName("candidate")
+    val candidate: String
+)
+
+/**
+ * Tuần 3: Khi ICE Gathering liên tục phát hiện một đường truyền không còn dùng được
+ * (vd: mất Wi-Fi), WebRTC thu hồi các candidate cũ -> báo cho đối tác bỏ đi.
+ */
+data class IceCandidatesRemovedMessage(
+    @SerializedName("type")
+    val type: String = SignalingType.ICE_CANDIDATES_REMOVED,
+    @SerializedName("target_id")
+    val targetId: String? = null,
+    @SerializedName("sender_id")
+    val senderId: String? = null,
+    @SerializedName("candidates")
+    val candidates: List<IceCandidatePayload> = emptyList()
+)
+
+/**
+ * Gói tin kết thúc cuộc gọi / thông báo đổi mạng
+ */
+data class SimpleSignalingMessage(
+    @SerializedName("type")
+    val type: String,
+    @SerializedName("target_id")
+    val targetId: String? = null,
+    @SerializedName("sender_id")
+    val senderId: String? = null,
+    @SerializedName("user_id")
+    val userId: String? = null,
+    @SerializedName("network_type")
+    val networkType: String? = null
 )

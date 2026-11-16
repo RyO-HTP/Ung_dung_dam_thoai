@@ -1,65 +1,73 @@
 const WebSocket = require('ws');
 
-// Khởi tạo máy chủ WebSocket ở cổng 8080
+// Bản Node.js tương đương signaling_server.py (cổng 8080). Server chính dùng signaling_server.py (cổng 8765).
 const wss = new WebSocket.Server({ port: 8080 });
 
-// Danh sách lưu trữ các Client đang kết nối
+// user_id -> WebSocket đang hoạt động
 const clients = new Map();
+
+const ICE_SERVERS = [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+    {
+        urls: [
+            'turn:openrelay.metered.ca:80',
+            'turn:openrelay.metered.ca:443',
+            'turn:openrelay.metered.ca:443?transport=tcp',
+        ],
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+    },
+];
+
+// Các gói tin chuyển tiếp nguyên vẹn (giữ sdpMid, sdpMLineIndex... để app Android dựng lại IceCandidate)
+const FORWARD_TYPES = new Set(['offer', 'answer', 'ice_candidate', 'ice_candidates_removed', 'hangup']);
 
 wss.on('connection', (ws) => {
     console.log('Một thiết bị mới đã kết nối vào Signaling Server.');
 
     ws.on('message', (message) => {
+        let data;
         try {
-            const data = JSON.parse(message);
-
-            // 1. Ghi nhận user đăng nhập
-            if (data.type === 'register') {
-                clients.set(data.user_id, ws);
-                ws.userId = data.user_id;
-                console.log(`User [${data.user_id}] đã đăng ký thành công.`);
-            }
-
-            // 2. Chuyển tiếp luồng SDP (Thiết lập cuộc gọi P2P)
-            if (data.type === 'offer' || data.type === 'answer') {
-                const targetWs = clients.get(data.target_id);
-                if (targetWs && targetWs.readyState === WebSocket.OPEN) {
-                    targetWs.send(JSON.stringify(data));
-                    console.log(`Đã chuyển ${data.type} từ ${data.user_id} tới ${data.target_id}`);
-                }
-            }
-
-            // 3. TÍNH NĂNG TUẦN 3: ICE Gathering (Thu thập & chuyển tiếp đường truyền)
-            if (data.type === 'ice_candidate') {
-                const targetWs = clients.get(data.target_id);
-                if (targetWs && targetWs.readyState === WebSocket.OPEN) {
-                    // Chuyển tiếp ngay lập tức IP/Port mạng mới (4G/Wi-Fi) cho người kia
-                    targetWs.send(JSON.stringify({
-                        type: 'ice_candidate',
-                        sender_id: data.user_id,
-                        candidate: data.candidate
-                    }));
-                    console.log(`[ICE] Cập nhật đường truyền từ ${data.user_id} tới ${data.target_id}`);
-                }
-            }
-
-            // 4. TÍNH NĂNG TUẦN 3: Seamless Handover (Báo cáo chuyển mạng)
-            if (data.type === 'network_change') {
-                console.log(`[HANDOVER] User ${data.user_id} vừa chuyển mạng sang ${data.network_type}. Đang giữ phiên...`);
-                // Thông báo cho các máy khác trong phòng biết để chuẩn bị nhận luồng âm thanh từ IP mới
-            }
-
+            data = JSON.parse(message);
         } catch (error) {
-            console.error('Lỗi xử lý tin nhắn:', error);
+            console.error('Gói tin không phải JSON:', error.message);
+            return;
+        }
+
+        // 1. Ghi nhận user đăng nhập + cấp cấu hình STUN/TURN
+        if (data.type === 'register' && data.user_id) {
+            clients.set(data.user_id, ws);
+            ws.userId = data.user_id;
+            ws.send(JSON.stringify({ type: 'webrtc_config', config: { iceServers: ICE_SERVERS } }));
+            console.log(`User [${data.user_id}] đã đăng ký thành công.`);
+            return;
+        }
+
+        // 2. Chuyển tiếp SDP/ICE (Tuần 2-3), server tự gắn sender_id thật
+        if (FORWARD_TYPES.has(data.type)) {
+            if (!ws.userId || !data.target_id) return;
+            data.sender_id = ws.userId;
+            const targetWs = clients.get(data.target_id);
+            if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+                targetWs.send(JSON.stringify(data));
+                console.log(`Đã chuyển ${data.type} từ ${ws.userId} tới ${data.target_id}`);
+            }
+            return;
+        }
+
+        // 3. Seamless Handover (Tuần 4): ghi log chuyển mạng
+        if (data.type === 'network_change') {
+            console.log(`[HANDOVER] User ${ws.userId} vừa chuyển mạng sang ${data.network_type}.`);
         }
     });
 
     ws.on('close', () => {
-        if (ws.userId) {
+        // Chỉ xoá nếu đây vẫn là kết nối hiện hành (khi đổi mạng, kết nối mới có thể đã đăng ký trước)
+        if (ws.userId && clients.get(ws.userId) === ws) {
             clients.delete(ws.userId);
             console.log(`User [${ws.userId}] đã ngắt kết nối.`);
         }
     });
 });
 
-console.log('Signaling Server (Tuần 3) đang chạy tại ws://localhost:8080');
+console.log('Signaling Server (Node.js) đang chạy tại ws://localhost:8080');

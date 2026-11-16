@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -66,6 +67,7 @@ import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.GlassBorder
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
+import com.example.damthoai.ui.theme.PureWhite
 import kotlin.math.roundToInt
 
 @Composable
@@ -143,6 +145,8 @@ private fun PocketModeContent(
     onUnlockBoundsChanged: (Rect) -> Unit = {}
 ) {
     var isTalking by remember { mutableStateOf(false) }
+    val activeIncident by com.example.damthoai.hardware.audio.AudioIncidentBus.activeIncident.collectAsState()
+
     Column(
         modifier = modifier.padding(horizontal = 24.dp, vertical = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -172,11 +176,19 @@ private fun PocketModeContent(
                     style = DamType.Small
                 )
             }
+            if (activeIncident != null) {
+                Spacer(Modifier.height(12.dp))
+                com.example.damthoai.ui.components.AudioIncidentBanner(
+                    incident = activeIncident,
+                    compactSingleLine = true,
+                    showDismiss = !locked
+                )
+            }
             Spacer(Modifier.height(20.dp))
             Text(
                 "Hậu cần – An ninh",
                 color = TextPrimary,
-                style = DamType.Heading.copy(fontSize = 20.sp)
+                style = DamType.Heading20
             )
         }
         PttButton(
@@ -294,7 +306,7 @@ private fun PocketUnlockSlider(
                 }
                 .size(knobSize)
                 .clip(CircleShape)
-                .background(Brush.horizontalGradient(listOf(AccentCyan, Color.White))),
+                .background(Brush.horizontalGradient(listOf(AccentCyan, PureWhite))),
             contentAlignment = Alignment.Center
         ) {
             Icon(

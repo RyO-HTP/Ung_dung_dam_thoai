@@ -1,6 +1,8 @@
 package com.example.damthoai.permission
 
 import android.app.Activity
+import android.app.NotificationManager
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -136,6 +138,19 @@ object PermissionManager {
         // 3. Các nhóm quyền Runtime (AUDIO, CAMERA, BLUETOOTH, NOTIFICATION)
         val manifestPermissions = appPermission.getManifestPermissions()
 
+        if (
+            appPermission == AppPermission.NOTIFICATION &&
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+        ) {
+            val notificationManager =
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            return if (notificationManager.areNotificationsEnabled()) {
+                PermissionState.GRANTED
+            } else {
+                PermissionState.DENIED
+            }
+        }
+
         // Nếu không có quyền runtime nào cần xin ở phiên bản SDK hiện tại
         if (manifestPermissions.isEmpty()) {
             return PermissionState.GRANTED
@@ -151,20 +166,26 @@ object PermissionManager {
         }
 
         val wasRequested = wasRequested(context, appPermission)
-
-        // ActivityCompat cần Activity để phân biệt lần từ chối thông thường với từ chối vĩnh viễn.
-        if (activity != null) {
-            val showRationale = manifestPermissions.any { perm ->
+        val showRationale = if (activity != null) {
+            manifestPermissions.any { perm ->
                 ActivityCompat.shouldShowRequestPermissionRationale(activity, perm)
             }
-            return if (!showRationale && wasRequested) {
-                PermissionState.PERMANENTLY_DENIED
-            } else {
-                PermissionState.DENIED
-            }
-        }
+        } else false
 
-        return if (wasRequested) PermissionState.PERMANENTLY_DENIED else PermissionState.DENIED
+        return resolvePermissionState(allGranted, wasRequested, showRationale)
+    }
+
+    internal fun resolvePermissionState(
+        allGranted: Boolean,
+        wasRequested: Boolean,
+        showRationale: Boolean
+    ): PermissionState {
+        if (allGranted) return PermissionState.GRANTED
+        return if (wasRequested && !showRationale) {
+            PermissionState.PERMANENTLY_DENIED
+        } else {
+            PermissionState.DENIED
+        }
     }
 
     /**
@@ -265,6 +286,49 @@ object PermissionManager {
             context.startActivity(intent)
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    /**
+     * Mở cài đặt thông báo của ứng dụng, hoặc trang cài đặt ứng dụng trên Android cũ.
+     */
+    fun openNotificationSettings(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            openAppSettings(context)
+            return
+        }
+
+        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            if (context !is Activity) {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+        try {
+            context.startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            openAppSettings(context)
+        }
+    }
+
+    /**
+     * Mở danh sách cài đặt tối ưu hóa pin để người dùng tự đổi quyền chạy nền.
+     */
+    fun openBatterySettings(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            openAppSettings(context)
+            return
+        }
+
+        val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+            if (context !is Activity) {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+        try {
+            context.startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            openAppSettings(context)
         }
     }
 }
