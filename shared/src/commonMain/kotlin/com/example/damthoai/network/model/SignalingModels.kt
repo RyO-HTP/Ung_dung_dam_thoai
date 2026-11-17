@@ -164,7 +164,10 @@ data class SeatMessage(
     @SerialName("channel_name")
     val channelName: String = "",
     @SerialName("by_name")
-    val byName: String? = null
+    val byName: String? = null,
+    /** Lý do server chuyển chỗ: "" (chủ sự kiện đổi vai trò), "channel_renamed", "channel_deleted". */
+    @SerialName("reason")
+    val reason: String? = null
 )
 
 /**

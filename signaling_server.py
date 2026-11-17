@@ -61,6 +61,8 @@ banned = {}             # event_pin -> {user_id} bị chủ sự kiện xoá (kh
 # (thu hồi lượt của người thấp hơn); ngang hàng thì ai bấm trước nói trước, người sau bị báo "bận".
 ROLE_PRIORITY = {"ban": 3, "nhom": 2, "tv": 1}
 COMMAND_CHANNEL = "ch_01"
+GENERAL_CHANNEL = "ch_general"
+GENERAL_NAME = "Kênh chung"
 # Giới hạn nói 60 giây chống kẹt phím (giống MaxSpeakDurationMs bên Go); đổi được qua biến môi trường
 FLOOR_MAX_SECONDS = float(os.environ.get("FLOOR_MAX_SECONDS", "60"))
 # Người giữ lượt không báo "vẫn đang nói" quá 5 giây (mất sóng) thì thu hồi (Go: StaleUdpSilenceMs)
@@ -131,8 +133,9 @@ def members_of(event_pin):
     return members
 
 
-def seat_assigned_payload(event_pin, seat, by_name=None):
-    """Gói "seat_assigned": báo một máy biết vai trò/phòng ban mới do chủ sự kiện đặt."""
+def seat_assigned_payload(event_pin, seat, by_name=None, reason=""):
+    """Gói "seat_assigned": báo một máy biết vai trò/phòng ban mới do chủ sự kiện đặt.
+    reason: "" (chủ sự kiện đổi vai trò), "channel_renamed" hoặc "channel_deleted"."""
     if not by_name:
         info = events.get(event_pin) or {}
         by_name = client_profiles.get(info.get("organizer_id"), {}).get("display_name")
@@ -140,7 +143,47 @@ def seat_assigned_payload(event_pin, seat, by_name=None):
         "type": "seat_assigned",
         **seat,
         "by_name": by_name or "Chủ sự kiện",
+        "reason": reason,
     })
+
+
+def catalog_fix(event_pin, profile):
+    """Kênh nhóm của [profile] so với danh mục hiện tại của sự kiện:
+    - kênh đã bị xoá → (chỗ mới ở Kênh chung, giữ vai trò, "channel_deleted");
+    - kênh đã đổi tên → (cùng kênh, tên mới, "channel_renamed");
+    - còn đúng, là trưởng ban / Ban chỉ huy / Kênh chung, hoặc chủ sự kiện chưa sửa danh mục → None."""
+    catalog = (events.get(event_pin) or {}).get("catalog")
+    role = profile.get("team_role") or "tv"
+    group = profile.get("channel_id") or GENERAL_CHANNEL
+    if catalog is None or role == "ban" or profile.get("is_organizer") \
+            or group in (COMMAND_CHANNEL, GENERAL_CHANNEL):
+        return None
+    entry = next((c for c in catalog if c["id"] == group), None)
+    if entry is None:
+        return {"team_role": role, "channel_id": GENERAL_CHANNEL, "channel_name": GENERAL_NAME}, "channel_deleted"
+    if entry["name"] != (profile.get("channel_name") or ""):
+        return {"team_role": role, "channel_id": group, "channel_name": entry["name"]}, "channel_renamed"
+    return None
+
+
+async def apply_catalog_fix(event_pin, user_id):
+    """Áp [catalog_fix] cho một máy: cập nhật hồ sơ, nhớ chỗ mới (máy đó xác nhận bằng cách đăng ký
+    lại), nhả lượt nói ở kênh không còn thuộc về và báo máy đó. Trả True nếu có thay đổi."""
+    profile = client_profiles.get(user_id)
+    if profile is None or profile.get("event_pin") != event_pin:
+        return False
+    fix = catalog_fix(event_pin, profile)
+    if fix is None:
+        return False
+    seat, reason = fix
+    pending_seats[(event_pin, user_id)] = seat
+    profile.update(seat)
+    print(f"[{user_id}] {reason}: chuyển sang {seat}.")
+    await release_floors_of(user_id, keep_pin=event_pin, keep_channels=channels_of(profile))
+    ws = connected_clients.get(user_id)
+    if ws is not None:
+        await safe_send(ws, seat_assigned_payload(event_pin, seat, reason=reason))
+    return True
 
 
 def client_ip(ws):
@@ -336,6 +379,9 @@ async def handle_register(websocket, user_id, data):
         else:
             profile.update(pending)
             await safe_send(websocket, seat_assigned_payload(event_pin, pending))
+    # Kênh của máy này đã bị xoá/đổi tên khi máy offline, hoặc máy vừa quét QR cũ: sửa theo danh mục
+    if event_pin and not is_organizer and await apply_catalog_fix(event_pin, user_id):
+        save_state()
 
     # Chủ sự kiện (đã xác thực) là nguồn duy nhất đặt tên sự kiện và danh mục phòng ban
     event_name = str(data.get("event_name") or "").strip()
@@ -344,8 +390,11 @@ async def handle_register(websocket, user_id, data):
         if event_name:
             info["event_name"] = event_name
         catalog = parse_catalog(data.get("catalog"))
-        if catalog is not None:
+        if catalog is not None and catalog != info.get("catalog"):
             info["catalog"] = catalog
+            # Đổi tên / xoá kênh: chuyển ngay những người đang online ở kênh đó
+            for uid in [m["user_id"] for m in members_of(event_pin)]:
+                await apply_catalog_fix(event_pin, uid)
         save_state()
 
     if is_first_register:

@@ -9,6 +9,7 @@ import com.example.damthoai.data.TeamChannels
 import com.example.damthoai.data.TeamRole
 import com.example.damthoai.network.model.OnlineMember
 import com.example.damthoai.service.DamThoaiCallManager
+import com.example.damthoai.ui.components.AppToast
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -78,6 +79,15 @@ class ChannelViewModel : ViewModel() {
         // Chủ sự kiện đổi vai trò/phòng ban của mình: hiện banner báo cấp mới
         viewModelScope.launch {
             callManager.seatChanges.collect { change ->
+                when (change.reason) {
+                    "channel_renamed" -> {
+                        AppToast.show("Kênh \"${change.oldGroupName}\" được đổi tên thành \"${change.seat.groupName}\"")
+                        return@collect
+                    }
+                    "channel_deleted" -> AppToast.show(
+                        "Kênh \"${change.oldGroupName}\" đã bị xoá. Bạn được chuyển về ${TeamChannels.GENERAL_NAME}."
+                    )
+                }
                 val where = TeamChannels.channelsOf(change.seat)
                     .joinToString(" + ") { TeamChannels.channelName(it, change.seat.groupName) }
                 showRoleChangedNotification(

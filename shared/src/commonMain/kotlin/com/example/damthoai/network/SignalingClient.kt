@@ -82,7 +82,7 @@ sealed class SignalingEvent {
         val talking: Boolean
     ) : SignalingEvent()
     /** Chủ sự kiện ([byName]) đã đổi vai trò/phòng ban của mình thành [seat]. */
-    data class SeatAssigned(val seat: Seat, val byName: String) : SignalingEvent()
+    data class SeatAssigned(val seat: Seat, val byName: String, val reason: String = "") : SignalingEvent()
     /** Server từ chối lệnh đổi vai trò mình gửi. */
     data class SetSeatDenied(val targetId: String?) : SignalingEvent()
     /** Chủ sự kiện ([byName]) đã xoá mình khỏi sự kiện [eventPin]. */
@@ -311,7 +311,7 @@ class SignalingClient(
                     val msg = json.decodeFromString(SeatMessage.serializer(), jsonStr)
                     if (msg.teamRole.isBlank()) return
                     val seat = seatFor(TeamRole.fromWire(msg.teamRole), msg.channelId, msg.channelName)
-                    _events.emit(SignalingEvent.SeatAssigned(seat, msg.byName.orEmpty()))
+                    _events.emit(SignalingEvent.SeatAssigned(seat, msg.byName.orEmpty(), msg.reason.orEmpty()))
                 }
 
                 SignalingType.SET_SEAT_DENIED -> {

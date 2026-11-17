@@ -152,7 +152,8 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
     val seat: StateFlow<Seat> = _seat.asStateFlow()
 
     /** Chủ sự kiện vừa đổi vai trò của mình (UI hiện banner "vai trò đã đổi"). */
-    data class SeatChange(val seat: Seat, val byName: String)
+    /** [reason]: "" (đổi vai trò), "channel_renamed" hoặc "channel_deleted"; [oldGroupName]: tên kênh trước đó. */
+    data class SeatChange(val seat: Seat, val byName: String, val reason: String = "", val oldGroupName: String = "")
     private val _seatChanges = MutableSharedFlow<SeatChange>(extraBufferCapacity = 4)
     val seatChanges: SharedFlow<SeatChange> = _seatChanges.asSharedFlow()
 
@@ -354,7 +355,10 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
     private fun applySeat(newSeat: Seat) {
         AppStartPrefs.setSeat(newSeat)
         if (_seat.value == newSeat) return
+        val sameChannels = TeamChannels.channelsOf(_seat.value) == TeamChannels.channelsOf(newSeat)
         _seat.value = newSeat
+        // Chỉ đổi tên kênh (cùng vai trò, cùng kênh): giữ kênh đang phát, không ngắt ai
+        if (sameChannels) return
         _talkChannelId.value = defaultTalkChannel(newSeat)
         _speakers.value = emptyMap()
         evaluatePeers(_onlineMembers.value)
@@ -553,10 +557,12 @@ class DamThoaiCallManager private constructor(private val platform: PlatformServ
             is SignalingEvent.SeatAssigned -> {
                 // Chủ sự kiện đổi vai trò/phòng ban của mình: chuyển kênh ngay và báo lại server
                 if (AppStartPrefs.isOrganizer()) return
-                val changed = _seat.value != event.seat
+                val old = _seat.value
                 applySeat(event.seat)
                 signalingClient.updateRegistration(buildRegistration(AppStartPrefs.getUserId()))
-                if (changed) _seatChanges.tryEmit(SeatChange(event.seat, event.byName))
+                if (old != event.seat) {
+                    _seatChanges.tryEmit(SeatChange(event.seat, event.byName, event.reason, old.groupName))
+                }
             }
 
             is SignalingEvent.Kicked -> {
