@@ -15,6 +15,7 @@ object SignalingType {
     const val ICE_CANDIDATES_REMOVED = "ice_candidates_removed" // Tuần 3: ICE Gathering liên tục
     const val HANGUP = "hangup"
     const val NETWORK_CHANGE = "network_change" // Tuần 4: Seamless Handover
+    const val VOICE_NOTE = "voice_note"         // Tuần 5 (TV2): Hàng đợi ngoại tuyến Store-and-Forward
 }
 
 /**
@@ -160,4 +161,28 @@ data class SimpleSignalingMessage(
     val userId: String? = null,
     @SerializedName("network_type")
     val networkType: String? = null
+)
+
+/**
+ * Tuần 5 (TV2): Gói tin nhắn thoại gửi bù (Store-and-Forward) khi có mạng trở lại.
+ */
+data class VoiceNoteSignalingMessage(
+    @SerializedName("type")
+    val type: String = SignalingType.VOICE_NOTE,
+    @SerializedName("id")
+    val id: String,
+    @SerializedName("target_id")
+    val targetId: String? = null,
+    @SerializedName("sender_id")
+    val senderId: String? = null,
+    @SerializedName("channel_id")
+    val channelId: String = "",
+    @SerializedName("recorded_at_ms")
+    val recordedAtMs: Long = 0L,
+    @SerializedName("duration_ms")
+    val durationMs: Long = 0L,
+    @SerializedName("sample_rate_hz")
+    val sampleRateHz: Int = 16_000,
+    @SerializedName("audio_base64")
+    val audioBase64: String
 )

@@ -1,12 +1,20 @@
 package com.example.damthoai.service
 
 import android.content.Context
-import android.media.AudioManager
 import android.util.Log
+import com.example.damthoai.audio.offline.OfflineVoiceQueueManager
+import com.example.damthoai.audio.offline.QueuedVoiceMessage
+import com.example.damthoai.audio.offline.VoiceQueueTransport
+import com.example.damthoai.data.SpeakingStateRepository
+import com.example.damthoai.data.fake.NetworkStatus
+import com.example.damthoai.hardware.HandsFreeSettings
 import com.example.damthoai.hardware.PttController
+import com.example.damthoai.hardware.audio.AudioFocusGuard
+import com.example.damthoai.hardware.emergency.EmergencyAlertManager
 import com.example.damthoai.network.LocalLanSignaling
 import com.example.damthoai.network.MdnsDiscoveryManager
 import com.example.damthoai.network.NetworkChangeReceiver
+import com.example.damthoai.network.NetworkQualityMonitor
 import com.example.damthoai.network.SignalingChannel
 import com.example.damthoai.network.SignalingClient
 import com.example.damthoai.network.SignalingConnectionState
@@ -15,6 +23,10 @@ import com.example.damthoai.network.model.IceCandidatePayload
 import com.example.damthoai.webrtc.CallStats
 import com.example.damthoai.webrtc.CustomPeerConnectionObserver
 import com.example.damthoai.webrtc.WebRTCClient
+import com.example.damthoai.webrtc.audio.AudioDuckingController
+import com.example.damthoai.webrtc.audio.AudioProcessingManager
+import com.example.damthoai.webrtc.audio.JitterBufferOptimizer
+import com.example.damthoai.webrtc.audio.JitterProfile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -89,8 +101,25 @@ class DamThoaiCallManager private constructor(private val context: Context) {
 
     val signalingClient = SignalingClient()
     val lanSignaling = LocalLanSignaling(context)
-    val webRTCClient = WebRTCClient(context)
+    val audioProcessing = AudioProcessingManager()
+    val webRTCClient = WebRTCClient(context, audioProcessing)
     val mdnsDiscovery = MdnsDiscoveryManager(context)
+    val jitterOptimizer = JitterBufferOptimizer()
+    val batteryMonitor = BatteryOptimizationMonitor()
+    val offlineVoiceQueue = OfflineVoiceQueueManager.createDefault(context, audioProcessing)
+
+    @Volatile
+    var activeChannelId: String = AudioDuckingController.CHANNEL_SUPPORT
+
+    val audioDucking = AudioDuckingController(
+        onVolumeApplied = { channelId, effectiveVolume ->
+            if (channelId == activeChannelId) {
+                webRTCClient.setRemoteVolume(effectiveVolume.toDouble())
+            }
+        }
+    )
+
+    private var lastAppliedJitterProfile: JitterProfile? = null
 
     // Trạng thái cuộc gọi
     private val _callState = MutableStateFlow<CallState>(CallState.Idle)
@@ -131,14 +160,88 @@ class DamThoaiCallManager private constructor(private val context: Context) {
         get() = if (_connectionMode.value == ConnectionMode.LAN_P2P) lanSignaling else signalingClient
 
     init {
+        attachOfflineQueueTransport()
         observeSignalingEvents()
         observeServerConnection()
+        observeTv2AudioSettingsAndStates()
         // Lắng nghe tín hiệu phím cứng từ PttController
         scope.launch {
             PttController.events.collect { event ->
                 when (event.javaClass.simpleName) {
                     "PttPressed" -> setPushToTalkPressed(true)
                     "PttReleased" -> setPushToTalkPressed(false)
+                }
+            }
+        }
+    }
+
+    private fun attachOfflineQueueTransport() {
+        offlineVoiceQueue.attachTransport(object : VoiceQueueTransport {
+            override fun isTransportReady(): Boolean = isSignalingTransportReady()
+
+            override fun sendVoiceNote(message: QueuedVoiceMessage, audioBase64: String): Boolean {
+                val target = message.targetId.ifBlank {
+                    activePeerUserId ?: lanSignaling.peerIds.value.firstOrNull() ?: return false
+                }
+                return channel.sendVoiceNote(
+                    targetId = target,
+                    messageId = message.id,
+                    channelId = message.channelId,
+                    recordedAtMs = message.recordedAtMs,
+                    durationMs = message.durationMs,
+                    sampleRateHz = message.sampleRateHz,
+                    audioBase64 = audioBase64
+                )
+            }
+        })
+    }
+
+    private fun isSignalingTransportReady(): Boolean {
+        return signalingClient.connectionState.value is SignalingConnectionState.Registered ||
+            (_connectionMode.value == ConnectionMode.LAN_P2P && lanSignaling.peerIds.value.isNotEmpty())
+    }
+
+    /**
+     * TV2 (Tuần 4, 5, 6): Đồng bộ live cài đặt xử lý âm thanh, trạng thái nói đa kênh (Audio Ducking),
+     * cảnh báo khẩn cấp và phục hồi mạng (auto-flush Hàng đợi Ngoại tuyến).
+     */
+    private fun observeTv2AudioSettingsAndStates() {
+        scope.launch {
+            HandsFreeSettings.duckSecondaryEnabled.collect { enabled ->
+                audioDucking.setDuckingEnabled(enabled)
+            }
+        }
+        scope.launch {
+            HandsFreeSettings.autoMicGainEnabled.collect { enabled ->
+                audioProcessing.setAgcEnabled(enabled)
+            }
+        }
+        scope.launch {
+            HandsFreeSettings.noiseSuppressionEnabled.collect { enabled ->
+                audioProcessing.setNoiseSuppressionEnabled(enabled)
+            }
+        }
+        scope.launch {
+            SpeakingStateRepository.speakingChannelIds.collect { speakingChannels ->
+                audioDucking.updateSpeakingChannels(speakingChannels)
+            }
+        }
+        scope.launch {
+            EmergencyAlertManager.currentAlert.collect { alert ->
+                audioDucking.setEmergencyOverrideActive(alert != null)
+            }
+        }
+        scope.launch {
+            NetworkQualityMonitor.status.collect { status ->
+                if (status !is NetworkStatus.Offline) {
+                    offlineVoiceQueue.onNetworkRestored()
+                }
+            }
+        }
+        scope.launch {
+            lanSignaling.peerIds.collect { peers ->
+                if (peers.isNotEmpty()) {
+                    offlineVoiceQueue.onNetworkRestored()
                 }
             }
         }
@@ -233,6 +336,16 @@ class DamThoaiCallManager private constructor(private val context: Context) {
                             endCallInternal(notifyPeer = false, reason = "Đối tác đã kết thúc")
                         }
                     }
+
+                    is SignalingEvent.VoiceNoteReceived -> {
+                        Log.d(TAG, "Nhận tin nhắn thoại ngoại tuyến [${event.id}] từ ${event.senderId}")
+                        markField("offline_voice_received", "id=${event.id};from=${event.senderId};ms=${event.durationMs}")
+                        offlineVoiceQueue.playReceivedVoiceNote(
+                            audioBase64 = event.audioBase64,
+                            sampleRateHz = event.sampleRateHz,
+                            senderId = event.senderId
+                        )
+                    }
                 }
             }
         }
@@ -249,6 +362,8 @@ class DamThoaiCallManager private constructor(private val context: Context) {
                     is SignalingConnectionState.Registered -> {
                         lanFallbackJob?.cancel()
                         lanFallbackJob = null
+                        // TV2 (Tuần 5): Có mạng trở lại -> gửi vọt toàn bộ tin nhắn thoại trong hàng đợi ngoại tuyến
+                        offlineVoiceQueue.onNetworkRestored()
                         // Đang gọi qua LAN thì giữ nguyên đến hết cuộc gọi, tránh rớt tiếng
                         if (_connectionMode.value == ConnectionMode.LAN_P2P && activePeerUserId == null) {
                             exitLanMode()
@@ -311,10 +426,11 @@ class DamThoaiCallManager private constructor(private val context: Context) {
 
         setupPeerConnection(targetUserId)
 
-        // Kích hoạt theo dõi chuyển mạng, đo chất lượng và micro Bluetooth
+        // Kích hoạt theo dõi chuyển mạng, đo chất lượng, Audio Focus và dịch vụ chạy nền (TV2 Tuần 3)
+        AudioFocusGuard.start(context)
+        DamThoaiAudioService.start(context, activeChannelId)
         startNetworkMonitoring()
         startStatsLoop()
-        enableBluetoothScoAudio()
 
         webRTCClient.createOffer(
             onSuccess = { sdp ->
@@ -355,10 +471,11 @@ class DamThoaiCallManager private constructor(private val context: Context) {
 
         setupPeerConnection(senderUserId)
 
-        // Kích hoạt theo dõi chuyển mạng, đo chất lượng và micro Bluetooth
+        // Kích hoạt theo dõi chuyển mạng, đo chất lượng, Audio Focus và dịch vụ chạy nền (TV2 Tuần 3)
+        AudioFocusGuard.start(context)
+        DamThoaiAudioService.start(context, activeChannelId)
         startNetworkMonitoring()
         startStatsLoop()
-        enableBluetoothScoAudio()
 
         answerOffer(senderUserId, offerSdp)
     }
@@ -474,11 +591,32 @@ class DamThoaiCallManager private constructor(private val context: Context) {
     }
 
     /**
-     * Bấm giữ phím PTT (Push-to-Talk) để nói, nhả ra để chỉ nghe
+     * Bấm giữ phím PTT (Push-to-Talk) để nói, nhả ra để chỉ nghe.
+     * TV2 (Tuần 5): Nếu đang mất mạng (Offline), tự động ghi âm lưu vào Hàng đợi Ngoại tuyến
+     * và gửi vọt đi ngay khi có mạng trở lại.
      */
     fun setPushToTalkPressed(isPressed: Boolean) {
         _isPttPressed.value = isPressed
-        webRTCClient.setMicrophoneEnabled(isPressed)
+        val isOffline = NetworkQualityMonitor.status.value is NetworkStatus.Offline ||
+            (_callState.value is CallState.Reconnecting && !isSignalingTransportReady())
+
+        if (isPressed) {
+            if (isOffline) {
+                webRTCClient.setMicrophoneEnabled(false)
+                offlineVoiceQueue.startOfflineRecording(
+                    channelId = activeChannelId,
+                    targetId = activePeerUserId ?: "",
+                    senderId = localUserId ?: signalingClient.userId ?: "local_user"
+                )
+            } else {
+                webRTCClient.setMicrophoneEnabled(true)
+            }
+        } else {
+            if (offlineVoiceQueue.state.value.isRecording) {
+                offlineVoiceQueue.stopOfflineRecordingAndEnqueue()
+            }
+            webRTCClient.setMicrophoneEnabled(false)
+        }
     }
 
     /**
@@ -524,10 +662,12 @@ class DamThoaiCallManager private constructor(private val context: Context) {
         PttController.setPttModeEnabled(false)
         PttController.forceReleasePtt()
 
-        // Dọn dẹp tài nguyên mạng và Bluetooth
+        // Dọn dẹp tài nguyên mạng, Audio Focus và đặt lại bộ tối ưu Jitter Buffer
         networkChangeReceiver?.stop()
         networkChangeReceiver = null
-        disableBluetoothScoAudio()
+        jitterOptimizer.reset()
+        lastAppliedJitterProfile = null
+        AudioFocusGuard.stop()
 
         // Server đã sống lại trong lúc gọi qua LAN -> giờ mới quay về Server
         if (_connectionMode.value == ConnectionMode.LAN_P2P &&
@@ -619,9 +759,26 @@ class DamThoaiCallManager private constructor(private val context: Context) {
         statsJob?.cancel()
         statsJob = scope.launch {
             while (isActive) {
-                delay(STATS_INTERVAL_MS)
+                // TV2 (Tuần 6): Chu kỳ thích ứng theo trạng thái chạy nền/pin để tối ưu ca 4 giờ
+                val intervalMs = batteryMonitor.recommendedStatsIntervalMs(
+                    isInBackground = PttController.backgroundSessionActive.value,
+                    isPttActive = _isPttPressed.value
+                )
+                delay(intervalMs)
                 webRTCClient.collectStats { stats ->
                     _callStats.value = stats
+                    // TV2 (Tuần 6): Tối ưu Jitter Buffer & Opus bitrate chống méo tiếng theo thời gian thực
+                    val rec = jitterOptimizer.evaluate(stats)
+                    webRTCClient.applyJitterBufferConfig(rec.maxPackets, rec.fastAccelerate)
+                    webRTCClient.applyOpusBitrate(rec.recommendedOpusBitrateBps, rec.enableInbandFec)
+                    if (rec.profile != lastAppliedJitterProfile) {
+                        lastAppliedJitterProfile = rec.profile
+                        markField(
+                            "jitter_buffer_adjusted",
+                            "profile=${rec.profile};maxPackets=${rec.maxPackets};" +
+                                "fastAccel=${rec.fastAccelerate};bitrate=${rec.recommendedOpusBitrateBps};reason=${rec.reason}"
+                        )
+                    }
                     markField(
                         "webrtc_stats",
                         "rtt=${stats.rttMs} lossRate=${"%.3f".format(stats.intervalLossRate)} " +
@@ -638,21 +795,5 @@ class DamThoaiCallManager private constructor(private val context: Context) {
         try {
             com.example.damthoai.hardware.diagnostics.FieldTestLogger.mark(event, source = "TV1_NET", extra = extra)
         } catch (ignored: Throwable) {}
-    }
-
-    private fun enableBluetoothScoAudio() {
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        if (audioManager.isBluetoothScoAvailableOffCall) {
-            audioManager.startBluetoothSco()
-            audioManager.isBluetoothScoOn = true
-            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-        }
-    }
-
-    private fun disableBluetoothScoAudio() {
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioManager.stopBluetoothSco()
-        audioManager.isBluetoothScoOn = false
-        audioManager.mode = AudioManager.MODE_NORMAL
     }
 }

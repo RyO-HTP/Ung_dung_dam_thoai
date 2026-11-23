@@ -8,6 +8,7 @@ import com.example.damthoai.network.model.IceCandidatesRemovedMessage
 import com.example.damthoai.network.model.SdpSignalingMessage
 import com.example.damthoai.network.model.SignalingType
 import com.example.damthoai.network.model.SimpleSignalingMessage
+import com.example.damthoai.network.model.VoiceNoteSignalingMessage
 import com.example.damthoai.network.model.WebRtcConfigMessage
 import com.google.gson.Gson
 import kotlinx.coroutines.flow.SharedFlow
@@ -29,6 +30,15 @@ interface SignalingChannel {
     fun sendIceCandidate(targetId: String, sdpMid: String?, sdpMLineIndex: Int, candidate: String): Boolean
     fun sendIceCandidatesRemoved(targetId: String, candidates: List<IceCandidatePayload>): Boolean
     fun sendHangup(targetId: String): Boolean
+    fun sendVoiceNote(
+        targetId: String,
+        messageId: String,
+        channelId: String,
+        recordedAtMs: Long,
+        durationMs: Long,
+        sampleRateHz: Int,
+        audioBase64: String
+    ): Boolean = false
 }
 
 /**
@@ -65,6 +75,18 @@ object SignalingMessageParser {
             SignalingType.HANGUP -> {
                 val m = gson.fromJson(jsonStr, SimpleSignalingMessage::class.java)
                 SignalingEvent.HangupReceived(m.senderId)
+            }
+            SignalingType.VOICE_NOTE -> {
+                val m = gson.fromJson(jsonStr, VoiceNoteSignalingMessage::class.java)
+                SignalingEvent.VoiceNoteReceived(
+                    id = m.id,
+                    senderId = m.senderId,
+                    channelId = m.channelId,
+                    recordedAtMs = m.recordedAtMs,
+                    durationMs = m.durationMs,
+                    sampleRateHz = m.sampleRateHz,
+                    audioBase64 = m.audioBase64
+                )
             }
             else -> {
                 Log.w(TAG, "Loại gói tin không xác định: ${baseMsg?.type}")
@@ -108,4 +130,27 @@ object SignalingMessageParser {
 
     fun hangup(gson: Gson, senderId: String?, targetId: String): String =
         gson.toJson(SimpleSignalingMessage(type = SignalingType.HANGUP, targetId = targetId, senderId = senderId))
+
+    fun voiceNote(
+        gson: Gson,
+        senderId: String?,
+        targetId: String,
+        messageId: String,
+        channelId: String,
+        recordedAtMs: Long,
+        durationMs: Long,
+        sampleRateHz: Int,
+        audioBase64: String
+    ): String = gson.toJson(
+        VoiceNoteSignalingMessage(
+            id = messageId,
+            targetId = targetId,
+            senderId = senderId,
+            channelId = channelId,
+            recordedAtMs = recordedAtMs,
+            durationMs = durationMs,
+            sampleRateHz = sampleRateHz,
+            audioBase64 = audioBase64
+        )
+    )
 }

@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,6 +24,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -33,10 +36,12 @@ import com.example.damthoai.data.fake.NetworkStatus
 import com.example.damthoai.network.NetworkStatusProvider
 import com.example.damthoai.data.SpeakingStateProvider
 import com.example.damthoai.data.SpeakerInfo
+import com.example.damthoai.hardware.HandsFreeSettings
 import com.example.damthoai.hardware.PttController
 import com.example.damthoai.hardware.PttSource
 import com.example.damthoai.hardware.audio.AudioRoute
 import com.example.damthoai.hardware.audio.AudioRouteGuard
+import com.example.damthoai.service.DamThoaiCallManager
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.BgVariant
 import com.example.damthoai.ui.components.CallBottomActions
@@ -75,10 +80,31 @@ fun ActiveCallScreen(
     onNavigateToEmergency: () -> Unit = {},
     networkStatusOverride: NetworkStatus? = null
 ) {
+    val context = LocalContext.current
+    val isInPreview = LocalInspectionMode.current
+    val callManager = remember(isInPreview) {
+        if (isInPreview) null else DamThoaiCallManager.getInstance(context)
+    }
+
+    // ĐIỂM NỐI TV4/TV2: Giữ capture phím cứng khi màn hình đàm thoại đang mở
+    DisposableEffect(isInPreview) {
+        if (!isInPreview) {
+            PttController.acquireCapture("ActiveCallScreen")
+        }
+        onDispose {
+            if (!isInPreview) {
+                PttController.releaseCapture("ActiveCallScreen")
+            }
+        }
+    }
+
     val observedNetworkStatus by NetworkStatusProvider.source.status.collectAsState()
     val networkStatus = networkStatusOverride ?: observedNetworkStatus
     val speakingByChannel by SpeakingStateProvider.source.speakingByChannel.collectAsState()
     val liveCue by FakeRemainingUiData.liveCueState.collectAsState()
+    val duckSecondaryEnabled by HandsFreeSettings.duckSecondaryEnabled.collectAsState()
+    val offlineQueueState = callManager?.offlineVoiceQueue?.state?.collectAsState()?.value
+    val duckingStates = callManager?.audioDucking?.channelStates?.collectAsState()?.value ?: emptyMap()
     var isScreenPttPressed by remember(state) { mutableStateOf(false) }
     val baseState = if (networkStatus is NetworkStatus.Offline && state == CallUiState.CallIdle) {
         CallUiState.CallOffline
@@ -99,7 +125,8 @@ fun ActiveCallScreen(
         AudioRoute.BLUETOOTH in availableAudioRoutes -> AudioRoute.BLUETOOTH
         else -> null
     }
-    var queuedCount by remember { mutableStateOf(1) }
+    var previewQueuedCount by remember { mutableStateOf(1) }
+    val queuedCount = offlineQueueState?.queuedCount ?: previewQueuedCount
     var volumes by remember(state) {
         mutableStateOf(content.channels.map { channel -> channel.volume })
     }
@@ -152,13 +179,30 @@ fun ActiveCallScreen(
                                 )
                                 content.channels.forEachIndexed { index, channel ->
                                     val speaker = speakingByChannel[channel.name]
+                                    val duckState = duckingStates[channel.name]
+                                    val effectiveIsDucked = if (duckState != null) {
+                                        duckState.isDucked
+                                    } else {
+                                        duckSecondaryEnabled && channel.isDucked
+                                    }
+                                    val effectiveVolume = duckState?.effectiveVolume ?: volumes[index]
+                                    val effectiveTag = when {
+                                        effectiveIsDucked && duckState != null -> "HẠ ÂM ${duckState.duckPercent}%"
+                                        effectiveIsDucked -> channel.tag
+                                        else -> null
+                                    }
                                     VolumeRow(
-                                        channel = channel.copy(volume = volumes[index]),
+                                        channel = channel.copy(
+                                            volume = effectiveVolume,
+                                            isDucked = effectiveIsDucked,
+                                            tag = effectiveTag
+                                        ),
                                         speakerInfo = speaker,
                                         onVolumeChange = { newValue ->
                                             volumes = volumes.toMutableList().also {
                                                 it[index] = newValue
                                             }
+                                            callManager?.audioDucking?.setUserVolume(channel.name, newValue)
                                         }
                                     )
                                 }
@@ -176,14 +220,28 @@ fun ActiveCallScreen(
                             state = displayState,
                             modifier = Modifier,
                             onPress = {
-                                PttController.onKeyPressed(PttSource.SCREEN_BUTTON)
+                                if (displayState == CallUiState.CallOffline && callManager != null) {
+                                    callManager.offlineVoiceQueue.startOfflineRecording(
+                                        channelId = callManager.activeChannelId,
+                                        targetId = "",
+                                        senderId = callManager.signalingClient.userId ?: "local_user"
+                                    )
+                                } else {
+                                    PttController.onKeyPressed(PttSource.SCREEN_BUTTON)
+                                }
                                 isScreenPttPressed =
-                                    PttController.activeSource.value == PttSource.SCREEN_BUTTON
+                                    PttController.activeSource.value == PttSource.SCREEN_BUTTON ||
+                                    displayState == CallUiState.CallOffline
                             },
                             onRelease = { wasReleased ->
+                                if (callManager?.offlineVoiceQueue?.state?.value?.isRecording == true) {
+                                    callManager.offlineVoiceQueue.stopOfflineRecordingAndEnqueue()
+                                }
                                 PttController.onKeyReleased(PttSource.SCREEN_BUTTON)
                                 isScreenPttPressed = false
-                                if (wasReleased && state == CallUiState.CallOffline) queuedCount += 1
+                                if (wasReleased && isInPreview && state == CallUiState.CallOffline) {
+                                    previewQueuedCount += 1
+                                }
                             }
                         )
                     }

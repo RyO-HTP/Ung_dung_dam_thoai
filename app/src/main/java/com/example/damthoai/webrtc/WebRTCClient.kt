@@ -2,7 +2,11 @@ package com.example.damthoai.webrtc
 
 import android.content.Context
 import android.util.Log
+import com.example.damthoai.webrtc.audio.AudioProcessingManager
+import com.example.damthoai.webrtc.audio.OpusAudioConfigurer
+import com.example.damthoai.webrtc.audio.OpusAudioProfile
 import org.webrtc.*
+import org.webrtc.audio.JavaAudioDeviceModule
 
 /**
  * Chỉ số chất lượng cuộc gọi đọc từ WebRTC getStats() (TV1 - Tuần 6: đo khả năng phục hồi khi rớt gói).
@@ -30,7 +34,10 @@ data class CallStats(
     val isRelayed: Boolean get() = localCandidateType == "relay" || remoteCandidateType == "relay"
 }
 
-class WebRTCClient(private val context: Context) {
+class WebRTCClient(
+    private val context: Context,
+    val audioProcessingManager: AudioProcessingManager = AudioProcessingManager()
+) {
 
     // Singleton cho PeerConnectionFactory để chống lỗi Dispose
     companion object {
@@ -56,12 +63,29 @@ class WebRTCClient(private val context: Context) {
         @Synchronized
         fun getOrCreateFactory(context: Context): PeerConnectionFactory {
             if (factory == null) {
+                val appContext = context.applicationContext
                 PeerConnectionFactory.initialize(
-                    PeerConnectionFactory.InitializationOptions.builder(context.applicationContext)
+                    PeerConnectionFactory.InitializationOptions.builder(appContext)
                         .setEnableInternalTracer(true)
                         .createInitializationOptions()
                 )
-                factory = PeerConnectionFactory.builder().createPeerConnectionFactory()
+                // TV2 (Tuần 4 & Tuần 6): Kích hoạt JavaAudioDeviceModule với phần cứng AEC & Noise Suppressor
+                val adm = runCatching {
+                    JavaAudioDeviceModule.builder(appContext)
+                        .setUseHardwareAcousticEchoCanceler(
+                            JavaAudioDeviceModule.isBuiltInAcousticEchoCancelerSupported()
+                        )
+                        .setUseHardwareNoiseSuppressor(
+                            JavaAudioDeviceModule.isBuiltInNoiseSuppressorSupported()
+                        )
+                        .createAudioDeviceModule()
+                }.getOrNull()
+
+                val builder = PeerConnectionFactory.builder()
+                if (adm != null) {
+                    builder.setAudioDeviceModule(adm)
+                }
+                factory = builder.createPeerConnectionFactory()
             }
             return factory!!
         }
@@ -72,6 +96,11 @@ class WebRTCClient(private val context: Context) {
     private var iceServers: List<PeerConnection.IceServer> = DEFAULT_ICE_SERVERS
     private var audioTrack: AudioTrack? = null
     private var audioSource: AudioSource? = null
+    private var audioSender: RtpSender? = null
+    private var opusProfile: OpusAudioProfile = OpusAudioProfile()
+    private var currentRemoteVolume: Double = 1.0
+    private var currentJitterMaxPackets: Int = 50
+    private var currentJitterFastAccelerate: Boolean = true
     private var isOutputMuted: Boolean = false
     private val remoteAudioTracks = mutableListOf<AudioTrack>()
 
@@ -125,6 +154,10 @@ class WebRTCClient(private val context: Context) {
             // Phát hiện nhanh đường truyền chết để chuyển sang đường dự phòng
             iceConnectionReceivingTimeout = 3000
             iceBackupCandidatePairPingInterval = 2000
+            // TV2 (Tuần 6): Tối ưu NetEQ Audio Jitter Buffer chống méo tiếng & ưu tiên gói thoại DSCP
+            audioJitterBufferMaxPackets = currentJitterMaxPackets
+            audioJitterBufferFastAccelerate = currentJitterFastAccelerate
+            enableDscp = true
         }
 
     /**
@@ -146,13 +179,14 @@ class WebRTCClient(private val context: Context) {
         lastPacketsReceived = 0
         lastPacketsLost = 0
 
-        // Tạo Audio Source và Track để điều khiển Push-to-Talk
-        val audioConstraints = MediaConstraints()
+        // TV2 (Tuần 2, 4, 6): Tạo Audio Source với cấu hình AGC / AGC2 / Noise Suppression / AEC
+        val audioConstraints = audioProcessingManager.buildWebRtcAudioConstraints()
         audioSource = rtcFactory.createAudioSource(audioConstraints)
         audioTrack = rtcFactory.createAudioTrack(AUDIO_TRACK_ID, audioSource).also { track ->
             track.setEnabled(false) // Mặc định tắt mic khi chưa giữ phím PTT
             // Gắn track vào PeerConnection -> SDP có m=audio sendrecv, âm thanh thật sự được truyền đi
-            peerConnection?.addTrack(track, listOf(STREAM_ID))
+            audioSender = peerConnection?.addTrack(track, listOf(STREAM_ID))
+            OpusAudioConfigurer.configureAudioSender(audioSender, opusProfile.maxAverageBitrateBps)
         }
     }
 
@@ -192,8 +226,58 @@ class WebRTCClient(private val context: Context) {
             remoteAudioTracks.add(audio)
             try {
                 audio.setEnabled(!isOutputMuted)
+                audio.setVolume(currentRemoteVolume)
             } catch (ignored: Throwable) {}
         }
+    }
+
+    /**
+     * TV2 (Tuần 4 - Audio Ducking): Điều chỉnh âm lượng thực tế của các remote AudioTrack
+     * theo mức âm lượng sau khi hạ âm (0.0 = im lặng, 1.0 = 100% âm lượng chuẩn).
+     */
+    @Synchronized
+    fun setRemoteVolume(linearVolume: Double) {
+        val clamped = linearVolume.coerceIn(0.0, 1.0)
+        currentRemoteVolume = clamped
+        remoteAudioTracks.forEach { track ->
+            try {
+                track.setVolume(clamped)
+            } catch (ignored: Throwable) {}
+        }
+    }
+
+    /**
+     * TV2 (Tuần 6 - Tối ưu Jitter Buffer chống méo tiếng):
+     * Điều chỉnh động `audioJitterBufferMaxPackets` và `audioJitterBufferFastAccelerate`
+     * trên `PeerConnection.RTCConfiguration` theo chất lượng mạng thực tế.
+     */
+    @Synchronized
+    fun applyJitterBufferConfig(maxPackets: Int, fastAccelerate: Boolean) {
+        val clampedPackets = maxPackets.coerceIn(20, 250)
+        if (currentJitterMaxPackets == clampedPackets && currentJitterFastAccelerate == fastAccelerate) {
+            return
+        }
+        currentJitterMaxPackets = clampedPackets
+        currentJitterFastAccelerate = fastAccelerate
+        val pc = peerConnection ?: return
+        try {
+            pc.setConfiguration(buildRtcConfig())
+            Log.d(TAG, "Đã cập nhật Jitter Buffer: maxPackets=$clampedPackets, fastAccelerate=$fastAccelerate")
+        } catch (e: Throwable) {
+            Log.w(TAG, "Không thể áp dụng Jitter Buffer config: ${e.message}")
+        }
+    }
+
+    /**
+     * TV2 (Tuần 2 & Tuần 6): Cập nhật động bitrate Opus trên audio RtpSender.
+     */
+    @Synchronized
+    fun applyOpusBitrate(bitrateBps: Int, enableInbandFec: Boolean = true) {
+        opusProfile = opusProfile.copy(
+            maxAverageBitrateBps = bitrateBps.coerceIn(8_000, 128_000),
+            useInbandFec = enableInbandFec
+        )
+        OpusAudioConfigurer.configureAudioSender(audioSender, opusProfile.maxAverageBitrateBps)
     }
 
     @Synchronized
@@ -226,7 +310,11 @@ class WebRTCClient(private val context: Context) {
         pc.createOffer(object : SimpleSdpObserver() {
             override fun onCreateSuccess(desc: SessionDescription?) {
                 if (desc == null) return onError("Offer rỗng")
-                setLocal(pc, desc, onSuccess, onError)
+                val tunedSdp = SessionDescription(
+                    desc.type,
+                    OpusAudioConfigurer.preferOpusInSdp(desc.description, opusProfile)
+                )
+                setLocal(pc, tunedSdp, onSuccess, onError)
             }
             override fun onCreateFailure(error: String?) {
                 onError(error ?: "Lỗi tạo Offer không xác định")
@@ -242,7 +330,11 @@ class WebRTCClient(private val context: Context) {
         pc.createAnswer(object : SimpleSdpObserver() {
             override fun onCreateSuccess(desc: SessionDescription?) {
                 if (desc == null) return onError("Answer rỗng")
-                setLocal(pc, desc, onSuccess, onError)
+                val tunedSdp = SessionDescription(
+                    desc.type,
+                    OpusAudioConfigurer.preferOpusInSdp(desc.description, opusProfile)
+                )
+                setLocal(pc, tunedSdp, onSuccess, onError)
             }
             override fun onCreateFailure(error: String?) {
                 onError(error ?: "Lỗi tạo Answer không xác định")
@@ -410,6 +502,7 @@ class WebRTCClient(private val context: Context) {
             peerConnection = null
             audioTrack = null
             audioSource = null
+            audioSender = null
         }
         try { pc?.close() } catch (ignored: Throwable) {}
         try { pc?.dispose() } catch (ignored: Throwable) {}

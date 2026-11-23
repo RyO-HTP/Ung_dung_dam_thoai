@@ -22,6 +22,7 @@ FORWARD_TYPES = {
     "ice_candidate",
     "ice_candidates_removed",  # Tuần 3: ICE Gathering liên tục - ứng viên hết hạn khi đổi mạng
     "hangup",
+    "voice_note",              # Tuần 5 (TV2): Hàng đợi ngoại tuyến Store-and-Forward
 }
 
 stats = {"messages_forwarded": 0, "messages_queued": 0, "registrations": 0}

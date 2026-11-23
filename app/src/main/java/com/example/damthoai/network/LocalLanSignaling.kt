@@ -322,4 +322,27 @@ class LocalLanSignaling(
 
     override fun sendHangup(targetId: String): Boolean =
         sendTo(targetId, SignalingMessageParser.hangup(gson, myUserId, targetId))
+
+    override fun sendVoiceNote(
+        targetId: String,
+        messageId: String,
+        channelId: String,
+        recordedAtMs: Long,
+        durationMs: Long,
+        sampleRateHz: Int,
+        audioBase64: String
+    ): Boolean = sendTo(
+        targetId,
+        SignalingMessageParser.voiceNote(
+            gson = gson,
+            senderId = myUserId,
+            targetId = targetId,
+            messageId = messageId,
+            channelId = channelId,
+            recordedAtMs = recordedAtMs,
+            durationMs = durationMs,
+            sampleRateHz = sampleRateHz,
+            audioBase64 = audioBase64
+        )
+    )
 }

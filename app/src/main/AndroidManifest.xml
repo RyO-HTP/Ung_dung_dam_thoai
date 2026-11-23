@@ -91,6 +91,11 @@
         </activity>
 
         <service
+            android:name=".service.DamThoaiAudioService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <service
             android:name=".hardware.VolumeKeyAccessibilityService"
             android:exported="true"
             android:label="@string/accessibility_service_label"

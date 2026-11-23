@@ -55,6 +55,16 @@ sealed class SignalingEvent {
         val candidates: List<IceCandidatePayload>
     ) : SignalingEvent()
     data class HangupReceived(val senderId: String?) : SignalingEvent()
+    /** Tuần 5 (TV2): nhận tin nhắn thoại gửi bù từ đồng đội vừa có mạng trở lại */
+    data class VoiceNoteReceived(
+        val id: String,
+        val senderId: String?,
+        val channelId: String,
+        val recordedAtMs: Long,
+        val durationMs: Long,
+        val sampleRateHz: Int,
+        val audioBase64: String
+    ) : SignalingEvent()
 }
 
 /**
@@ -237,6 +247,28 @@ class SignalingClient(
 
     override fun sendHangup(targetId: String): Boolean =
         sendMessage(SignalingMessageParser.hangup(gson, currentUserId, targetId))
+
+    override fun sendVoiceNote(
+        targetId: String,
+        messageId: String,
+        channelId: String,
+        recordedAtMs: Long,
+        durationMs: Long,
+        sampleRateHz: Int,
+        audioBase64: String
+    ): Boolean = sendMessage(
+        SignalingMessageParser.voiceNote(
+            gson = gson,
+            senderId = currentUserId,
+            targetId = targetId,
+            messageId = messageId,
+            channelId = channelId,
+            recordedAtMs = recordedAtMs,
+            durationMs = durationMs,
+            sampleRateHz = sampleRateHz,
+            audioBase64 = audioBase64
+        )
+    )
 
     /** Báo server biết thiết bị vừa đổi mạng (phục vụ log thực địa) */
     fun sendNetworkChange(networkType: String): Boolean = sendMessage(
