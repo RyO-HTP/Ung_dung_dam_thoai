@@ -6,7 +6,7 @@
  */
 package com.example.damthoai.ui.channels
 
-import com.example.damthoai.data.fake.Channel
+import com.example.damthoai.data.model.Channel
 
 data class ChannelItemUiState(
     val channel: Channel,
@@ -18,7 +18,6 @@ data class ChannelItemUiState(
 
 data class ChannelListUiState(
     val eventName: String = "Đêm nhạc Chào Tân sinh viên",
-    val networkStatus: String = "Internet · 42 ms",
     val liveCueHeader: String = "LIVE CUE · ĐANG DIỄN",
     val liveCueTitle: String = "Tiết mục 4 – Ban nhạc khách mời",
     val liveCueSubtitle: String = "Hậu cần: chuẩn bị đạo cụ chuyển cảnh",

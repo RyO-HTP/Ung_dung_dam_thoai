@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,7 +41,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
@@ -54,6 +57,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import com.example.damthoai.R
 import com.example.damthoai.hardware.PttController
 import com.example.damthoai.hardware.PttSource
+import com.example.damthoai.service.DamThoaiAudioService
 import com.example.damthoai.ui.components.BgVariant
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.PttButton
@@ -66,6 +70,7 @@ import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.GlassBorder
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
+import com.example.damthoai.ui.theme.PureWhite
 import kotlin.math.roundToInt
 
 @Composable
@@ -79,19 +84,31 @@ fun PocketModeScreen(
     // Tuần 3: sửa - đổi tọa độ chạm cục bộ sang root trước khi kiểm tra hitbox.
     var pointerInputOrigin by remember { mutableStateOf(Offset.Zero) }
     val haptic = LocalHapticFeedback.current
+    val context = LocalContext.current
+    val isInPreview = LocalInspectionMode.current
     val view = LocalView.current
     val pttHitRadiusPx = with(LocalDensity.current) { 125.dp.toPx() }
 
     BackHandler(enabled = locked) {}
 
+    // ĐIỂM NỐI TV2/TV4 (Tuần 3): Kích hoạt Foreground Service kèm WakeLock và giữ capture phím cứng khi bỏ túi
+    DisposableEffect(isInPreview) {
+        if (!isInPreview) {
+            PttController.acquireCapture("PocketModeScreen")
+            DamThoaiAudioService.start(context, "Chế độ Bỏ túi")
+        }
+        onDispose {
+            if (!isInPreview) {
+                PttController.releaseCapture("PocketModeScreen")
+            }
+        }
+    }
+
     DisposableEffect(view) {
         val window = (view.context as? Activity)?.window
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        PttController.acquireCapture("PocketModeScreen")
-        com.example.damthoai.service.DamThoaiAudioService.start(view.context, "Hậu cần – An ninh", "Tong_Dao_Dien")
         onDispose {
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            PttController.releaseCapture("PocketModeScreen")
         }
     }
 
@@ -146,6 +163,8 @@ private fun PocketModeContent(
     onUnlockBoundsChanged: (Rect) -> Unit = {}
 ) {
     var isTalking by remember { mutableStateOf(false) }
+    val activeIncident by com.example.damthoai.hardware.audio.AudioIncidentBus.activeIncident.collectAsState()
+
     Column(
         modifier = modifier.padding(horizontal = 24.dp, vertical = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -175,11 +194,19 @@ private fun PocketModeContent(
                     style = DamType.Small
                 )
             }
+            if (activeIncident != null) {
+                Spacer(Modifier.height(12.dp))
+                com.example.damthoai.ui.components.AudioIncidentBanner(
+                    incident = activeIncident,
+                    compactSingleLine = true,
+                    showDismiss = !locked
+                )
+            }
             Spacer(Modifier.height(20.dp))
             Text(
                 "Hậu cần – An ninh",
                 color = TextPrimary,
-                style = DamType.Heading.copy(fontSize = 20.sp)
+                style = DamType.Heading20
             )
         }
         PttButton(
@@ -297,7 +324,7 @@ private fun PocketUnlockSlider(
                 }
                 .size(knobSize)
                 .clip(CircleShape)
-                .background(Brush.horizontalGradient(listOf(AccentCyan, Color.White))),
+                .background(Brush.horizontalGradient(listOf(AccentCyan, PureWhite))),
             contentAlignment = Alignment.Center
         ) {
             Icon(

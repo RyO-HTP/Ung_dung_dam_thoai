@@ -1,0 +1,98 @@
+version: "3.9"
+
+# =============================================================================
+# TUẦN 6 (NGƯỜI 5): CẤU HÌNH DEPLOY TOÀN BỘ HỆ THỐNG MÁY CHỦ LÊN CLOUD VPS
+# Bao gồm: PostgreSQL 16 + Signaling/UDP/TURN Server + Caddy HTTPS/WSS + Prometheus + Grafana
+# Lệnh chạy trên Cloud:
+#   docker compose -f docker-compose.cloud.yml up -d --build
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: damthoai-cloud-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: damthoai
+      POSTGRES_USER: ptt_admin
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ptt_cloud_secret_2026}
+    volumes:
+      - pg_cloud_data:/var/lib/postgresql/data
+      - ../Tuan_1_Signaling_SDP_ICE_va_Database/001_init_schema.up.sql:/docker-entrypoint-initdb.d/001_init_schema.sql:ro
+    networks:
+      - ptt-cloud-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ptt_admin -d damthoai"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  damthoai-server:
+    build:
+      context: ../..
+      dockerfile: infra/Dockerfile.server
+    container_name: damthoai-cloud-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://ptt_admin:${DB_PASSWORD:-ptt_cloud_secret_2026}@postgres:5432/damthoai?sslmode=disable
+      HTTP_ADDR: ":8080"
+      UDP_RELAY_ADDR: ":50000"
+      TURN_ADDR: ":3478"
+      TURN_PUBLIC_IP: ${CLOUD_PUBLIC_IP:-127.0.0.1}
+    ports:
+      - "8080:8080"       # Cổng HTTP REST API & WebSocket Signaling / Live Cue
+      - "50000:50000/udp" # Cổng âm thanh tốc độ cao 18-Byte UDP Fast-Path
+      - "3478:3478/udp"   # Cổng STUN/TURN vượt tường lửa NAT 4G
+    networks:
+      - ptt-cloud-net
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: damthoai-cloud-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../../infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_cloud_data:/data
+      - caddy_cloud_config:/config
+    depends_on:
+      - damthoai-server
+    networks:
+      - ptt-cloud-net
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: damthoai-cloud-prometheus
+    restart: unless-stopped
+    volumes:
+      - ../../infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - ptt-cloud-net
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: damthoai-cloud-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin_ptt_2026}
+    volumes:
+      - ../../infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - ptt-cloud-net
+
+networks:
+  ptt-cloud-net:
+    driver: bridge
+
+volumes:
+  pg_cloud_data:
+  caddy_cloud_data:
+  caddy_cloud_config:

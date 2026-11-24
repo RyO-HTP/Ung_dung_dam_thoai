@@ -1,13 +1,13 @@
 /**
- * Path: app/src/main/java/com/example/damthoai/MainActivity.kt
- *
  * Khối KDoc tiếng Việt:
  * Activity chính của ứng dụng Đàm Thoại.
  * Khởi tạo chế độ Edge-to-Edge, cài đặt Theme/Layout,
- * và đánh chặn sự kiện phím cứng Volume (Hardware Keys) biến phím Volume thành nút PTT.
+ * và chuyển sự kiện phím Volume cứng tới bộ điều khiển PTT.
  */
 package com.example.damthoai
 
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
@@ -18,13 +18,31 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.example.damthoai.hardware.AccessibilityStatus
+import com.example.damthoai.hardware.audio.AudioRouteGuard
+import com.example.damthoai.hardware.audio.WebRTCAudioRouteController
 import com.example.damthoai.hardware.HandsFreeSession
+import com.example.damthoai.hardware.HandsFreeSettings
+import com.example.damthoai.hardware.HapticController
 import com.example.damthoai.hardware.HardwareKeyHandler
 import com.example.damthoai.hardware.PttController
+import com.example.damthoai.hardware.PttEvent
+import com.example.damthoai.hardware.RogerBeepPlayer
+import com.example.damthoai.hardware.emergency.EmergencyAlertManager
+import com.example.damthoai.hardware.emergency.EmergencyNotifier
+import com.example.damthoai.data.AppStartPrefs
+import com.example.damthoai.permission.AppPermission
 import com.example.damthoai.permission.PermissionManager
+import com.example.damthoai.permission.PermissionState
+import com.example.damthoai.service.DamThoaiCallManager
 import com.example.damthoai.ui.navigation.AdaptiveAppLayout
+import com.example.damthoai.ui.navigation.AppRoute
 import com.example.damthoai.ui.theme.BgGradientTop
 import com.example.damthoai.ui.theme.DamThoaiTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -32,13 +50,61 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        handleEmergencyAction(intent)
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            com.example.damthoai.hardware.diagnostics.FieldTestLogger.start(applicationContext)
+        }
+        HandsFreeSettings.initialize(applicationContext)
         HandsFreeSession.initialize(this)
+        AudioRouteGuard.start(applicationContext)
+
+        // ĐIỂM NỐI TV2/TV4 (Tuần 4): Cài đặt bộ điều khiển tuyến âm thanh WebRTC thực tế
+        val callManager = DamThoaiCallManager.getInstance(applicationContext)
+        AudioRouteGuard.installController(
+            WebRTCAudioRouteController(applicationContext, callManager.webRTCClient)
+        )
+
+        lifecycleScope.launch {
+            PttController.events.collect { event ->
+                when (event) {
+                    is PttEvent.PttPressed -> HapticController.tick(window.decorView)
+                    is PttEvent.PttReleased -> {
+                        if (!event.forced) {
+                            RogerBeepPlayer.play()
+                        }
+                    }
+                }
+            }
+        }
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                EmergencyAlertManager.currentAlert.collect { alert ->
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                        setShowWhenLocked(alert != null)
+                        setTurnScreenOn(alert != null)
+                    }
+                }
+            }
+        }
 
         // Bật edge-to-edge tràn viền màn hình
         enableEdgeToEdge()
 
         // Cập nhật trạng thái quyền ban đầu
         PermissionManager.refreshPermissionStates(this, this)
+
+        val microphonePermissionState =
+            PermissionManager.checkPermissionState(this, AppPermission.AUDIO, this)
+        val startDestination = when {
+            !AppStartPrefs.isOnboardingDone(this) -> AppRoute.Onboarding.route
+            microphonePermissionState == PermissionState.PERMANENTLY_DENIED ->
+                AppRoute.MicrophonePermission.route
+            microphonePermissionState != PermissionState.GRANTED ->
+                AppRoute.GrantPermission.route
+            AppStartPrefs.hasJoinedEvent(this) -> AppRoute.ChannelList.route
+            else -> AppRoute.ScanQr.route
+        }
 
         setContent {
             DamThoaiTheme {
@@ -47,15 +113,30 @@ class MainActivity : ComponentActivity() {
                     color = BgGradientTop
                 ) {
                     val windowSizeClass = calculateWindowSizeClass(this)
-                    AdaptiveAppLayout(windowSizeClass = windowSizeClass)
+                    AdaptiveAppLayout(
+                        windowSizeClass = windowSizeClass,
+                        startDestination = startDestination
+                    )
                 }
             }
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleEmergencyAction(intent)
+    }
+
+    private fun handleEmergencyAction(intent: Intent?) {
+        when (intent?.action) {
+            EmergencyNotifier.ACTION_ACKNOWLEDGE -> EmergencyAlertManager.acknowledge(this)
+            EmergencyNotifier.ACTION_SNOOZE -> EmergencyAlertManager.snooze(this)
+        }
+    }
+
     /**
      * BẮT SỰ KIỆN PHÍM CỨNG NHẤN XUỐNG (Volume Up / Down).
-     *
      * @param keyCode Mã phím bấm phần cứng.
      * @param event Chi tiết sự kiện phím.
      * @return `true` nếu phím được xử lý làm PTT ("nuốt" sự kiện), HĐH Android sẽ DỪNG
@@ -71,7 +152,6 @@ class MainActivity : ComponentActivity() {
 
     /**
      * BẮT SỰ KIỆN PHÍM CỨNG THẢ RA.
-     *
      * @param keyCode Mã phím bấm phần cứng.
      * @param event Chi tiết sự kiện phím.
      * @return `true` nếu phím được xử lý thả PTT ("nuốt" sự kiện).
@@ -96,7 +176,26 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Cập nhật lại trạng thái quyền khi ứng dụng quay lại foreground
+        // Cập nhật lại trạng thái quyền và khôi phục MediaSession tai nghe khi ứng dụng quay lại foreground
         PermissionManager.refreshPermissionStates(this, this)
+        AccessibilityStatus.refresh(this)
+        HandsFreeSession.onResume(this)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        com.example.damthoai.network.NetworkQualityMonitor.start(applicationContext)
+    }
+
+    override fun onStop() {
+        com.example.damthoai.network.NetworkQualityMonitor.stop()
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        com.example.damthoai.hardware.diagnostics.FieldTestLogger.stop()
+        RogerBeepPlayer.release()
+        AudioRouteGuard.stop()
+        super.onDestroy()
     }
 }

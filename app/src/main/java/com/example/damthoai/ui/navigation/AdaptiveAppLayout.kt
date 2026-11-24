@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationRail
@@ -38,13 +40,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
@@ -61,6 +63,10 @@ import com.example.damthoai.ui.theme.GlassBg
 import com.example.damthoai.ui.theme.PrimaryBrush
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
+import com.example.damthoai.ui.theme.DamType
+import com.example.damthoai.ui.components.outerGlow
+
+val LocalBottomBarPadding = compositionLocalOf { 0.dp }
 
 /**
  * Khung layout chính hỗ trợ Adaptive Điện thoại / Tablet / Màn hình gập
@@ -68,6 +74,7 @@ import com.example.damthoai.ui.theme.TextSecondary
 @Composable
 fun AdaptiveAppLayout(
     windowSizeClass: WindowSizeClass,
+    startDestination: String = AppRoute.Onboarding.route,
     modifier: Modifier = Modifier
 ) {
     val navController = rememberNavController()
@@ -86,6 +93,8 @@ fun AdaptiveAppLayout(
     if (isCompact) {
         // --- BỐ CỤC ĐIỆN THOẠI (COMPACT) ---
         Scaffold(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
             bottomBar = {
                 AnimatedVisibility(
                     visible = shouldShowBottomBar,
@@ -112,10 +121,14 @@ fun AdaptiveAppLayout(
             },
             modifier = modifier
         ) { innerPadding ->
-            AppNavHost(
-                navController = navController,
-                modifier = Modifier.padding(innerPadding)
-            )
+            val bottomPadding = if (shouldShowBottomBar) innerPadding.calculateBottomPadding() else 0.dp
+            CompositionLocalProvider(LocalBottomBarPadding provides bottomPadding) {
+                AppNavHost(
+                    navController = navController,
+                    modifier = Modifier.fillMaxSize(),
+                    startDestination = startDestination
+                )
+            }
         }
     } else {
         // --- BỐ CỤC TABLET / MÀN HÌNH GẬP (MEDIUM / EXPANDED) ---
@@ -136,7 +149,7 @@ fun AdaptiveAppLayout(
                         }
                     },
                     icon = { Icon(painterResource(R.drawable.ic_radio), contentDescription = "Kênh") },
-                    label = { Text("Kênh") }
+                    label = { Text("Kênh", style = DamType.NavLabel) }
                 )
                 NavigationRailItem(
                     selected = currentRoute == AppRoute.Settings.route,
@@ -148,7 +161,7 @@ fun AdaptiveAppLayout(
                         }
                     },
                     icon = { Icon(painterResource(R.drawable.ic_sliders), contentDescription = "Cài đặt") },
-                    label = { Text("Cài đặt") }
+                    label = { Text("Cài đặt", style = DamType.NavLabel) }
                 )
             }
 
@@ -158,7 +171,8 @@ fun AdaptiveAppLayout(
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                     AppNavHost(
                         navController = navController,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        startDestination = startDestination
                     )
                 }
             }
@@ -180,6 +194,7 @@ private fun FloatingPillBottomBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .navigationBarsPadding()
             .padding(horizontal = 44.dp, vertical = 16.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
@@ -187,7 +202,7 @@ private fun FloatingPillBottomBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(70.dp)
-                .shadow(40.dp, NavBarShape, spotColor = NavShadow)
+                .outerGlow(NavShadow, corner = 32.dp, spread = 40.dp, maxAlpha = 0.45f)
                 .clip(NavBarShape)
                 .background(NavBg)
                 .border(1.dp, NavBorder, NavBarShape)
@@ -217,8 +232,7 @@ private fun FloatingPillBottomBar(
                     Text(
                         text = "Kênh",
                         color = if (isChannelSelected) AccentCyan else TextSecondary,
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.Bold
+                        style = com.example.damthoai.ui.theme.DamType.NavLabel
                     )
                 }
 
@@ -243,8 +257,7 @@ private fun FloatingPillBottomBar(
                     Text(
                         text = "Cài đặt",
                         color = if (isSettingsSelected) AccentCyan else TextSecondary,
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.Bold
+                        style = com.example.damthoai.ui.theme.DamType.NavLabel
                     )
                 }
             }
@@ -255,7 +268,7 @@ private fun FloatingPillBottomBar(
             modifier = Modifier
                 .offset(y = (-26).dp)
                 .size(76.dp)
-                .shadow(elevation = 30.dp, shape = CircleShape, spotColor = NavShadow)
+                .outerGlow(NavShadow, corner = 38.dp, spread = 30.dp, maxAlpha = 0.45f)
                 .clip(CircleShape)
                 .background(NavGlow)
                 // Tuần 3: sửa - gọi callback điều hướng khi nhấn nút micro.
