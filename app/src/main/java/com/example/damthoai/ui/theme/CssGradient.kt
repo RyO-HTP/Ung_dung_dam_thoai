@@ -11,21 +11,22 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
-/**
- * Gradient tuyến tính ĐÚNG KIỂU CSS `linear-gradient(<góc>deg, ...)`.
- * Brush.linearGradient mặc định của Compose đi góc-đến-góc nên khác CSS với nút hình chữ nhật dài.
- * Góc CSS: 0 = lên trên, 90 = sang phải, 135 = chéo xuống phải (dùng cho nút chính, avatar, công tắc).
- */
 fun cssGradient(angleDeg: Float, colors: List<Color>): Brush = object : ShaderBrush() {
     override fun createShader(size: Size): Shader {
-        val a = Math.toRadians(angleDeg.toDouble())
-        val dx = sin(a).toFloat()
-        val dy = (-cos(a)).toFloat()
-        val half = (abs(size.width * dx) + abs(size.height * dy)) / 2f
-        val c = Offset(size.width / 2f, size.height / 2f)
-        return LinearGradientShader(c - Offset(dx * half, dy * half), c + Offset(dx * half, dy * half), colors)
+        val angle = Math.toRadians(angleDeg.toDouble())
+        val direction = Offset(sin(angle).toFloat(), -cos(angle).toFloat())
+        val halfLength = (abs(size.width * direction.x) + abs(size.height * direction.y)) / 2f
+        val center = Offset(size.width / 2f, size.height / 2f)
+        return LinearGradientShader(
+            center - direction * halfLength,
+            center + direction * halfLength,
+            colors
+        )
     }
 }
+
+fun cssGradient(angleDeg: Float, startColor: Color, endColor: Color): Brush =
+    cssGradient(angleDeg, listOf(startColor, endColor))
 
 val PrimaryBrush: Brush get() = cssGradient(135f, listOf(PrimaryStart, PrimaryEnd))
 val DangerBrush: Brush get() = cssGradient(135f, listOf(DangerStart, DangerEnd))

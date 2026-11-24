@@ -2,36 +2,30 @@ package com.example.damthoai.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-/**
- * Color.kt (BẢN CHUẨN) - màu lấy TRỰC TIẾP từ CSS trong file HTML thiết kế, KHÔNG phải ước lượng từ ảnh PDF.
- * Thay toàn bộ file Color.kt cũ bằng file này. Giữ tên cũ ở cuối file để code cũ không bị lỗi.
- */
-// ---- NỀN ----
-val BgTop = Color(0xFF070B24)  // gradient dọc: 0%
-val BgMid = Color(0xFF0B1245)  // gradient dọc: 70%
-val BgBottom = Color(0xFF120C45)  // gradient dọc: 100%
-val GlowPurple = Color(0x8C6C3BFF)  // vệt tím góc phải trên
-val GlowBlue = Color(0x592F6BFF)  // vệt xanh trái giữa
+val BgTop = Color(0xFF070B24)
+val BgMid = Color(0xFF0B1245)
+val BgBottom = Color(0xFF120C45)
+val GlowPurple = Color(0x8C6C3BFF)
+val GlowBlue = Color(0x592F6BFF)
 val PocketBase = Color(0xFF040618)
 val PocketGlow = Color(0x612F6BFF)
 val EmergGlow = Color(0x80FF3D6B)
 val EmergTop = Color(0xFF1A0820)
-// ---- NÚT CHÍNH ----
 val PrimaryStart = Color(0xFF2F6BFF)
 val PrimaryEnd = Color(0xFF6C3BFF)
 val PrimaryShadow = Color(0x664F64FF)
 val DangerStart = Color(0xFFFF3D6B)
 val DangerEnd = Color(0xFFB0123A)
-val DangerShadow = Color(0x73FF3D6B)
-val DangerText = Color(0xFFFF9DB0)  // chữ link nguy hiểm
-// ---- KÍNH MỜ ----
+val DangerShadow = Color(0x80FF3D6B)
+val DangerText = Color(0xFFFF9DB0)
+
 val GlassBg = Color(0x12FFFFFF)
 val GlassBorder = Color(0x21FFFFFF)
 val IconBoxBg = Color(0x17FFFFFF)
 val IconBoxBorder = Color(0x1FFFFFFF)
 val GhostBtnBg = Color(0x17FFFFFF)
 val GhostBtnBorder = Color(0x24FFFFFF)
-val TrackBg = Color(0x26FFFFFF)  // rãnh slider
+val TrackBg = Color(0x26FFFFFF)
 val SwitchOff = Color(0x2EFFFFFF)
 val NavBg = Color(0xD90E1446)
 val NavBorder = Color(0x24FFFFFF)
@@ -41,24 +35,86 @@ val StarBlue = Color(0xFFCFE0FF)
 val MicDeniedBg = Color(0x24FF5C7A)
 val MicDeniedBorder = Color(0x80FF5C7A)
 val SheetBg = Color(0xFA121A56)
+val RoleToastBg = Color(0xF7121A56)
 val Scrim = Color(0xA6040618)
 val LcdBg = Color(0xFF050A24)
 val LcdBorder = Color(0x595EE1FF)
-// ---- NHẤN ----
+
 val AccentCyan = Color(0xFF5EE1FF)
 val AccentAmber = Color(0xFFFFC857)
 val AccentMint = Color(0xFF7CF0C5)
 val AccentRed = Color(0xFFFF5C7A)
 val TagCyanBg = Color(0x265EE1FF)
 val TagAmberBg = Color(0x2EFFC857)
+val TagNeutralBg = Color(0x1AFFFFFF)
+val DialogBg = Color(0xF5121A56)
+val CueFill = Color(0x22FFC857)
 val TagRedBg = Color(0x33FF5C7A)
 val TagRedText = Color(0xFFFF9DB0)
 val CueBorder = Color(0x66FFC857)
-// ---- CHỮ ----
+val CueGradientStart = Color(0x38FFC857)
+val CueGradientEnd = Color(0x1AFF8A3D)
+val SelectedChannelBg = Color(0x145EE1FF)
+val ChannelAddBorder = Color(0x40FFFFFF)
+
 val TextPrimary = Color(0xFFF4F7FF)
-val TextSecondary = Color(0xFF9FB0E6)  // chữ phụ, nhãn
+val TextSecondary = Color(0xFF9FB0E6)
 val TextPlaceholder = Color(0xFF8F9FD6)
-// ---- AVATAR (gradient chéo 135 độ) ----
+val PureWhite = Color.White
+val Transparent = Color.Transparent
+val DisabledButtonStart = Color(0xFF888888)
+val DisabledButtonEnd = Color(0xFF444444)
+val StarTint = Color(0xFFCFE0FF)
+
+val AvatarInk = Color(0xFF0B1240)
+val ChipInk = Color(0xFF0B1245)
+val IntroPill = Color(0xFF2A3A9A)
+val IntroPillBorder = Color(0xFF8FA6FF)
+val AmberInk = Color(0xFF3E2200)
+val DeepSheet = Color(0xFF0C122C)
+val CameraBadgeBg = Color(0x174FA3FF)
+val QrBlock = Color(0xFF26435D)
+val QrFrame = Color(0xFF28506A)
+val BlueGlowIntro = Color(0x995EA3FF)
+val CyanGlowIntro = Color(0x995EE1FF)
+val AmberGlowIntro = Color(0x99FFC857)
+val BlueLineIntro = Color(0x804FA3FF)
+val AmberRingIntro = Color(0x59FFC857)
+val CyanNodeBgIntro = Color(0x334FA3FF)
+val AmberChipBgIntro = Color(0x33FFC857)
+val AmberNodeFillIntro = Color(0x2EFFC857)
+val BlueAvatarA = Color(0xFF4FA3FF)
+val BlueAvatarB = Color(0xFF6C5CFF)
+val BlueAvatarC = Color(0xFF6FB6FF)
+val PinkAvatarA = Color(0xFFFF8FB1)
+val OrangeAvatarB = Color(0xFFFF8A3D)
+val CyanAvatarB = Color(0xFF2F6BFF)
+val TealAvatarA = Color(0xFF2BA3A3)
+val PurpleAvatarA = Color(0xFFC9A8FF)
+val PurpleAvatarB = Color(0xFF7A4DFF)
+val MintAvatar = Color(0xFF7CF0C5)
+val SpeakerTint = Color(0xFF9FD0FF)
+val CrownStart = Color(0xFFFFE08A)
+val AmberIconInk = Color(0xFF3A2000)
+val PermissionBlue = Color(0xFF0277BD)
+val PermissionDarkGreen = Color(0xFF1B5E20)
+val PermissionGreen = Color(0xFF2E7D32)
+val PermissionDeepOrange = Color(0xFFBF360C)
+val PermissionRed = Color(0xFFC62828)
+val PermissionLightBlue = Color(0xFFE1F5FE)
+val PermissionOrange = Color(0xFFE65100)
+val PermissionLightGreen = Color(0xFFE8F5E9)
+val PermissionAmber = Color(0xFFF57F17)
+val PermissionLightRed = Color(0xFFFFEBEE)
+val PermissionLightOrange = Color(0xFFFFF3E0)
+val PermissionLightAmber = Color(0xFFFFF8E1)
+val PttActiveBg = Color(0xFFD32F2F)
+val PttInactiveBg = Color(0xFF2E7D32)
+val PttErrorBg = Color(0xFFE53935)
+val RoleBannerBg = Color(0xFF1E1608)
+val RoleBannerInk = Color(0xFF3A2000)
+val RoleCloseBg = Color(0x22FFFFFF)
+
 val AvatarGradients = listOf(
     Color(0xFF4FA3FF) to Color(0xFF6C5CFF),
     Color(0xFFFF8FB1) to Color(0xFFFF5C7A),
@@ -67,11 +123,34 @@ val AvatarGradients = listOf(
     Color(0xFF7CF0C5) to Color(0xFF2BA3A3),
     Color(0xFFC9A8FF) to Color(0xFF7A4DFF),
 )
-
-// ---- TÊN CŨ (alias) để code tuần 1-2 vẫn build ----
 val PrimaryGlow = PrimaryShadow
 val GlassBgHover = Color(0x24FFFFFF)
 val BgGradientTop = BgTop
 val BgGradientBottom = BgBottom
 val PocketBg = PocketBase
 val TextMuted = TextSecondary
+
+val CallStatusMint = Color(0xFF7CF0C5)
+val CallStatusBlue = Color(0xFF6FB6FF)
+val CallStatusAmber = Color(0xFFFFC857)
+val CallStatusRed = Color(0xFFFF5C7A)
+val CallStatusOffline = Color(0xFFFF9DB0)
+val CallStatusMintBg = Color(0x247CF0C5)
+val CallStatusBlueBg = Color(0x246FB6FF)
+val CallStatusAmberBg = Color(0x24FFC857)
+val CallStatusRedBg = Color(0x24FF5C7A)
+val CallStatusOfflineBg = Color(0x24FF9DB0)
+val CallVolumeTrack = Color(0x26FFFFFF)
+val CallVolumeInactive = Color(0x26FFFFFF)
+val CallDuckedFill = Color(0x665EE1FF)
+val CallVolumeStart = Color(0xFF2F6BFF)
+val CallVolumeEnd = Color(0xFF5EE1FF)
+val CallPttHighlight = Color(0xFF6FB6FF)
+val CallPttMid = Color(0xFF2F6BFF)
+val CallPttEnd = Color(0xFF4B1FD6)
+val CallPttRing = Color(0x294FA3FF)
+val CallPttGlow = Color(0x144FA3FF)
+val CallActionBg = Color(0x17FFFFFF)
+val CallActionBorder = Color(0x24FFFFFF)
+val CallUnlockTrack = Color(0x26FFFFFF)
+val CallUnlockInk = Color(0xFF0B1245)

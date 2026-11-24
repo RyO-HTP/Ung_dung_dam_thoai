@@ -7,6 +7,11 @@
  */
 package com.example.damthoai.data.fake
 
+import com.example.damthoai.data.model.Channel
+import com.example.damthoai.data.model.Event
+import com.example.damthoai.data.model.Member
+import com.example.damthoai.data.model.MemberLevel
+
 object FakeRepositories {
 
     val sampleEvent = Event(
@@ -14,30 +19,28 @@ object FakeRepositories {
         name = "Lễ Trao Giải Âm Nhạc 2026",
         pinCode = "889900",
         adminCode = "ADM-7788",
-        memberCount = 24,
         isOwner = true
     )
 
     val sampleChannels = listOf(
         Channel(
             id = "ch_01",
-            name = "SÂN KHẤU CHÍNH",
+            name = "Toàn sự kiện",
             isPriority = true,
             activeMembers = 12,
-            currentSpeaker = "Lâm Phong",
+            currentSpeaker = "Lan Phương",
             liveCueMessage = "LIVE CUE: Chuẩn bị trao giải Ca sĩ của năm sau 30 giây!"
         ),
         Channel(
             id = "ch_02",
-            name = "HẬU CẦN & AN NINH",
+            name = "Sân khấu",
             isEmergency = false,
             activeMembers = 8,
             currentSpeaker = null
         ),
         Channel(
             id = "ch_03",
-            name = "KÊNH KHẨN CẤP",
-            isEmergency = true,
+            name = "Hậu cần – An ninh",
             activeMembers = 24,
             currentSpeaker = null
         )

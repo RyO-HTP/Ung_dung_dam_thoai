@@ -12,54 +12,71 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.dp
-import com.example.damthoai.ui.theme.*
-import com.example.damthoai.ui.theme.StarBlue
+import com.example.damthoai.ui.theme.BgBottom
+import com.example.damthoai.ui.theme.BgMid
+import com.example.damthoai.ui.theme.BgTop
+import com.example.damthoai.ui.theme.EmergGlow
+import com.example.damthoai.ui.theme.EmergTop
+import com.example.damthoai.ui.theme.GlowBlue
+import com.example.damthoai.ui.theme.GlowPurple
+import com.example.damthoai.ui.theme.PocketBase
+import com.example.damthoai.ui.theme.PocketGlow
+import com.example.damthoai.ui.theme.PureWhite
+import com.example.damthoai.ui.theme.StarTint
+import com.example.damthoai.ui.theme.Transparent
 
-/** Ba kiểu nền trong thiết kế: mặc định, khẩn cấp (đỏ), bỏ túi (gần đen). */
 enum class BgVariant { Default, Emergency, Pocket }
 
-/** Vẽ một vệt sáng hình elip, tương đương CSS `radial-gradient(rxW% ryH% at cx% cy%, màu, transparent)`. */
 private fun DrawScope.glow(cx: Float, cy: Float, rx: Float, ry: Float, color: Color) {
     withTransform({ translate(cx, cy); scale(1f, ry / rx, pivot = Offset.Zero) }) {
-        drawCircle(Brush.radialGradient(listOf(color, Color.Transparent), center = Offset.Zero, radius = rx), radius = rx, center = Offset.Zero)
+        drawCircle(
+            Brush.radialGradient(listOf(color, Transparent), center = Offset.Zero, radius = rx),
+            radius = rx,
+            center = Offset.Zero
+        )
     }
 }
 
-/** Ngôi sao nhỏ: chấm trắng mờ dần ra rìa, vị trí tính theo % màn hình (đúng CSS). */
-private fun DrawScope.star(px: Float, py: Float, r: Float, color: Color = Color.White) {
-    val c = Offset(size.width * px, size.height * py)
-    drawCircle(Brush.radialGradient(listOf(color, Color.Transparent), center = c, radius = r), radius = r, center = c)
+private fun DrawScope.star(px: Float, py: Float, radius: Float, color: Color = PureWhite) {
+    val center = Offset(size.width * px, size.height * py)
+    drawCircle(
+        Brush.radialGradient(listOf(color, Transparent), center = center, radius = radius),
+        radius = radius,
+        center = center
+    )
 }
 
-/**
- * DamThoaiBackground (BẢN CHUẨN): đúng CSS nền của thiết kế.
- *  - gradient dọc BgTop -> BgMid (70%) -> BgBottom
- *  - vệt tím elip 70% x 38% ở góc phải trên, vệt xanh 60% x 34% ở mép trái 38% chiều cao
- *  - 5 ngôi sao rải theo % cố định
- */
 @Composable
-fun DamThoaiBackground(modifier: Modifier = Modifier, variant: BgVariant = BgVariant.Default, content: @Composable BoxScope.() -> Unit) {
+fun DamThoaiBackground(
+    modifier: Modifier = Modifier,
+    variant: BgVariant = BgVariant.Default,
+    content: @Composable BoxScope.() -> Unit
+) {
     Box(modifier.fillMaxSize()) {
         Canvas(Modifier.fillMaxSize()) {
-            val w = size.width; val h = size.height
+            val width = size.width
+            val height = size.height
             when (variant) {
                 BgVariant.Default -> {
                     drawRect(Brush.verticalGradient(0f to BgTop, 0.7f to BgMid, 1f to BgBottom))
-                    glow(w, 0f, w * 0.70f, h * 0.38f, GlowPurple)
-                    glow(0f, h * 0.38f, w * 0.60f, h * 0.34f, GlowBlue)
+                    glow(width, 0f, width * 0.70f, height * 0.38f, GlowPurple)
+                    glow(0f, height * 0.38f, width * 0.60f, height * 0.34f, GlowBlue)
                 }
                 BgVariant.Emergency -> {
                     drawRect(Brush.verticalGradient(listOf(EmergTop, BgMid)))
-                    glow(w * 0.5f, 0f, w * 0.75f, h * 0.38f, EmergGlow)
+                    glow(width * 0.5f, 0f, width * 0.75f, height * 0.38f, EmergGlow)
                 }
                 BgVariant.Pocket -> {
                     drawRect(PocketBase)
-                    glow(w * 0.5f, h * 0.58f, w * 0.60f, h * 0.40f, PocketGlow)
+                    glow(width * 0.5f, height * 0.58f, width * 0.60f, height * 0.40f, PocketGlow)
                 }
             }
-            val d = density
-            star(0.18f, 0.12f, 1.5f * d); star(0.76f, 0.20f, 1f * d); star(0.44f, 0.60f, 1f * d, StarBlue)
-            star(0.88f, 0.72f, 1.5f * d); star(0.08f, 0.84f, 1f * d)
+            val density = density
+            star(0.18f, 0.12f, 1.5f * density)
+            star(0.76f, 0.20f, 1f * density)
+            star(0.44f, 0.60f, 1f * density, StarTint)
+            star(0.88f, 0.72f, 1.5f * density)
+            star(0.08f, 0.84f, 1f * density)
         }
         content()
     }

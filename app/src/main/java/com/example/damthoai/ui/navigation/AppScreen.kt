@@ -9,6 +9,8 @@ sealed class AppScreen(
     @DrawableRes val iconRes: Int,
     val isBottomNavItem: Boolean = true
 ) {
+    val icon: Int get() = iconRes
+
     object QuickJoin : AppScreen(
         route = "quick_join",
         title = "Vào nhanh",
