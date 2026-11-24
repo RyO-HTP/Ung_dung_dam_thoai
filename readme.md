@@ -19,8 +19,7 @@
 | `webrtc_config.py` | Danh sách máy chủ STUN/TURN gửi cho app |
 | `render.yaml` | Cấu hình deploy máy chủ lên Render |
 | `mdns_broadcaster.py` | Chỉ phát mDNS (thường không cần, server đã tự phát) |
-| `backend-tv5/` | Backend Go theo từng tuần (tài liệu học tập, app hiện **không** dùng) |
-| `server.js`, `api.js` | Thử nghiệm LiveKit cũ (app hiện **không** dùng) |
+| `archive/` | Các backend cũ app **không** dùng: Go theo từng tuần (`backend-tv5/`), Node `server.js`, LiveKit `api.js`. Xem `archive/README.md` |
 | `docs/` | Tài liệu test thực địa |
 | `TVx Báo cáo Tuần y.md` | Báo cáo tuần của từng thành viên |
 
