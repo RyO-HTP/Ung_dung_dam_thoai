@@ -1,6 +1,7 @@
 package com.example.damthoai.hardware
 
 import android.view.KeyEvent
+import com.example.damthoai.hardware.diagnostics.FieldTestLogger
 
 /**
  * =================================================================================
@@ -29,15 +30,16 @@ object HardwareKeyHandler {
      * @return `true` nếu phím được xử lý làm PTT (HĐH sẽ KHÔNG đổi âm lượng), `false` để HĐH xử lý mặc định.
      */
     fun handleKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        // Chỉ bắt phím khi PTT được bật và có ít nhất một chủ thể đang giữ quyền bắt phím.
-        if (!PttController.isPttModeEnabled.value || !PttController.isCaptureActive.value) {
-            return false
-        }
-
         val source = when (keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP -> PttSource.VOLUME_UP
             KeyEvent.KEYCODE_VOLUME_DOWN -> PttSource.VOLUME_DOWN
             else -> return false
+        }
+        FieldTestLogger.recordHardwareKeyEvent(keyCode, event, source, isKeyDown = true)
+
+        // Chỉ bắt phím khi PTT được bật và có ít nhất một chủ thể đang giữ quyền bắt phím.
+        if (!PttController.isPttModeEnabled.value || !PttController.isCaptureActive.value) {
+            return false
         }
 
         // Kiểm tra phím Volume này có được phép theo cài đặt không (Both / Vol- / Vol+)
@@ -81,14 +83,15 @@ object HardwareKeyHandler {
      * @return `true` nếu phím được xử lý làm PTT, `false` để HĐH xử lý mặc định.
      */
     fun handleKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
-        if (!PttController.isPttModeEnabled.value || !PttController.isCaptureActive.value) {
-            return false
-        }
-
         val source = when (keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP -> PttSource.VOLUME_UP
             KeyEvent.KEYCODE_VOLUME_DOWN -> PttSource.VOLUME_DOWN
             else -> return false
+        }
+        FieldTestLogger.recordHardwareKeyEvent(keyCode, event, source, isKeyDown = false)
+
+        if (!PttController.isPttModeEnabled.value || !PttController.isCaptureActive.value) {
+            return false
         }
 
         if (!PttController.isVolumeKeyAllowed(source)) {

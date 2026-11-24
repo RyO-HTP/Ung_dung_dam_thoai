@@ -18,30 +18,36 @@ import (
 )
 
 // =============================================================================
-// TUẦN 1 (NGƯỜI 5): MÁY CHỦ BÁO HIỆU WEBRTC (SIGNALING SERVER SDP/ICE & STUN/TURN)
-// Đã đồng bộ 100% với SignalingClient.kt & SignalingModels.kt trong dự án DuAnLamChung
+// TUẦN 1–6 (NGƯỜI 5): MÁY CHỦ BÁO HIỆU WEBRTC (SIGNALING SERVER SDP/ICE & STUN/TURN)
+// Đã đồng bộ 100% với SignalingClient.kt & SignalingModels.kt trên nhánh Tuan-4:
+//   - Hỗ trợ "register", "webrtc_config", "offer", "answer", "ice_candidate"
+//   - Hỗ trợ "ice_candidates_removed" (Tuần 3 - ICE Gathering liên tục)
+//   - Hỗ trợ "hangup", "network_change" (Tuần 4 - Seamless Handover Wi-Fi <-> 4G)
+//   - Hỗ trợ "voice_note" (Tuần 5 - Hàng đợi ngoại tuyến Store-and-Forward)
+//   - Hỗ trợ "ping" -> "pong" & "stats" (Tuần 6 - Đo độ trễ & kiểm thử chịu tải)
 // =============================================================================
 
-// WebRTCConfigPayload khớp với trường `config` trong gói tin `{"type": "webrtc_config", "config": {"iceServers": [...]}}`
-// mà SignalingClient.kt (dòng 94-99) trên Android mong đợi.
 type WebRTCConfigPayload struct {
 	IceServers []IceServer `json:"iceServers"`
 }
 
-// SignalingPacket định nghĩa cấu trúc gói tin JSON bắt tay đa năng:
-// Hỗ trợ ĐỒNG THỜI chuẩn JSON snake_case của Android (`SignalingClient.kt`)
-// VÀ chuẩn camelCase của Server Go (`stress_test_300_connections.js`).
 type SignalingPacket struct {
-	// Trường dùng chung:
-	// - Android: "register" | "webrtc_config" | "offer" | "answer" | "ice_candidate"
-	// - Go/Test: "ICE_SERVERS_CONFIG" | "SDP_OFFER" | "SDP_ANSWER" | "ICE_CANDIDATE" | "PEER_JOINED"
 	Type string `json:"type"`
 
 	// Các trường tương thích trực tiếp với Android SignalingClient.kt & SignalingModels.kt:
-	UserID   string               `json:"user_id,omitempty"`   // Dùng khi Android gửi {"type": "register", "user_id": "Minh_Hau"}
-	SenderID string               `json:"sender_id,omitempty"` // ID người gửi dạng chuỗi trên Android
-	TargetID string               `json:"target_id,omitempty"` // ID người nhận dạng chuỗi trên Android
-	Config   *WebRTCConfigPayload `json:"config,omitempty"`    // Cấu hình STUN/TURN cho Android WebRTC
+	UserID       string                   `json:"user_id,omitempty"`
+	SenderID     string                   `json:"sender_id,omitempty"`
+	TargetID     string                   `json:"target_id,omitempty"`
+	Config       *WebRTCConfigPayload     `json:"config,omitempty"`
+	Candidates   []map[string]interface{} `json:"candidates,omitempty"`    // Tuần 3: ice_candidates_removed
+	NetworkType  string                   `json:"network_type,omitempty"`  // Tuần 4: network_change
+	ID           string                   `json:"id,omitempty"`            // Tuần 5: voice_note id
+	ChannelIDStr string                   `json:"channel_id,omitempty"`    // Tuần 5: voice_note channel_id
+	RecordedAtMs int64                    `json:"recorded_at_ms,omitempty"`
+	DurationMs   int64                    `json:"duration_ms,omitempty"`
+	SampleRateHz int                      `json:"sample_rate_hz,omitempty"`
+	AudioBase64  string                   `json:"audio_base64,omitempty"`
+	Ts           interface{}              `json:"ts,omitempty"` // Tuần 6: ping/pong timestamp
 
 	// Các trường tương thích với Hệ thống Quản lý Kênh & Stress Test:
 	EventID       int64       `json:"eventId,omitempty"`
@@ -58,17 +64,15 @@ type SignalingPacket struct {
 	TimestampMs   int64       `json:"timestampMs,omitempty"`
 }
 
-// IceServer chứa cấu hình STUN/TURN trả về cho WebRTC PeerConnection trên Android.
 type IceServer struct {
 	URLs       []string `json:"urls"`
 	Username   string   `json:"username,omitempty"`
 	Credential string   `json:"credential,omitempty"`
 }
 
-// ClientConn đại diện cho một kết nối WebSocket của 1 máy Android đang online.
 type ClientConn struct {
-	NumericID   int    // ID số nguyên (dùng cho bảng định tuyến nội bộ & Stress Test)
-	UserCode    string // ID chuỗi từ Android (VD: "Minh_Hau", "user_101")
+	NumericID   int
+	UserCode    string
 	DisplayName string
 	EventID     int64
 	ChannelID   int
@@ -77,16 +81,17 @@ type ClientConn struct {
 	SendChan    chan []byte
 }
 
-// SignalingHub quản lý toàn bộ các phiên báo hiệu theo cả ID số (NumericID) và ID chuỗi (UserCode).
 type SignalingHub struct {
-	mu            sync.RWMutex
-	clientsByInt  map[int]*ClientConn         // NumericID -> *ClientConn
-	clientsByCode map[string]*ClientConn      // UserCode ("Minh_Hau") -> *ClientConn
-	channels      map[int]map[int]*ClientConn // channelID -> (NumericID -> *ClientConn)
-	turnHost      string
-	turnSecret    string
-	autoIDCounter int64
-	upgrader      websocket.Upgrader
+	mu                sync.RWMutex
+	clientsByInt      map[int]*ClientConn
+	clientsByCode     map[string]*ClientConn
+	channels          map[int]map[int]*ClientConn
+	turnHost          string
+	turnSecret        string
+	autoIDCounter     int64
+	registrations     atomic.Uint64
+	messagesForwarded atomic.Uint64
+	upgrader          websocket.Upgrader
 }
 
 func NewSignalingHub(turnHost string, turnSecret string) *SignalingHub {
@@ -98,14 +103,13 @@ func NewSignalingHub(turnHost string, turnSecret string) *SignalingHub {
 		turnSecret:    turnSecret,
 		autoIDCounter: 1000,
 		upgrader: websocket.Upgrader{
-			ReadBufferSize:  4096,
-			WriteBufferSize: 4096,
+			ReadBufferSize:  16384,
+			WriteBufferSize: 16384,
 			CheckOrigin:     func(r *http.Request) bool { return true },
 		},
 	}
 }
 
-// generateTurnCredentials sinh tài khoản TURN ngắn hạn (TTL 12 giờ) bằng thuật toán HMAC-SHA1 (Chuẩn COTURN REST API).
 func (h *SignalingHub) generateTurnCredentials(userIdentifier string) []IceServer {
 	expiryUnix := time.Now().Add(12 * time.Hour).Unix()
 	username := fmt.Sprintf("%d:%s", expiryUnix, userIdentifier)
@@ -132,7 +136,6 @@ func (h *SignalingHub) generateTurnCredentials(userIdentifier string) []IceServe
 	}
 }
 
-// mapChannelCodeToID ánh xạ mã kênh trên giao diện Android ("ch_01".."ch_05") sang ID số (1..5).
 func mapChannelCodeToID(code string, fallback int) (int, string) {
 	switch strings.ToLower(strings.TrimSpace(code)) {
 	case "ch_01", "1":
@@ -149,11 +152,10 @@ func mapChannelCodeToID(code string, fallback int) (int, string) {
 		if fallback >= 1 && fallback <= 5 {
 			return fallback, fmt.Sprintf("ch_0%d", fallback)
 		}
-		return 2, "ch_02" // Mặc định vào Kênh 2 (Sân khấu)
+		return 2, "ch_02"
 	}
 }
 
-// ServeWS xử lý kết nối WebSocket tại cả `/ws/signaling` và `/` (tương thích với SignalingClient.kt trên Android).
 func (h *SignalingHub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	rawUserID := query.Get("userId")
@@ -202,10 +204,8 @@ func (h *SignalingHub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	h.registerClient(client)
 	defer h.unregisterClient(client)
 
-	// Gửi ngay cấu hình STUN/TURN cho Client vừa kết nối (hỗ trợ cả 2 chuẩn Android & Go)
 	h.sendWebRTCConfigToClient(client)
 
-	// Thông báo cho các thành viên khác trong cùng kênh biết có máy mới tham gia
 	h.broadcastToChannel(client.ChannelID, client.NumericID, SignalingPacket{
 		Type:         "PEER_JOINED",
 		EventID:      client.EventID,
@@ -224,7 +224,6 @@ func (h *SignalingHub) ServeWS(w http.ResponseWriter, r *http.Request) {
 func (h *SignalingHub) sendWebRTCConfigToClient(client *ClientConn) {
 	iceServers := h.generateTurnCredentials(client.UserCode)
 
-	// 1. Gói tin chuẩn Android SignalingClient.kt (dòng 94): {"type": "webrtc_config", "config": {"iceServers": [...]}}
 	androidConfigPkt := SignalingPacket{
 		Type:        "webrtc_config",
 		UserID:      client.UserCode,
@@ -239,7 +238,6 @@ func (h *SignalingHub) sendWebRTCConfigToClient(client *ClientConn) {
 		}
 	}
 
-	// 2. Gói tin chuẩn Go / Stress Test: {"type": "ICE_SERVERS_CONFIG", "iceServers": [...]}
 	goConfigPkt := SignalingPacket{
 		Type:         "ICE_SERVERS_CONFIG",
 		EventID:      client.EventID,
@@ -276,16 +274,22 @@ func (h *SignalingHub) updateClientIdentity(c *ClientConn, newUserCode string) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	delete(h.clientsByCode, c.UserCode)
+	if h.clientsByCode[c.UserCode] == c {
+		delete(h.clientsByCode, c.UserCode)
+	}
 	c.UserCode = newUserCode
 	if c.DisplayName == "" || strings.HasPrefix(c.DisplayName, "user_") {
 		c.DisplayName = newUserCode
 	}
 	h.clientsByCode[c.UserCode] = c
 	if parsedInt, err := strconv.Atoi(newUserCode); err == nil && parsedInt > 0 {
-		delete(h.clientsByInt, c.NumericID)
+		if h.clientsByInt[c.NumericID] == c {
+			delete(h.clientsByInt, c.NumericID)
+		}
 		if chMap, ok := h.channels[c.ChannelID]; ok {
-			delete(chMap, c.NumericID)
+			if chMap[c.NumericID] == c {
+				delete(chMap, c.NumericID)
+			}
 			chMap[parsedInt] = c
 		}
 		c.NumericID = parsedInt
@@ -293,22 +297,28 @@ func (h *SignalingHub) updateClientIdentity(c *ClientConn, newUserCode string) {
 	}
 }
 
+// unregisterClient chỉ xoá kết nối nếu đây vẫn là kết nối hiện hành (bảo vệ Seamless Handover Wi-Fi -> 4G).
 func (h *SignalingHub) unregisterClient(c *ClientConn) {
 	h.mu.Lock()
-	delete(h.clientsByInt, c.NumericID)
-	delete(h.clientsByCode, c.UserCode)
+	if h.clientsByInt[c.NumericID] == c {
+		delete(h.clientsByInt, c.NumericID)
+	}
+	if h.clientsByCode[c.UserCode] == c {
+		delete(h.clientsByCode, c.UserCode)
+	}
 	if chMap, ok := h.channels[c.ChannelID]; ok {
-		delete(chMap, c.NumericID)
+		if chMap[c.NumericID] == c {
+			delete(chMap, c.NumericID)
+		}
 	}
 	close(c.SendChan)
 	h.mu.Unlock()
 	_ = c.Conn.Close()
 }
 
-// readPump đọc liên tục cả gói tin chuẩn Android ("register", "offer", "answer", "ice_candidate")
-// và gói tin chuẩn Go ("SDP_OFFER", "SDP_ANSWER", "ICE_CANDIDATE").
 func (h *SignalingHub) readPump(c *ClientConn) {
-	c.Conn.SetReadLimit(65536)
+	// Cho phép gói tin tối đa 1MB (hỗ trợ cả SDP/ICE lẫn gói tin thoại ngoại tuyến voice_note Tuần 5)
+	c.Conn.SetReadLimit(1048576)
 	_ = c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	c.Conn.SetPongHandler(func(string) error {
 		_ = c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
@@ -326,19 +336,50 @@ func (h *SignalingHub) readPump(c *ClientConn) {
 			continue
 		}
 
-		// Xử lý bản tin đăng ký định danh từ Android SignalingClient.kt:
-		// {"type": "register", "user_id": "Minh_Hau"}
 		if pkt.Type == "register" {
+			h.registrations.Add(1)
 			h.updateClientIdentity(c, pkt.UserID)
 			h.sendWebRTCConfigToClient(c)
 			continue
 		}
 
-		// Chuẩn hóa thông tin người gửi cho cả 2 chuẩn (Android & Go)
-		pkt.SenderUserID = c.NumericID
-		if pkt.SenderID == "" {
-			pkt.SenderID = c.UserCode
+		if pkt.Type == "ping" {
+			pongRaw, _ := json.Marshal(map[string]interface{}{
+				"type": "pong",
+				"ts":   pkt.Ts,
+			})
+			select {
+			case c.SendChan <- pongRaw:
+			default:
+			}
+			continue
 		}
+
+		if pkt.Type == "stats" {
+			h.mu.RLock()
+			onlineCount := len(h.clientsByCode)
+			h.mu.RUnlock()
+			statsRaw, _ := json.Marshal(map[string]interface{}{
+				"type":               "stats",
+				"online":             onlineCount,
+				"registrations":      h.registrations.Load(),
+				"messages_forwarded": h.messagesForwarded.Load(),
+			})
+			select {
+			case c.SendChan <- statsRaw:
+			default:
+			}
+			continue
+		}
+
+		if pkt.Type == "network_change" {
+			log.Printf("[HANDOVER] User [%s] chuyển mạng sang %s", c.UserCode, pkt.NetworkType)
+			continue
+		}
+
+		// Server tự gắn sender_id thật chống giả mạo người gửi
+		pkt.SenderUserID = c.NumericID
+		pkt.SenderID = c.UserCode
 		if pkt.SenderName == "" {
 			pkt.SenderName = c.DisplayName
 		}
@@ -351,8 +392,9 @@ func (h *SignalingHub) readPump(c *ClientConn) {
 		}
 
 		switch pkt.Type {
-		case "offer", "answer", "ice_candidate", "SDP_OFFER", "SDP_ANSWER", "ICE_CANDIDATE":
-			// Ưu tiên định tuyến P2P theo TargetID chuỗi (Android) hoặc TargetUserID số (Go)
+		case "offer", "answer", "ice_candidate", "ice_candidates_removed", "hangup", "voice_note",
+			"SDP_OFFER", "SDP_ANSWER", "ICE_CANDIDATE":
+			h.messagesForwarded.Add(1)
 			if pkt.TargetID != "" {
 				h.sendToUserByCode(pkt.TargetID, pkt)
 			} else if pkt.TargetUserID > 0 {

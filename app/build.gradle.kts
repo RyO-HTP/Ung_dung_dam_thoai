@@ -40,17 +40,19 @@ android {
         compose = true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.1"
+        kotlinCompilerExtensionVersion = "1.5.14"
     }
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        jniLibs {
+            pickFirsts += "**/libc++_shared.so"
+        }
     }
 }
 
 dependencies {
-    implementation("io.getstream:stream-webrtc-android:1.3.10")
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
@@ -73,13 +75,29 @@ dependencies {
     implementation("androidx.compose.material3.adaptive:adaptive-navigation:1.0.0")
     implementation("androidx.compose.material3:material3-adaptive-navigation-suite:1.3.0")
 
-    // Network & WebSocket & Coroutines (Thành viên 2)
+    // Network & WebSocket (Thành viên 2)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
 
-    // LiveKit SFU Client (Thành viên 2 - Tuần 2)
-    implementation("io.livekit:livekit-android:2.11.1")
+    // WebRTC (Thành viên 2)
+    implementation("io.getstream:stream-webrtc-android:1.3.10")
+
+    // [MỚI THÊM] Hỗ trợ MediaSession bắt sự kiện phím tai nghe Bluetooth
+    implementation("androidx.media:media:1.7.0")
+
+    // CameraX (Thành viên 3 - QR Scanner)
+    implementation("androidx.camera:camera-core:1.3.4")
+    implementation("androidx.camera:camera-camera2:1.3.4")
+    implementation("androidx.camera:camera-lifecycle:1.3.4")
+    implementation("androidx.camera:camera-view:1.3.4")
+
+    // ML Kit Barcode Scanning & ZXing (Thành viên 3 - QR Scanner & Generator)
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    implementation("com.google.zxing:core:3.5.3")
 
     implementation("androidx.compose.ui:ui-tooling")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0")
 }
