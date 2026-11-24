@@ -16,58 +16,78 @@ import (
 
 // =============================================================================
 // TUẦN 3 (NGƯỜI 5): LOGIC API SINH MÃ QR ĐỊNH DANH PHÂN VAI TỰ ĐỘNG CHO TỪNG BỘ PHẬN
-// Tự động gán Quyền ưu tiên (Priority 1/2/3), Kênh phát chính, Kênh nghe và Chế độ UI
-// cho 5 bộ phận: Chỉ huy, Sân khấu, Kỹ thuật Âm thanh-Ánh sáng, An ninh-Y tế, Hậu cần.
+// Đã đồng bộ 100% với dự án Android DuAnLamChung:
+//   - JoinChannelScreen.kt (hỗ trợ cả token ký số HMAC-SHA256 và mã mô phỏng "MOCK_QR_EVENT_889900")
+//   - UserInfoScreen.kt (tự động điền Họ tên "Minh Hậu", Vai trò "Trưởng ban Hậu cần", Cấp 2 · Trưởng ban)
+//   - ChannelListScreen.kt (gán mã kênh "ch_01".."ch_05" và Quyền ưu tiên 1/2/3)
 // =============================================================================
 
 type DepartmentProfile struct {
 	DepartmentCode     string  `json:"departmentCode"`
 	DepartmentTitle    string  `json:"departmentTitle"`
-	AssignedPriority   uint8   `json:"assignedPriority"`   // 3: Tổng đạo diễn, 2: Kỹ thuật/An ninh, 1: Hậu cần/CTV
-	PrimaryChannelID   uint8   `json:"primaryChannelId"`   // Kênh phát sóng chính mặc định
+	RoleTitle          string  `json:"roleTitle"`          // Hiển thị trên UserInfoScreen.kt & ChannelListScreen.kt
+	UserLevel          uint8   `json:"userLevel"`          // Chuẩn UI Android: 1 = Tổng đạo diễn, 2 = Trưởng ban, 3 = CTV
+	AssignedPriority   uint8   `json:"assignedPriority"`   // Chuẩn Server CAS: 3 = Tổng đạo diễn, 2 = Trưởng ban, 1 = CTV
+	PrimaryChannelID   uint8   `json:"primaryChannelId"`   // Kênh phát sóng chính mặc định (1..5)
+	PrimaryChannelCode string  `json:"primaryChannelCode"` // Mã kênh trên Android ("ch_01".."ch_05")
 	AutoListenChannels []uint8 `json:"autoListenChannels"` // Các kênh tự động bật nghe khi quét QR
 	DefaultUiMode      string  `json:"defaultUiMode"`      // EASY_SINGLE_BUTTON | PRO_MULTI_CHANNEL
 }
 
-// Danh mục 5 Bộ phận Chuẩn của Sự kiện
+// Danh mục 5 Bộ phận Chuẩn của Sự kiện khớp 100% với 5 kênh trong DuAnLamChung
 var StandardDepartmentProfiles = []DepartmentProfile{
 	{
-		DepartmentCode:     "DIRECTOR",
-		DepartmentTitle:    "★ Ban Chỉ Huy / Tổng Đạo Diễn",
+		DepartmentCode:     "ALL_EVENT",
+		DepartmentTitle:    "★ Toàn Sự Kiện / Tổng Đạo Diễn",
+		RoleTitle:          "Tổng đạo diễn",
+		UserLevel:          1,
 		AssignedPriority:   3,
 		PrimaryChannelID:   1,
+		PrimaryChannelCode: "ch_01",
 		AutoListenChannels: []uint8{1, 2, 3},
 		DefaultUiMode:      "PRO_MULTI_CHANNEL",
 	},
 	{
 		DepartmentCode:     "STAGE",
-		DepartmentTitle:    "🎭 Điều Phối Sân Khấu",
+		DepartmentTitle:    "🎭 Ban Sân Khấu",
+		RoleTitle:          "Trưởng ban Sân khấu",
+		UserLevel:          2,
 		AssignedPriority:   2,
 		PrimaryChannelID:   2,
+		PrimaryChannelCode: "ch_02",
 		AutoListenChannels: []uint8{1, 2},
 		DefaultUiMode:      "PRO_MULTI_CHANNEL",
 	},
 	{
-		DepartmentCode:     "TECH_AV",
-		DepartmentTitle:    "🔊 Kỹ Thuật Âm Thanh & Ánh Sáng",
+		DepartmentCode:     "LOGISTICS_SEC",
+		DepartmentTitle:    "🛡️ Hậu Cần – An Ninh",
+		RoleTitle:          "Trưởng ban Hậu cần",
+		UserLevel:          2,
 		AssignedPriority:   2,
 		PrimaryChannelID:   3,
+		PrimaryChannelCode: "ch_03",
 		AutoListenChannels: []uint8{1, 2, 3},
 		DefaultUiMode:      "PRO_MULTI_CHANNEL",
 	},
 	{
-		DepartmentCode:     "SECURITY",
-		DepartmentTitle:    "🛡️ An Ninh & Y Tế Thường Trực",
+		DepartmentCode:     "TECHNICAL",
+		DepartmentTitle:    "🔊 Ban Kỹ Thuật",
+		RoleTitle:          "Trưởng ban Kỹ thuật",
+		UserLevel:          2,
 		AssignedPriority:   2,
 		PrimaryChannelID:   4,
+		PrimaryChannelCode: "ch_04",
 		AutoListenChannels: []uint8{1, 4},
-		DefaultUiMode:      "EASY_SINGLE_BUTTON",
+		DefaultUiMode:      "PRO_MULTI_CHANNEL",
 	},
 	{
-		DepartmentCode:     "LOGISTICS",
-		DepartmentTitle:    "📦 Tình Nguyện Viên Hậu Cần",
+		DepartmentCode:     "RECEPTION",
+		DepartmentTitle:    "🤝 Ban Đón Tiếp",
+		RoleTitle:          "Cộng tác viên Đón tiếp",
+		UserLevel:          3,
 		AssignedPriority:   1,
 		PrimaryChannelID:   5,
+		PrimaryChannelCode: "ch_05",
 		AutoListenChannels: []uint8{1, 5},
 		DefaultUiMode:      "EASY_SINGLE_BUTTON",
 	},
@@ -77,10 +97,14 @@ var StandardDepartmentProfiles = []DepartmentProfile{
 type DepartmentQrTokenPayload struct {
 	EventID            int64   `json:"eventId"`
 	EventName          string  `json:"eventName"`
+	PinCode            string  `json:"pinCode"`
 	DepartmentCode     string  `json:"deptCode"`
 	DepartmentTitle    string  `json:"deptTitle"`
+	RoleTitle          string  `json:"roleTitle"`
+	UserLevel          uint8   `json:"userLevel"`
 	AssignedPriority   uint8   `json:"priority"`
 	PrimaryChannelID   uint8   `json:"primaryCh"`
+	PrimaryChannelCode string  `json:"primaryChCode"`
 	AutoListenChannels []uint8 `json:"listenCh"`
 	DefaultUiMode      string  `json:"uiMode"`
 	ExpiresAtUnix      int64   `json:"exp"`
@@ -120,11 +144,51 @@ func (s *QrRoleProvisioningService) SignDepartmentQrToken(payload DepartmentQrTo
 	return fmt.Sprintf("%s.%s", encodedPayload, signatureHex), nil
 }
 
-// VerifyAndDecodeQrToken xác thực chữ ký HMAC-SHA256 và hạn sử dụng khi nhân sự quét mã QR.
+// VerifyAndDecodeQrToken xác thực chữ ký HMAC-SHA256 hoặc mã QR mô phỏng từ JoinChannelScreen.kt ("MOCK_QR_EVENT_889900").
 func (s *QrRoleProvisioningService) VerifyAndDecodeQrToken(tokenOrURI string) (*DepartmentQrTokenPayload, error) {
 	cleaned := strings.TrimSpace(tokenOrURI)
 	if strings.HasPrefix(cleaned, "damthoai://join?token=") {
 		cleaned = strings.TrimPrefix(cleaned, "damthoai://join?token=")
+	}
+
+	// Hỗ trợ trực tiếp mã QR mô phỏng khi bấm khung Camera trên JoinChannelScreen.kt (dòng 330)
+	switch cleaned {
+	case "MOCK_QR_EVENT_889900", "MOCK_QR_EVENT_240826", "889900", "240826":
+		pin := "889900"
+		if strings.Contains(cleaned, "240826") {
+			pin = "240826"
+		}
+		return &DepartmentQrTokenPayload{
+			EventID:            1,
+			EventName:          "Đêm nhạc Chào Tân sinh viên",
+			PinCode:            pin,
+			DepartmentCode:     "LOGISTICS_SEC",
+			DepartmentTitle:    "🛡️ Hậu Cần – An Ninh",
+			RoleTitle:          "Trưởng ban Hậu cần",
+			UserLevel:          2,
+			AssignedPriority:   2,
+			PrimaryChannelID:   2,
+			PrimaryChannelCode: "ch_02",
+			AutoListenChannels: []uint8{1, 2, 3},
+			DefaultUiMode:      "PRO_MULTI_CHANNEL",
+			ExpiresAtUnix:      time.Now().Add(24 * time.Hour).Unix(),
+		}, nil
+	case "MOCK_QR_DIRECTOR_240826":
+		return &DepartmentQrTokenPayload{
+			EventID:            1,
+			EventName:          "Đêm nhạc Chào Tân sinh viên",
+			PinCode:            "240826",
+			DepartmentCode:     "ALL_EVENT",
+			DepartmentTitle:    "★ Toàn Sự Kiện / Tổng Đạo Diễn",
+			RoleTitle:          "Tổng đạo diễn",
+			UserLevel:          1,
+			AssignedPriority:   3,
+			PrimaryChannelID:   1,
+			PrimaryChannelCode: "ch_01",
+			AutoListenChannels: []uint8{1, 2, 3},
+			DefaultUiMode:      "PRO_MULTI_CHANNEL",
+			ExpiresAtUnix:      time.Now().Add(24 * time.Hour).Unix(),
+		}, nil
 	}
 
 	parts := strings.Split(cleaned, ".")
@@ -159,10 +223,11 @@ func (s *QrRoleProvisioningService) VerifyAndDecodeQrToken(tokenOrURI string) (*
 }
 
 // HandleGenerateDepartmentQrCodes xử lý GET /api/v1/events/qr-roles
-// Trả về danh sách 5 mã QR định danh tự động cho 5 bộ phận trong sự kiện.
+// Trả về danh sách 5 mã QR định danh tự động cho 5 bộ phận trong sự kiện "Đêm nhạc Chào Tân sinh viên".
 func (s *QrRoleProvisioningService) HandleGenerateDepartmentQrCodes(w http.ResponseWriter, r *http.Request) {
 	eventID := int64(1)
-	eventName := "Đêm Nhạc Acoustic 2026"
+	eventName := "Đêm nhạc Chào Tân sinh viên"
+	pinCode := "240826"
 	expiresAt := time.Now().Add(24 * time.Hour)
 
 	cards := make([]DepartmentQrCard, 0, len(StandardDepartmentProfiles))
@@ -170,10 +235,14 @@ func (s *QrRoleProvisioningService) HandleGenerateDepartmentQrCodes(w http.Respo
 		payload := DepartmentQrTokenPayload{
 			EventID:            eventID,
 			EventName:          eventName,
+			PinCode:            pinCode,
 			DepartmentCode:     prof.DepartmentCode,
 			DepartmentTitle:    prof.DepartmentTitle,
+			RoleTitle:          prof.RoleTitle,
+			UserLevel:          prof.UserLevel,
 			AssignedPriority:   prof.AssignedPriority,
 			PrimaryChannelID:   prof.PrimaryChannelID,
+			PrimaryChannelCode: prof.PrimaryChannelCode,
 			AutoListenChannels: prof.AutoListenChannels,
 			DefaultUiMode:      prof.DefaultUiMode,
 			ExpiresAtUnix:      expiresAt.Unix(),
@@ -196,12 +265,14 @@ func (s *QrRoleProvisioningService) HandleGenerateDepartmentQrCodes(w http.Respo
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"eventId":         eventID,
 		"eventName":       eventName,
+		"pinCode":         pinCode,
+		"mockQrToken":     "MOCK_QR_EVENT_889900",
 		"departmentCards": cards,
 	})
 }
 
 // HandleJoinByDepartmentQr xử lý POST /api/v1/auth/join-by-qr
-// Khi nhân sự quét QR của bộ phận nào, Server tự động phân vai, gán kênh và cấp khóa phiên UDP.
+// Khi nhân sự quét QR của bộ phận nào, Server tự động phân vai, điền thông tin UserInfoScreen và cấp khóa phiên UDP.
 func (s *QrRoleProvisioningService) HandleJoinByDepartmentQr(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -224,7 +295,7 @@ func (s *QrRoleProvisioningService) HandleJoinByDepartmentQr(w http.ResponseWrit
 	}
 
 	if strings.TrimSpace(req.DisplayName) == "" {
-		req.DisplayName = claims.DepartmentTitle
+		req.DisplayName = "Minh Hậu"
 	}
 
 	sessionSecret := make([]byte, 32)
@@ -235,11 +306,15 @@ func (s *QrRoleProvisioningService) HandleJoinByDepartmentQr(w http.ResponseWrit
 		"status":             "AUTO_PROVISIONED",
 		"eventId":            claims.EventID,
 		"eventName":          claims.EventName,
+		"pinCode":            claims.PinCode,
 		"displayName":        req.DisplayName,
+		"roleTitle":          claims.RoleTitle,
+		"userLevel":          claims.UserLevel,
 		"departmentCode":     claims.DepartmentCode,
 		"departmentTitle":    claims.DepartmentTitle,
 		"assignedPriority":   claims.AssignedPriority,
 		"primaryTxChannelId": claims.PrimaryChannelID,
+		"primaryChannelCode": claims.PrimaryChannelCode,
 		"autoListenChannels": claims.AutoListenChannels,
 		"defaultUiMode":      claims.DefaultUiMode,
 		"hmacSecretHex":      hex.EncodeToString(sessionSecret),

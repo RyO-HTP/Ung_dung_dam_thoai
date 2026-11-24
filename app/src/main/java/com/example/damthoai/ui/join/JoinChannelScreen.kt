@@ -1,9 +1,9 @@
 package com.example.damthoai.ui.join
-import com.example.damthoai.ui.theme.CameraBadgeBg
-import com.example.damthoai.ui.theme.QrBlock
-import com.example.damthoai.ui.theme.QrFrame
 
-
+import android.app.Activity
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -14,6 +14,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,8 +24,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -32,6 +36,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,18 +46,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.damthoai.R
+import com.example.damthoai.permission.AppPermission
+import com.example.damthoai.permission.PermissionManager
+import com.example.damthoai.permission.PermissionState
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.PrimaryButton
-import com.example.damthoai.ui.components.SecondaryButton
 import com.example.damthoai.ui.theme.AccentCyan
+import com.example.damthoai.ui.theme.ButtonShape
+import com.example.damthoai.ui.theme.CameraBadgeBg
 import com.example.damthoai.ui.theme.DamType
 import com.example.damthoai.ui.theme.DamThoaiTheme
 import com.example.damthoai.ui.theme.GlassBg
@@ -61,8 +73,28 @@ import com.example.damthoai.ui.theme.LcdBg
 import com.example.damthoai.ui.theme.LcdBorder
 import com.example.damthoai.ui.theme.PillShape
 import com.example.damthoai.ui.theme.PrimaryBrush
+import com.example.damthoai.ui.theme.QrBlock
+import com.example.damthoai.ui.theme.QrFrame
+import com.example.damthoai.ui.theme.TagCyanBg
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
+import com.example.damthoai.ui.theme.Transparent
+
+/**
+ * Interface giải mã QR cho ứng dụng.
+ * ĐIỂM NỐI: cài đặt thật bằng ML Kit ở PROMPT 1B
+ */
+interface QrDecoder {
+    suspend fun decode(uri: android.net.Uri): String?
+}
+
+/**
+ * Mock implementation của QrDecoder.
+ * ĐIỂM NỐI: cài đặt thật bằng ML Kit ở PROMPT 1B
+ */
+class MockQrDecoder : QrDecoder {
+    override suspend fun decode(uri: android.net.Uri): String = "MOCK_QR_EVENT_889900"
+}
 
 @Composable
 fun JoinChannelScreen(
@@ -91,17 +123,71 @@ private fun JoinChannelScreenContent(
     onJoinError: () -> Unit,
     modifier: Modifier = Modifier,
     initialTab: Int = 0,
-    cameraGranted: Boolean = true,
+    cameraGranted: Boolean? = null,
     initialPin: String = ""
 ) {
+    val context = LocalContext.current
+    val activity = context as? Activity
     var selectedTab by remember { mutableStateOf(initialTab) }
-    var isCameraGranted by remember { mutableStateOf(cameraGranted) }
+    var realCameraState by remember {
+        mutableStateOf(PermissionManager.checkPermissionState(context, AppPermission.CAMERA, activity))
+    }
+    var hasBeenRequested by remember { mutableStateOf(false) }
+
+    val qrScanPermissions = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(
+                android.Manifest.permission.CAMERA,
+                android.Manifest.permission.READ_MEDIA_IMAGES
+            )
+        } else {
+            arrayOf(
+                android.Manifest.permission.CAMERA,
+                android.Manifest.permission.READ_EXTERNAL_STORAGE
+            )
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                realCameraState = PermissionManager.checkPermissionState(context, AppPermission.CAMERA, activity)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        hasBeenRequested = true
+        realCameraState = PermissionManager.checkPermissionState(context, AppPermission.CAMERA, activity)
+    }
+
+    val isCameraGranted = cameraGranted ?: (realCameraState == PermissionState.GRANTED)
+    val isPermanentlyDenied = realCameraState == PermissionState.PERMANENTLY_DENIED
+
+    val handleScanFrameClick: () -> Unit = {
+        if (isCameraGranted) {
+            onSuccessJoin()
+        } else if (isPermanentlyDenied) {
+            PermissionManager.openAppSettings(context)
+        } else {
+            PermissionManager.markRequested(context, AppPermission.CAMERA)
+            permissionLauncher.launch(qrScanPermissions)
+        }
+    }
 
     DamThoaiBackground(modifier = modifier) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
+                .navigationBarsPadding()
                 .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 16.dp)
         ) {
             Row(
@@ -110,7 +196,7 @@ private fun JoinChannelScreenContent(
             ) {
                 BackButton(onClick = onBack)
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    Text("Vào kênh", color = TextPrimary, style = DamType.Heading.copy(fontSize = 18.sp))
+                    Text("Vào kênh", color = TextPrimary, style = DamType.Heading18)
                 }
                 Spacer(Modifier.size(40.dp))
             }
@@ -126,8 +212,10 @@ private fun JoinChannelScreenContent(
                 if (selectedTab == 0) {
                     QrScanTab(
                         isCameraGranted = isCameraGranted,
-                        onRequestCamera = { isCameraGranted = true },
-                        onSwitchToPin = { selectedTab = 1 },
+                        hasBeenRequested = hasBeenRequested,
+                        isPermanentlyDenied = isPermanentlyDenied,
+                        onScanFrameClick = handleScanFrameClick,
+                        onOpenSettings = { PermissionManager.openAppSettings(context) },
                         onQrScanned = { onSuccessJoin() }
                     )
                 } else {
@@ -140,13 +228,75 @@ private fun JoinChannelScreenContent(
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(20.dp))
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Bạn là ban tổ chức?",
+                    color = TextSecondary,
+                    style = DamType.Muted,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedCyanButton(
+                    text = "Tạo sự kiện mới",
+                    onClick = onNavigateToCreateEvent,
+                    iconRes = R.drawable.ic_plus,
+                    modifier = Modifier.fillMaxWidth(),
+                    height = 54.dp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun OutlinedCyanButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    height: Dp = 54.dp,
+    iconRes: Int? = null
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val shape = ButtonShape
+    val backgroundColor = if (isPressed) AccentCyan.copy(alpha = 0.15f) else TagCyanBg
+
+    Box(
+        modifier = modifier
+            .heightIn(min = maxOf(height, 54.dp))
+            .clip(shape)
+            .background(backgroundColor)
+            .border(1.5.dp, AccentCyan, shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            if (iconRes != null) {
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = null,
+                    tint = AccentCyan,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+            }
             Text(
-                text = "Muốn tạo sự kiện mới? Tạo sự kiện  ›",
-                color = AccentCyan,
+                text = text,
                 style = DamType.Button,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onNavigateToCreateEvent).padding(6.dp)
+                color = AccentCyan,
+                textAlign = TextAlign.Center
             )
         }
     }
@@ -187,7 +337,7 @@ private fun JoinTab(text: String, icon: Int, selected: Boolean, modifier: Modifi
     Row(
         modifier = modifier.fillMaxSize()
             .clip(PillShape)
-            .background(if (selected) PrimaryBrush else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
+            .background(if (selected) PrimaryBrush else Brush.linearGradient(listOf(Transparent, Transparent)))
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.Center,
@@ -207,22 +357,58 @@ private fun JoinTab(text: String, icon: Int, selected: Boolean, modifier: Modifi
 @Composable
 private fun QrScanTab(
     isCameraGranted: Boolean,
-    onRequestCamera: () -> Unit,
-    onSwitchToPin: () -> Unit,
+    hasBeenRequested: Boolean,
+    isPermanentlyDenied: Boolean,
+    onScanFrameClick: () -> Unit,
+    onOpenSettings: () -> Unit,
     onQrScanned: () -> Unit
 ) {
-    if (!isCameraGranted) {
+    if (isCameraGranted) {
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
-                modifier = Modifier.weight(1f).fillMaxWidth()
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
                     .clip(RoundedCornerShape(30.dp))
-                    .background(GlassBg)
-                    .border(1.dp, GlassBorder, RoundedCornerShape(30.dp)),
+                    .background(LcdBg)
+                    .border(1.dp, GlassBorder, RoundedCornerShape(30.dp))
+                    .clickable(onClick = onQrScanned),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                QrScannerView(onQrScanned = { onQrScanned() }, modifier = Modifier.size(220.dp))
+                ScannerCorners(Modifier.size(220.dp))
+                ScanLine(Modifier.width(186.dp))
+            }
+            Spacer(Modifier.height(14.dp))
+            Text(
+                text = "Quét mã QR của bạn.\nTên, vai trò và kênh sẽ được gán tự động.",
+                color = TextSecondary,
+                style = DamType.Body13_5Line20,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(0.85f)
+            )
+        }
+    } else {
+        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(30.dp))
+                    .background(GlassBg)
+                    .border(1.dp, GlassBorder, RoundedCornerShape(30.dp))
+                    .clickable(onClick = onScanFrameClick),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                ) {
                     Box(
-                        Modifier.size(98.dp).clip(CircleShape).background(CameraBadgeBg)
+                        Modifier
+                            .size(98.dp)
+                            .clip(CircleShape)
+                            .background(CameraBadgeBg)
                             .border(1.dp, AccentCyan.copy(alpha = 0.4f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
@@ -237,55 +423,58 @@ private fun QrScanTab(
                     Text(
                         "Cần quyền Camera để quét QR",
                         color = TextPrimary,
-                        style = DamType.Title.copy(fontSize = 20.sp),
+                        style = DamType.Title20,
                         textAlign = TextAlign.Center
                     )
                     Spacer(Modifier.height(10.dp))
-                    Text(
-                        "Camera chỉ dùng để đọc mã QR của ban, app không ghi hình.",
-                        color = TextSecondary,
-                        style = DamType.Body.copy(fontSize = 14.sp, lineHeight = 21.sp),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 24.dp)
-                    )
+                    when {
+                        isPermanentlyDenied -> {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    "Quyền camera đang bị tắt",
+                                    color = TextSecondary,
+                                    style = DamType.Body14Line21,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "Mở cài đặt",
+                                    color = AccentCyan,
+                                    style = DamType.Body14Bold,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable(onClick = onOpenSettings)
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                        hasBeenRequested -> {
+                            Text(
+                                "Cần quyền camera để quét mã. Chạm để thử lại.",
+                                color = TextSecondary,
+                                style = DamType.Body14Line21,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                        else -> {
+                            Text(
+                                "Camera chỉ dùng để đọc mã QR của bạn, app không ghi hình.\nChạm để cho phép camera",
+                                color = TextSecondary,
+                                style = DamType.Body14Line21,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
                 }
             }
-            Spacer(Modifier.height(12.dp))
-            PrimaryButton(
-                text = "Cấp quyền Camera",
-                onClick = onRequestCamera,
-                modifier = Modifier.fillMaxWidth(),
-                height = 54.dp
-            )
-            Spacer(Modifier.height(10.dp))
-            SecondaryButton(
-                text = "Nhập PIN thay thế",
-                onClick = onSwitchToPin,
-                modifier = Modifier.fillMaxWidth(),
-                height = 54.dp
-            )
-        }
-    } else {
-        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                Modifier.weight(1f).fillMaxWidth()
-                    .clip(RoundedCornerShape(30.dp))
-                    .background(LcdBg)
-                    .border(1.dp, GlassBorder, RoundedCornerShape(30.dp))
-                    .clickable(onClick = onQrScanned),
-                contentAlignment = Alignment.Center
-            ) {
-                QrScannerView(onQrScanned = { onQrScanned() }, modifier = Modifier.size(220.dp))
-                ScannerCorners(Modifier.size(220.dp))
-                ScanLine(Modifier.width(186.dp))
-            }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(14.dp))
             Text(
-                "Quét mã QR của ban. Tên, vai trò và kênh sẽ được gán tự động.",
+                text = "Chạm vào khung phía trên để cấp quyền và quét mã QR.",
                 color = TextSecondary,
-                style = DamType.Body.copy(fontSize = 13.sp, lineHeight = 19.sp),
+                style = DamType.Body13_5Line20,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                modifier = Modifier.fillMaxWidth(0.85f)
             )
         }
     }
@@ -320,7 +509,7 @@ private fun ScanLine(modifier: Modifier = Modifier) {
     )
     Box(
         modifier = modifier.offset(y = progress.dp).height(4.dp)
-            .background(Brush.horizontalGradient(listOf(Color.Transparent, AccentCyan, Color.Transparent)))
+            .background(Brush.horizontalGradient(listOf(Transparent, AccentCyan, Transparent)))
     )
 }
 
@@ -369,7 +558,7 @@ private fun PinInputTab(initialPin: String, onPinSubmit: (String) -> Unit) {
                 .border(1.dp, LcdBorder, RoundedCornerShape(22.dp))
                 .padding(horizontal = 18.dp, vertical = 12.dp)
         ) {
-            Text("TẦN SỐ ẢO · PIN 6 SỐ", color = AccentCyan, style = DamType.Label.copy(fontSize = 11.sp))
+            Text("TẦN SỐ ẢO · PIN 6 SỐ", color = AccentCyan, style = DamType.Label)
             Spacer(Modifier.height(8.dp))
             val formattedPin = buildString {
                 for (index in 0 until 6) {
@@ -415,7 +604,7 @@ private fun GlassKeypad(
                     Box(
                         Modifier.weight(1f).height(52.dp)
                             .clip(RoundedCornerShape(22.dp))
-                            .background(if (key.isNotEmpty()) GlassBg else Color.Transparent)
+                            .background(if (key.isNotEmpty()) GlassBg else Transparent)
                             .border(if (key.isNotEmpty()) 1.dp else 0.dp, GlassBorder, RoundedCornerShape(22.dp))
                             .clickable(enabled = key.isNotEmpty()) {
                                 if (key == "⌫") onDeleteClick() else onDigitClick(key)
@@ -430,12 +619,20 @@ private fun GlassKeypad(
                                 modifier = Modifier.size(24.dp)
                             )
                         } else {
-                            Text(key, color = TextPrimary, style = DamType.PinBig.copy(fontSize = 24.sp, lineHeight = 28.sp, letterSpacing = 0.sp))
+                            Text(key, color = TextPrimary, style = DamType.PinKey)
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Preview(widthDp = 360, heightDp = 640)
+@Composable
+private fun JoinQrSmallScreenPreview() {
+    DamThoaiTheme {
+        JoinChannelScreenContent({}, {}, {}, {}, initialTab = 0, cameraGranted = true)
     }
 }
 
