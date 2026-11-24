@@ -22,3 +22,8 @@ iosApp/iosApp/iosApp.entitlements
 xcuserdata/
 *.xcworkspace/xcuserdata/
 .kotlin/
+
+# Biến môi trường chứa key bí mật (mẫu nằm ở .env.example)
+.env
+.env.*
+!.env.example

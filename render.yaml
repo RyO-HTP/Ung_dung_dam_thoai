@@ -18,3 +18,8 @@ services:
         value: "1"
       - key: DISABLE_MDNS
         value: "1"
+      # Tài khoản TURN Metered: điền trong Render > Environment (sync: false = không lưu trong repo)
+      - key: TURN_USERNAME
+        sync: false
+      - key: TURN_CREDENTIAL
+        sync: false
