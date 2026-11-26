@@ -8,8 +8,11 @@ captures/
 node_modules/
 design/
 .vscode/
-<<<<<<< HEAD
-=======
 __pycache__/
 *.pyc
->>>>>>> origin/feat/tuan1-tv2-network
+.kotlin/
+
+# Biến môi trường chứa tài khoản/khoá bí mật (mẫu nằm ở .env.example)
+.env
+.env.*
+!.env.example

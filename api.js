@@ -4,9 +4,16 @@ const { AccessToken } = require('livekit-server-sdk');
 const app = express();
 const port = 3000;
 
-const livekitHost = 'wss://ung-dung-dam-thoai-pze2v7u9.livekit.cloud'; 
-const apiKey = 'API35CD8iXuuHQP';
-const apiSecret = 'skNGqlelCYwJieKdYxa6if5aEf1kS9eh2PcxfoXWl4xF';
+// Khoá LiveKit KHÔNG ghi trong code (repo công khai): đặt trong file .env (chép từ .env.example)
+// rồi chạy: node --env-file=.env api.js   (hoặc: npm run token)
+const livekitHost = process.env.LIVEKIT_URL;
+const apiKey = process.env.LIVEKIT_API_KEY;
+const apiSecret = process.env.LIVEKIT_API_SECRET;
+
+if (!livekitHost || !apiKey || !apiSecret) {
+    console.error('Thiếu LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET. Xem .env.example.');
+    process.exit(1);
+}
 
 // Bổ sung 'async' ở dòng này
 app.get('/get-token', async (req, res) => {

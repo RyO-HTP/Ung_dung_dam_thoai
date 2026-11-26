@@ -10,8 +10,12 @@ Thứ tự ưu tiên nguồn TURN:
         METERED_API_KEY    API key lấy trong dashboard Metered
      -> lấy credential TURN tạm thời qua REST API (an toàn hơn để lộ mật khẩu cố định).
   2. TURN tự dựng (coturn) qua biến môi trường TURN_URLS / TURN_USERNAME / TURN_CREDENTIAL.
-  3. Mặc định: tài khoản TURN Metered của nhóm (global.relay.metered.ca).
-  4. Dự phòng cuối: OpenRelay Project (TURN công cộng miễn phí) - dùng khi đặt TURN_FALLBACK_OPENRELAY=1.
+  3. Tài khoản TURN Metered của nhóm (global.relay.metered.ca): đặt TURN_USERNAME / TURN_CREDENTIAL
+     (không đặt TURN_URLS). Tài khoản KHÔNG ghi trong code vì repo công khai.
+  4. Dự phòng: OpenRelay Project (TURN công cộng miễn phí). Tự bật khi không có nguồn TURN nào ở trên,
+     hoặc thêm vào cùng nguồn khác khi đặt TURN_FALLBACK_OPENRELAY=1.
+
+Biến môi trường đặt trong file .env (chép từ .env.example) hoặc trên máy chủ deploy.
 
 Chạy thử: python webrtc_config.py
 """
@@ -27,20 +31,44 @@ FREE_STUN_SERVERS = [
     {"urls": "stun:stun.cloudflare.com:3478"},
 ]
 
-# Tài khoản TURN Metered của nhóm (cấu hình gốc Tuần 1)
-TEAM_METERED_TURN = [
-    {"urls": "stun:stun.relay.metered.ca:80"},
-    {
-        "urls": [
-            "turn:global.relay.metered.ca:80",
-            "turn:global.relay.metered.ca:80?transport=tcp",
-            "turn:global.relay.metered.ca:443",
-            "turns:global.relay.metered.ca:443?transport=tcp",
-        ],
-        "username": "a45884b7286d688684c2c4cc",
-        "credential": "4e600MW8eaVVsPNJ",
-    },
-]
+def _load_dotenv(path=None):
+    """Đọc file .env (KEY=VALUE) cạnh file này vào os.environ, không ghi đè biến đã có."""
+    path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.isfile(path):
+        return
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            if key and key not in os.environ:
+                os.environ[key] = value.strip().strip('"').strip("'")
+
+
+_load_dotenv()
+
+
+def _team_metered_turn():
+    """Tài khoản TURN Metered của nhóm (cấu hình gốc Tuần 1), đọc từ biến môi trường."""
+    username = os.environ.get("TURN_USERNAME", "").strip()
+    credential = os.environ.get("TURN_CREDENTIAL", "").strip()
+    if not username or not credential:
+        return None
+    return [
+        {"urls": "stun:stun.relay.metered.ca:80"},
+        {
+            "urls": [
+                "turn:global.relay.metered.ca:80",
+                "turn:global.relay.metered.ca:80?transport=tcp",
+                "turn:global.relay.metered.ca:443",
+                "turns:global.relay.metered.ca:443?transport=tcp",
+            ],
+            "username": username,
+            "credential": credential,
+        },
+    ]
 
 # TURN công cộng miễn phí (OpenRelay) - dùng khi 4G/NAT đối xứng chặn kết nối P2P trực tiếp.
 # Cổng 443/TCP + TLS giúp vượt cả tường lửa chỉ mở HTTPS ở hội trường/khách sạn.
@@ -91,8 +119,11 @@ def get_ice_servers_list():
     if _cache["servers"] is not None and now < _cache["expires_at"]:
         return _cache["servers"]
 
-    turn = _fetch_metered_turn() or _custom_turn_from_env() or list(TEAM_METERED_TURN)
-    if os.environ.get("TURN_FALLBACK_OPENRELAY") == "1":
+    turn = _fetch_metered_turn() or _custom_turn_from_env() or _team_metered_turn()
+    if not turn:
+        print("[webrtc_config] Chưa cấu hình TURN riêng (xem .env.example): dùng TURN công cộng OpenRelay.")
+        turn = [OPEN_RELAY_TURN]
+    elif os.environ.get("TURN_FALLBACK_OPENRELAY") == "1":
         turn = turn + [OPEN_RELAY_TURN]
     servers = FREE_STUN_SERVERS + turn
     _cache["servers"] = servers
