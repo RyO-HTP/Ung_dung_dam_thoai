@@ -20,7 +20,7 @@ object ApiClient {
             return if (!url.isNullOrBlank()) {
                 if (url.endsWith("/")) url.dropLast(1) else url
             } else {
-                "http://192.168.1.5:8080"
+                "http://10.0.2.2:8080"
             }
         }
 
