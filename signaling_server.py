@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import time
 
 import websockets
@@ -36,12 +37,45 @@ async def safe_send(ws, payload):
         return False
 
 
+def prune_offline_queue(now=None):
+    """Bỏ các gói tin nhỡ đã quá hạn, tránh bộ nhớ phình ra khi người nhận không bao giờ quay lại."""
+    now = now or time.time()
+    for target_id in list(offline_queue):
+        fresh = [(ts, msg) for (ts, msg) in offline_queue[target_id] if now - ts <= OFFLINE_MESSAGE_TTL_SECONDS]
+        if fresh:
+            offline_queue[target_id] = fresh
+        else:
+            del offline_queue[target_id]
+
+
 def queue_offline(target_id, data):
+    prune_offline_queue()
     queue = offline_queue.setdefault(target_id, [])
     queue.append((time.time(), data))
     if len(queue) > MAX_OFFLINE_MESSAGES_PER_USER:
         del queue[: len(queue) - MAX_OFFLINE_MESSAGES_PER_USER]
     stats["messages_queued"] += 1
+
+
+# Gộp nhiều lần vào/ra sát nhau (vd: 300 máy cùng vào khi stress test) thành 1 lần gửi danh sách
+PEERS_BROADCAST_DELAY_SECONDS = 0.2
+_peers_broadcast_task = None
+
+
+async def _broadcast_peers_now():
+    global _peers_broadcast_task
+    await asyncio.sleep(PEERS_BROADCAST_DELAY_SECONDS)
+    _peers_broadcast_task = None
+    payload = json.dumps({"type": "peers", "peers": sorted(connected_clients)})
+    for ws in list(connected_clients.values()):
+        await safe_send(ws, payload)
+
+
+async def broadcast_peers():
+    """Gửi danh sách user_id đang online cho mọi thiết bị để app biết có thể gọi ai."""
+    global _peers_broadcast_task
+    if _peers_broadcast_task is None:
+        _peers_broadcast_task = asyncio.create_task(_broadcast_peers_now())
 
 
 async def flush_offline_queue(user_id, websocket):
@@ -82,6 +116,7 @@ async def signaling_handler(websocket):
                 print(f"Đã cấp phát cấu hình STUN/TURN cho [{user_id}]")
 
                 await flush_offline_queue(user_id, websocket)
+                await broadcast_peers()
 
             # 2. Định tuyến P2P: offer / answer / ice_candidate / ...
             elif msg_type in FORWARD_TYPES:
@@ -120,18 +155,26 @@ async def signaling_handler(websocket):
         # trước khi kết nối cũ timeout; xoá nhầm sẽ làm mất định tuyến của kết nối mới.
         if user_id is not None and connected_clients.get(user_id) is websocket:
             del connected_clients[user_id]
+            await broadcast_peers()
 
 
-async def main():
-    server = await websockets.serve(
+async def start_server(host="0.0.0.0", port=None):
+    """Mở máy chủ (dùng chung cho chạy thật và cho bài kiểm tra tự động). Cổng mặc định 8765, đổi bằng biến PORT."""
+    port = int(os.environ.get("PORT", 8765)) if port is None else port
+    return await websockets.serve(
         signaling_handler,
-        "0.0.0.0",
-        8765,
+        host,
+        port,
         ping_interval=15,
         ping_timeout=20,
         max_size=2 ** 20,
     )
-    print("Signaling Server đang chạy trên cổng 8765...")
+
+
+async def main():
+    server = await start_server()
+    port = server.sockets[0].getsockname()[1]
+    print(f"Signaling Server đang chạy trên cổng {port}...")
     await server.wait_closed()
 
 

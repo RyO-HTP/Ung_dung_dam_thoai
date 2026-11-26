@@ -160,9 +160,10 @@ async def main():
     try:
         async with websockets.connect(args.url) as ws:
             await ws.send(json.dumps({"type": "register", "user_id": f"load_{args.run_id}_stats"}))
-            await ws.recv()
             await ws.send(json.dumps({"type": "stats"}))
-            server_stats = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+            # Bỏ qua webrtc_config / peers, chỉ lấy gói stats
+            while server_stats.get("type") != "stats":
+                server_stats = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
     except Exception:
         pass
 

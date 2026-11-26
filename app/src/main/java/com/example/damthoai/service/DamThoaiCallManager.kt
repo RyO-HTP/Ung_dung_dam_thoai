@@ -136,6 +136,17 @@ class DamThoaiCallManager private constructor(private val context: Context) {
     /** Thành viên tìm thấy trong mạng LAN khi ở chế độ LAN Fallback */
     val lanPeers: StateFlow<Set<String>> get() = lanSignaling.peerIds
 
+    /** Trạng thái WebSocket tới Signaling Server (để UI hiển thị) */
+    val serverConnectionState: StateFlow<SignalingConnectionState> get() = signalingClient.connectionState
+
+    // Thành viên đang online trên Signaling Server (không gồm chính mình)
+    private val _onlinePeers = MutableStateFlow<List<String>>(emptyList())
+    val onlinePeers: StateFlow<List<String>> = _onlinePeers.asStateFlow()
+
+    // Số ICE server (STUN/TURN) đang dùng và có TURN hay không -> kiểm tra cấu hình Tuần 1
+    private val _iceServerSummary = MutableStateFlow(describeIceServers(WebRTCClient.DEFAULT_ICE_SERVERS, fromServer = false))
+    val iceServerSummary: StateFlow<String> = _iceServerSummary.asStateFlow()
+
     // Chỉ số chất lượng đường truyền thời gian thực (Tuần 6)
     private val _callStats = MutableStateFlow<CallStats?>(null)
     val callStats: StateFlow<CallStats?> = _callStats.asStateFlow()
@@ -292,6 +303,7 @@ class DamThoaiCallManager private constructor(private val context: Context) {
                     is SignalingEvent.ConfigReceived -> {
                         Log.d(TAG, "Nạp cấu hình ${event.iceServers.size} ICE Servers vào WebRTC Client")
                         if (event.iceServers.isNotEmpty()) serverIceServers = event.iceServers
+                        _iceServerSummary.value = describeIceServers(serverIceServers, fromServer = event.iceServers.isNotEmpty())
                         if (_connectionMode.value == ConnectionMode.SERVER) {
                             webRTCClient.updateIceServers(serverIceServers)
                         }
@@ -335,6 +347,10 @@ class DamThoaiCallManager private constructor(private val context: Context) {
                             Log.d(TAG, "Đối tác đã kết thúc cuộc gọi")
                             endCallInternal(notifyPeer = false, reason = "Đối tác đã kết thúc")
                         }
+                    }
+
+                    is SignalingEvent.PeersReceived -> {
+                        _onlinePeers.value = event.peers.filter { it != signalingClient.userId }
                     }
 
                     is SignalingEvent.VoiceNoteReceived -> {
@@ -789,6 +805,14 @@ class DamThoaiCallManager private constructor(private val context: Context) {
                 }
             }
         }
+    }
+
+    private fun describeIceServers(servers: List<PeerConnection.IceServer>, fromServer: Boolean): String {
+        val urls = servers.flatMap { it.urls }
+        val stun = urls.count { it.startsWith("stun:") }
+        val turn = urls.count { it.startsWith("turn:") || it.startsWith("turns:") }
+        val source = if (fromServer) "từ server" else "mặc định trong app"
+        return "$stun STUN, $turn TURN ($source)"
     }
 
     private fun markField(event: String, extra: String = "") {

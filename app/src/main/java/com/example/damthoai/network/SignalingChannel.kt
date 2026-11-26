@@ -5,6 +5,7 @@ import com.example.damthoai.network.model.BaseSignalingMessage
 import com.example.damthoai.network.model.IceCandidatePayload
 import com.example.damthoai.network.model.IceCandidateSignalingMessage
 import com.example.damthoai.network.model.IceCandidatesRemovedMessage
+import com.example.damthoai.network.model.PeersMessage
 import com.example.damthoai.network.model.SdpSignalingMessage
 import com.example.damthoai.network.model.SignalingType
 import com.example.damthoai.network.model.SimpleSignalingMessage
@@ -75,6 +76,10 @@ object SignalingMessageParser {
             SignalingType.HANGUP -> {
                 val m = gson.fromJson(jsonStr, SimpleSignalingMessage::class.java)
                 SignalingEvent.HangupReceived(m.senderId)
+            }
+            SignalingType.PEERS -> {
+                val m = gson.fromJson(jsonStr, PeersMessage::class.java)
+                SignalingEvent.PeersReceived(m.peers.orEmpty())
             }
             SignalingType.VOICE_NOTE -> {
                 val m = gson.fromJson(jsonStr, VoiceNoteSignalingMessage::class.java)

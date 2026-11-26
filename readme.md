@@ -51,10 +51,19 @@ pip install -r requirements.txt
 python signaling_server.py
 ```
 
-- Máy chủ mở cổng **8765**.
+- Máy chủ mở cổng **8765** (đổi bằng biến môi trường `PORT`).
 - Để app trên cùng Wi-Fi tự tìm thấy máy chủ, mở thêm một cửa sổ và chạy `python mdns_broadcaster.py`.
 - Trên Windows, cho phép Python qua **Windows Firewall** (mạng Private).
 - Thử độ chịu tải: `python tools/load_test_signaling.py --clients 200 --messages 30`
+- Kiểm tra tự động giao thức máy chủ: `python -m unittest discover -s tests -v`
+
+### Gọi thử thật giữa 2 điện thoại
+
+1. Chạy máy chủ như trên, xem IP của máy tính (`ipconfig`).
+2. Cài app lên 2 điện thoại cùng Wi-Fi với máy tính.
+3. Trên mỗi máy: **Cài đặt → Kiểm tra mạng**, bấm **Kết nối** (nhập `ws://<IP máy tính>:8765`) hoặc **Tự tìm (mDNS)**.
+4. Mỗi máy sẽ thấy máy kia trong mục "Đang online". Bấm **Gọi**, rồi giữ nút tròn để nói.
+5. Mục "Chất lượng" cho biết đi thẳng hay qua TURN, độ trễ, tỉ lệ mất gói. Thử tắt Wi-Fi một máy để xem cuộc gọi tự nối lại qua 4G.
 
 ## 3. Các phần khác
 
