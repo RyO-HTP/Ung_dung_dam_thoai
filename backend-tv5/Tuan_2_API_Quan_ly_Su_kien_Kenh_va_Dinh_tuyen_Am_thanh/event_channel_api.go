@@ -12,6 +12,40 @@ import (
 	"time"
 )
 
+// ChannelIDList là danh sách ID kênh (1..5). Mặc định Go mã hóa []uint8 thành chuỗi base64
+// ("AQI="), làm app Android (mong đợi mảng số [1,2]) bị lỗi parse. Kiểu này luôn
+// mã hóa thành mảng số, và khi nhận vào chấp nhận cả mảng số lẫn chuỗi base64.
+type ChannelIDList []uint8
+
+func (c ChannelIDList) MarshalJSON() ([]byte, error) {
+	out := make([]int, len(c))
+	for i, v := range c {
+		out[i] = int(v)
+	}
+	return json.Marshal(out)
+}
+
+func (c *ChannelIDList) UnmarshalJSON(data []byte) error {
+	var nums []int
+	if err := json.Unmarshal(data, &nums); err == nil {
+		res := make([]uint8, 0, len(nums))
+		for _, n := range nums {
+			if n < 0 || n > 255 {
+				return fmt.Errorf("channel id ngoài khoảng: %d", n)
+			}
+			res = append(res, uint8(n))
+		}
+		*c = res
+		return nil
+	}
+	var raw []byte // chuỗi base64
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*c = raw
+	return nil
+}
+
 // =============================================================================
 // TUẦN 2 (NGƯỜI 5): XÂY DỰNG REST API QUẢN LÝ NGƯỜI DÙNG, SỰ KIỆN, KÊNH
 // Đã đồng bộ 100% với dự án Android DuAnLamChung:
@@ -51,7 +85,7 @@ type UserSession struct {
 	RolePriority      uint8   `json:"rolePriority"`      // Chuẩn Server CAS: 3 = Tổng đạo diễn, 2 = Trưởng ban, 1 = CTV
 	PrimaryTxChannel  uint8   `json:"primaryTxChannel"`  // Kênh phát âm thanh chính (1..5)
 	PrimaryChannelID  string  `json:"primaryChannelId"`  // Mã kênh phát âm thanh trên Android ("ch_01".."ch_05")
-	ListeningChannels []uint8 `json:"listeningChannels"` // Danh sách kênh đang nghe (tối đa 3 kênh)
+	ListeningChannels ChannelIDList `json:"listeningChannels"` // Danh sách kênh đang nghe (tối đa 3 kênh)
 	HmacSecretHex     string  `json:"hmacSecretHex"`
 	HmacSecretBytes   []byte  `json:"-"`
 }
@@ -294,7 +328,7 @@ func (em *EventManager) HandleSwitchChannel(w http.ResponseWriter, r *http.Reque
 	var req struct {
 		UserID            uint32  `json:"userId"`
 		PrimaryTxChannel  uint8   `json:"primaryTxChannel"`
-		ListeningChannels []uint8 `json:"listeningChannels"`
+		ListeningChannels ChannelIDList `json:"listeningChannels"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
