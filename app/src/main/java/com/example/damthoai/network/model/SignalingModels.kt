@@ -16,7 +16,18 @@ object SignalingType {
     const val HANGUP = "hangup"
     const val NETWORK_CHANGE = "network_change" // Tuần 4: Seamless Handover
     const val VOICE_NOTE = "voice_note"         // Tuần 5 (TV2): Hàng đợi ngoại tuyến Store-and-Forward
+    const val PEERS = "peers"                   // Danh sách thành viên đang online do server gửi
 }
+
+/**
+ * Server gửi mỗi khi có người vào/ra: { "type": "peers", "peers": ["A", "B"] }
+ */
+data class PeersMessage(
+    @SerializedName("type")
+    val type: String = SignalingType.PEERS,
+    @SerializedName("peers")
+    val peers: List<String>? = null
+)
 
 /**
  * Gói tin cơ bản để xác định loại thông điệp (type)

@@ -70,7 +70,8 @@ fun SettingsScreen(
     onLeaveEvent: () -> Unit,
     onMultiLevel: () -> Unit,
     onHandsFree: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onNetworkTest: () -> Unit = {}
 ) {
     val networkStatus by NetworkStatusProvider.source.status.collectAsState()
     val currentEvent by FakeEventRepository.currentEvent.collectAsStateWithLifecycle()
@@ -86,6 +87,7 @@ fun SettingsScreen(
         onLeaveEvent = onLeaveEvent,
         onMultiLevel = onMultiLevel,
         onHandsFree = onHandsFree,
+        onNetworkTest = onNetworkTest,
         modifier = modifier,
         event = currentEvent ?: FakeRemainingUiData.event,
         networkDescription = networkDescription
@@ -99,6 +101,7 @@ private fun SettingsContent(
     onLeaveEvent: () -> Unit,
     onMultiLevel: () -> Unit,
     onHandsFree: () -> Unit,
+    onNetworkTest: () -> Unit = {},
     modifier: Modifier = Modifier,
     event: Event,
     networkDescription: String
@@ -240,6 +243,12 @@ private fun SettingsContent(
                 title = "Rảnh tay và âm thanh",
                 subtitle = "Tai nghe, phím âm lượng, lọc ồn",
                 onClick = onHandsFree
+            )
+            SettingsActionRow(
+                iconRes = R.drawable.ic_radio,
+                title = "Kiểm tra mạng",
+                subtitle = "Gọi thử PTT thật giữa 2 máy, xem STUN/TURN, độ trễ",
+                onClick = onNetworkTest
             )
             Spacer(Modifier.height(100.dp))
         }

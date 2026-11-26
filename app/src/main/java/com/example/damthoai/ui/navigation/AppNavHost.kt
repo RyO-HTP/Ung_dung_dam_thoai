@@ -291,7 +291,8 @@ fun AppNavHost(
                     }
                 },
                 onMultiLevel = { navController.navigate(AppRoute.MultiLevelConnection.route) },
-                onHandsFree = { navController.navigate(AppRoute.HandsFreeAudio.route) }
+                onHandsFree = { navController.navigate(AppRoute.HandsFreeAudio.route) },
+                onNetworkTest = { navController.navigate(AppRoute.NetworkTest.route) }
             )
         }
         composable(AppRoute.MultiLevelConnection.route) {
@@ -301,6 +302,9 @@ fun AppNavHost(
             HandsFreeAudioScreen(
                 onBack = { navController.popBackStack() }
             )
+        }
+        composable(AppRoute.NetworkTest.route) {
+            com.example.damthoai.ui.screens.NetworkTestScreen(onBack = { navController.popBackStack() })
         }
         composable(AppRoute.PttDebug.route) {
             PttKeyDemoScreen(

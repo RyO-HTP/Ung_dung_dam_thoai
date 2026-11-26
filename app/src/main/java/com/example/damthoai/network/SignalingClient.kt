@@ -55,6 +55,8 @@ sealed class SignalingEvent {
         val candidates: List<IceCandidatePayload>
     ) : SignalingEvent()
     data class HangupReceived(val senderId: String?) : SignalingEvent()
+    /** Danh sách user_id đang online trên Signaling Server (kể cả chính mình) */
+    data class PeersReceived(val peers: List<String>) : SignalingEvent()
     /** Tuần 5 (TV2): nhận tin nhắn thoại gửi bù từ đồng đội vừa có mạng trở lại */
     data class VoiceNoteReceived(
         val id: String,
