@@ -1,9 +1,11 @@
 package com.example.damthoai.network
 
 import com.example.damthoai.network.model.IceCandidatePayload
+import com.example.damthoai.network.model.RegisterMessage
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 /**
@@ -62,5 +64,26 @@ class SignalingMessageParserTest {
     fun hangupRoundTrip() {
         val sent = SignalingMessageParser.hangup(gson, "A", "B")
         assertEquals(SignalingEvent.HangupReceived("A"), SignalingMessageParser.parse(gson, sent))
+    }
+
+    @Test
+    fun registerCarriesDeviceKeyAndToken() {
+        val json = JsonParser.parseString(gson.toJson(RegisterMessage(userId = "A", deviceKey = "khoa-may-A-1234567", token = "ma-nhom"))).asJsonObject
+        assertEquals("register", json["type"].asString)
+        assertEquals("A", json["user_id"].asString)
+        assertEquals("khoa-may-A-1234567", json["device_key"].asString)
+        assertEquals("ma-nhom", json["token"].asString)
+    }
+
+    @Test
+    fun registerOmitsTokenWhenServerHasNone() {
+        val json = JsonParser.parseString(gson.toJson(RegisterMessage(userId = "A", deviceKey = "khoa-may-A-1234567"))).asJsonObject
+        assertFalse(json.has("token"))
+    }
+
+    @Test
+    fun rejectionCodesHaveReadableMessages() {
+        assertEquals("Sai hoặc thiếu mã truy cập máy chủ", SignalingClient.describeRejection(4001))
+        assertEquals("Tên này đang được máy khác dùng, hãy đổi tên", SignalingClient.describeRejection(4009))
     }
 }

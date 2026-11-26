@@ -1,6 +1,9 @@
 import asyncio
+import hmac
+import http
 import json
 import os
+import re
 import time
 
 import websockets
@@ -26,7 +29,68 @@ FORWARD_TYPES = {
     "voice_note",              # Tuần 5 (TV2): Hàng đợi ngoại tuyến Store-and-Forward
 }
 
-stats = {"messages_forwarded": 0, "messages_queued": 0, "registrations": 0}
+stats = {"messages_forwarded": 0, "messages_queued": 0, "registrations": 0, "rejected": 0}
+
+# ---------------------------------------------------------------- Bảo mật (TV1)
+# 1) Mã truy cập chung: đặt SIGNALING_TOKEN trong .env / biến môi trường của máy chủ cloud.
+#    App phải gửi đúng mã trong gói register mới được nhận cấu hình STUN/TURN và gọi điện.
+#    Để trống = chế độ thử nghiệm trong mạng nhà (ai cũng vào được, có cảnh báo khi khởi động).
+# 2) Giữ chỗ user_id: mỗi máy tự sinh device_key ngẫu nhiên và gửi kèm khi register.
+#    user_id đang thuộc máy khác (đang online hoặc vừa rớt mạng < CLAIM_TTL_SECONDS)
+#    thì máy lạ không đăng ký đè được -> không "cướp" được cuộc gọi của người khác.
+#    Chính máy đó đổi Wi-Fi -> 4G vẫn đăng ký lại bình thường vì có cùng device_key.
+CLAIM_TTL_SECONDS = 600
+USER_ID_PATTERN = re.compile(r"^[\w.\-]{1,64}$")
+DEVICE_KEY_MIN_LEN, DEVICE_KEY_MAX_LEN = 16, 128
+
+CLOSE_BAD_REQUEST = 4000
+CLOSE_UNAUTHORIZED = 4001
+CLOSE_USER_ID_TAKEN = 4009
+
+# user_id -> {"key": device_key, "released_at": None (đang online) | thời điểm rớt mạng}
+claims = {}
+
+
+def _same_secret(a, b):
+    return isinstance(a, str) and isinstance(b, str) and hmac.compare_digest(a.encode(), b.encode())
+
+
+def check_token(token):
+    expected = os.environ.get("SIGNALING_TOKEN", "").strip()
+    if not expected:
+        return True
+    return _same_secret(token, expected)
+
+
+def claim_user_id(user_id, device_key, now=None):
+    """Trả về True nếu device_key được phép dùng user_id này."""
+    now = now or time.time()
+    for uid in [u for u, c in claims.items()
+                if c["released_at"] is not None and now - c["released_at"] >= CLAIM_TTL_SECONDS]:
+        del claims[uid]
+    current = claims.get(user_id)
+    if current is not None and not _same_secret(current["key"], device_key):
+        return False
+    claims[user_id] = {"key": device_key, "released_at": None}
+    return True
+
+
+def release_user_id(user_id, now=None):
+    if user_id in claims:
+        claims[user_id]["released_at"] = now or time.time()
+
+
+def valid_register(user_id, device_key):
+    return (
+        isinstance(user_id, str) and USER_ID_PATTERN.match(user_id) is not None
+        and isinstance(device_key, str) and DEVICE_KEY_MIN_LEN <= len(device_key) <= DEVICE_KEY_MAX_LEN
+    )
+
+
+async def reject(websocket, code, reason):
+    stats["rejected"] += 1
+    print(f"Từ chối kết nối: {reason}")
+    await websocket.close(code, reason)
 
 
 async def safe_send(ws, payload):
@@ -100,9 +164,20 @@ async def signaling_handler(websocket):
 
             # 1. Thiết bị đăng ký (Handshake)
             if msg_type == "register":
-                user_id = data.get("user_id")
-                if not user_id:
-                    continue
+                new_id = data.get("user_id")
+                device_key = data.get("device_key")
+                if not check_token(data.get("token")):
+                    await reject(websocket, CLOSE_UNAUTHORIZED, "unauthorized")
+                    return
+                if not valid_register(new_id, device_key):
+                    await reject(websocket, CLOSE_BAD_REQUEST, "bad register")
+                    return
+                if user_id is not None and user_id != new_id:
+                    continue  # 1 kết nối chỉ mang 1 user_id
+                if not claim_user_id(new_id, device_key):
+                    await reject(websocket, CLOSE_USER_ID_TAKEN, "user_id taken")
+                    return
+                user_id = new_id
                 connected_clients[user_id] = websocket  # kết nối mới (vd: sau khi đổi 4G) thay thế kết nối cũ
                 stats["registrations"] += 1
                 print(f"[{user_id}] đã kết nối mạng.")
@@ -141,7 +216,7 @@ async def signaling_handler(websocket):
             elif msg_type == "ping":
                 await safe_send(websocket, json.dumps({"type": "pong", "ts": data.get("ts")}))
 
-            elif msg_type == "stats":
+            elif msg_type == "stats" and user_id is not None:
                 await safe_send(websocket, json.dumps({
                     "type": "stats",
                     "online": len(connected_clients),
@@ -155,7 +230,15 @@ async def signaling_handler(websocket):
         # trước khi kết nối cũ timeout; xoá nhầm sẽ làm mất định tuyến của kết nối mới.
         if user_id is not None and connected_clients.get(user_id) is websocket:
             del connected_clients[user_id]
+            release_user_id(user_id)
             await broadcast_peers()
+
+
+async def health_check(path, request_headers):
+    """Máy chủ cloud (Render, Railway...) gọi GET /healthz để biết dịch vụ còn sống."""
+    if path == "/healthz":
+        return http.HTTPStatus.OK, [("Content-Type", "text/plain")], b"OK\n"
+    return None
 
 
 async def start_server(host="0.0.0.0", port=None):
@@ -168,10 +251,14 @@ async def start_server(host="0.0.0.0", port=None):
         ping_interval=15,
         ping_timeout=20,
         max_size=2 ** 20,
+        process_request=health_check,
     )
 
 
 async def main():
+    if not os.environ.get("SIGNALING_TOKEN", "").strip():
+        print("[CẢNH BÁO] Chưa đặt SIGNALING_TOKEN: ai biết địa chỉ máy chủ cũng vào được. "
+              "Chỉ dùng như vậy khi thử trong mạng nhà.")
     server = await start_server()
     port = server.sockets[0].getsockname()[1]
     print(f"Signaling Server đang chạy trên cổng {port}...")

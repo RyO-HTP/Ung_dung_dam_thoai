@@ -1,0 +1,20 @@
+# TV1: đưa Signaling Server (signaling_server.py) lên Render để gọi được qua 4G / khác mạng.
+# Render > New > Blueprint > chọn repo này. Điền TURN_USERNAME / TURN_CREDENTIAL trên trang Render,
+# KHÔNG ghi vào file này. SIGNALING_TOKEN được Render tự sinh, xem ở tab Environment rồi gửi riêng cho nhóm.
+services:
+  - type: web
+    name: damthoai-signaling
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python signaling_server.py
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: SIGNALING_TOKEN
+        generateValue: true
+      - key: TURN_USERNAME
+        sync: false
+      - key: TURN_CREDENTIAL
+        sync: false
