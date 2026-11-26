@@ -45,7 +45,13 @@ data class RegisterMessage(
     @SerializedName("type")
     val type: String = SignalingType.REGISTER,
     @SerializedName("user_id")
-    val userId: String
+    val userId: String,
+    /** Mã ngẫu nhiên riêng của máy này: giữ user_id, chống máy khác đăng ký đè (server bắt buộc) */
+    @SerializedName("device_key")
+    val deviceKey: String? = null,
+    /** Mã truy cập máy chủ (SIGNALING_TOKEN), null nếu máy chủ không yêu cầu */
+    @SerializedName("token")
+    val token: String? = null
 )
 
 /**

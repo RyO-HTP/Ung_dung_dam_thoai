@@ -78,6 +78,7 @@ fun NetworkTestScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val stats by manager.callStats.collectAsState()
 
     var serverUrl by rememberSaveable { mutableStateOf("ws://192.168.1.10:8765") }
+    var accessToken by rememberSaveable { mutableStateOf("") }
     var userId by rememberSaveable {
         mutableStateOf("${Build.MODEL.filter { it.isLetterOrDigit() }.take(10)}_${Random.nextInt(100, 999)}")
     }
@@ -135,17 +136,24 @@ fun NetworkTestScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                 OutlinedTextField(
                     value = serverUrl,
                     onValueChange = { serverUrl = it.trim() },
-                    label = { Text("Địa chỉ máy chủ (ws://IP:8765)") },
+                    label = { Text("Địa chỉ máy chủ (ws://IP:8765 hoặc wss://...)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = accessToken,
+                    onValueChange = { accessToken = it.trim() },
+                    label = { Text("Mã truy cập (để trống nếu máy chủ không đặt)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
-                        onClick = { manager.connect(serverUrl, userId) },
+                        onClick = { manager.connect(serverUrl, userId, accessToken) },
                         enabled = userId.isNotBlank() && serverUrl.startsWith("ws")
                     ) { Text("Kết nối") }
                     OutlinedButton(
-                        onClick = { manager.autoDiscoverAndConnect(userId) },
+                        onClick = { manager.autoDiscoverAndConnect(userId, accessToken) },
                         enabled = userId.isNotBlank()
                     ) { Text("Tự tìm (mDNS)") }
                 }
@@ -273,7 +281,7 @@ private fun describe(state: SignalingConnectionState): String = when (state) {
     SignalingConnectionState.Connecting -> "Đang kết nối..."
     SignalingConnectionState.Connected -> "Đã nối, đang đăng ký"
     is SignalingConnectionState.Registered -> "Đã đăng ký: ${state.userId}"
-    is SignalingConnectionState.Error -> "Lỗi: ${state.message} (đang thử lại)"
+    is SignalingConnectionState.Error -> "Lỗi: ${state.message}"
 }
 
 private fun describe(state: CallState): String = when (state) {

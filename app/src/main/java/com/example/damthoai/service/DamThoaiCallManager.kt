@@ -1,6 +1,7 @@
 package com.example.damthoai.service
 
 import android.content.Context
+import java.util.UUID
 import android.util.Log
 import com.example.damthoai.audio.offline.OfflineVoiceQueueManager
 import com.example.damthoai.audio.offline.QueuedVoiceMessage
@@ -99,7 +100,7 @@ class DamThoaiCallManager private constructor(private val context: Context) {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-    val signalingClient = SignalingClient()
+    val signalingClient = SignalingClient(deviceKey = loadOrCreateDeviceKey(context))
     val lanSignaling = LocalLanSignaling(context)
     val audioProcessing = AudioProcessingManager()
     val webRTCClient = WebRTCClient(context, audioProcessing)
@@ -261,13 +262,13 @@ class DamThoaiCallManager private constructor(private val context: Context) {
     /**
      * Bắt đầu tự động dò tìm máy chủ qua mDNS (mdns_broadcaster.py) và tự động kết nối
      */
-    fun autoDiscoverAndConnect(userId: String) {
+    fun autoDiscoverAndConnect(userId: String, token: String? = null) {
         localUserId = userId
         discoveryJob?.cancel()
         discoveryJob = scope.launch {
             mdnsDiscovery.serverFound.collect { server ->
                 Log.d(TAG, "Tự động phát hiện server: ${server.wsUrl}, tiến hành kết nối...")
-                signalingClient.connect(server.wsUrl, userId)
+                signalingClient.connect(server.wsUrl, userId, token)
                 mdnsDiscovery.stopDiscovery()
             }
         }
@@ -277,9 +278,9 @@ class DamThoaiCallManager private constructor(private val context: Context) {
     /**
      * Kết nối thủ công tới máy chủ WebSocket
      */
-    fun connect(serverUrl: String, userId: String) {
+    fun connect(serverUrl: String, userId: String, token: String? = null) {
         localUserId = userId
-        signalingClient.connect(serverUrl, userId)
+        signalingClient.connect(serverUrl, userId, token)
     }
 
     /**
@@ -389,6 +390,7 @@ class DamThoaiCallManager private constructor(private val context: Context) {
                     is SignalingConnectionState.Disconnected -> {
                         val uid = localUserId ?: signalingClient.userId ?: return@collect
                         if (signalingClient.serverUrl == null) return@collect // chưa từng kết nối
+                        if (signalingClient.isRejected) return@collect // bị từ chối (sai mã/trùng tên), không phải mất mạng
                         if (_connectionMode.value == ConnectionMode.LAN_P2P || lanFallbackJob?.isActive == true) {
                             return@collect
                         }
@@ -805,6 +807,13 @@ class DamThoaiCallManager private constructor(private val context: Context) {
                 }
             }
         }
+    }
+
+    /** Mã riêng của máy, lưu bền để mở lại app vẫn giữ được user_id trên máy chủ */
+    private fun loadOrCreateDeviceKey(context: Context): String {
+        val prefs = context.getSharedPreferences("tv1_signaling", Context.MODE_PRIVATE)
+        return prefs.getString("device_key", null)
+            ?: UUID.randomUUID().toString().also { prefs.edit().putString("device_key", it).apply() }
     }
 
     private fun describeIceServers(servers: List<PeerConnection.IceServer>, fromServer: Boolean): String {

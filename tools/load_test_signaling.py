@@ -20,6 +20,7 @@ Cách chạy:
 import argparse
 import asyncio
 import json
+import os
 import statistics
 import time
 
@@ -45,6 +46,13 @@ class Results:
         self.errors = 0
 
 
+def register_msg(user_id, args):
+    msg = {"type": "register", "user_id": user_id, "device_key": f"loadtest-{user_id}-key"}
+    if args.token:
+        msg["token"] = args.token
+    return msg
+
+
 async def client(idx, peer_idx, args, res, start_barrier, done_event):
     user_id = f"load_{args.run_id}_{idx}"
     peer_id = f"load_{args.run_id}_{peer_idx}"
@@ -65,7 +73,7 @@ async def client(idx, peer_idx, args, res, start_barrier, done_event):
 async def run_session(ws, user_id, peer_id, t0, args, res, start_barrier, done_event):
     if True:
         try:
-            await ws.send(json.dumps({"type": "register", "user_id": user_id}))
+            await ws.send(json.dumps(register_msg(user_id, args)))
             while True:
                 msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
                 if msg.get("type") == "webrtc_config":
@@ -129,6 +137,8 @@ async def main():
     ap.add_argument("--interval", type=float, default=0.05, help="giãn cách giữa 2 gói (giây)")
     ap.add_argument("--ramp", type=float, default=2.0, help="thời gian tăng dần số kết nối (giây)")
     ap.add_argument("--drop", type=float, default=0.0, help="tỉ lệ gói client cố tình bỏ (0-1)")
+    ap.add_argument("--token", default=os.environ.get("SIGNALING_TOKEN", ""),
+                    help="mã truy cập nếu máy chủ đặt SIGNALING_TOKEN (mặc định lấy từ biến môi trường)")
     args = ap.parse_args()
     args.clients += args.clients % 2
     args.run_id = int(time.time())
@@ -159,7 +169,7 @@ async def main():
     server_stats = {}
     try:
         async with websockets.connect(args.url) as ws:
-            await ws.send(json.dumps({"type": "register", "user_id": f"load_{args.run_id}_stats"}))
+            await ws.send(json.dumps(register_msg(f"load_{args.run_id}_stats", args)))
             await ws.send(json.dumps({"type": "stats"}))
             # Bỏ qua webrtc_config / peers, chỉ lấy gói stats
             while server_stats.get("type") != "stats":

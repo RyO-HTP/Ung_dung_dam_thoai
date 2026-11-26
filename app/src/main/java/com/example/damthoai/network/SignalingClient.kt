@@ -23,6 +23,7 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.webrtc.PeerConnection
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
@@ -77,7 +78,9 @@ sealed class SignalingEvent {
  */
 class SignalingClient(
     private val clientScope: CoroutineScope = CoroutineScope(Dispatchers.IO + Job()),
-    private val gson: Gson = Gson()
+    private val gson: Gson = Gson(),
+    /** Mã riêng của máy, nên lưu bền (SharedPreferences) để mở lại app vẫn giữ được user_id */
+    private val deviceKey: String = UUID.randomUUID().toString()
 ) : SignalingChannel {
     companion object {
         private const val TAG = "SignalingClient"
@@ -86,6 +89,18 @@ class SignalingClient(
         private const val RECONNECT_MAX_DELAY_MS = 10_000L
         private const val MAX_PENDING_MESSAGES = 200
         private const val PENDING_MESSAGE_TTL_MS = 30_000L
+
+        /** Mã đóng kết nối máy chủ dùng khi từ chối (khớp signaling_server.py) */
+        const val CLOSE_BAD_REQUEST = 4000
+        const val CLOSE_UNAUTHORIZED = 4001
+        const val CLOSE_USER_ID_TAKEN = 4009
+
+        fun describeRejection(code: Int): String = when (code) {
+            CLOSE_UNAUTHORIZED -> "Sai hoặc thiếu mã truy cập máy chủ"
+            CLOSE_USER_ID_TAKEN -> "Tên này đang được máy khác dùng, hãy đổi tên"
+            CLOSE_BAD_REQUEST -> "Tên không hợp lệ (chỉ dùng chữ, số, . _ -, tối đa 64 ký tự)"
+            else -> "Máy chủ từ chối kết nối (mã $code)"
+        }
     }
 
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
@@ -102,6 +117,12 @@ class SignalingClient(
     val serverUrl: String? get() = currentServerUrl
     private var currentUserId: String? = null
     val userId: String? get() = currentUserId
+    private var currentToken: String? = null
+
+    /** true khi server đã từ chối (sai mã truy cập / trùng tên): không tự kết nối lại */
+    @Volatile
+    var isRejected: Boolean = false
+        private set
     private var shouldReconnect: Boolean = true
     private var reconnectJob: Job? = null
     private var reconnectAttempt: Int = 0
@@ -122,10 +143,12 @@ class SignalingClient(
      * @param serverUrl URL dạng ws://[IP]:8765
      * @param userId Định danh người dùng (vd: "Tong_Dao_Dien")
      */
-    fun connect(serverUrl: String, userId: String) {
+    fun connect(serverUrl: String, userId: String, token: String? = null) {
         synchronized(lock) {
             currentServerUrl = serverUrl
             currentUserId = userId
+            currentToken = token?.trim()?.takeIf { it.isNotEmpty() }
+            isRejected = false
             shouldReconnect = true
             reconnectJob?.cancel()
             reconnectAttempt = 0
@@ -176,12 +199,14 @@ class SignalingClient(
                     reconnectAttempt = 0
                     _connectionState.value = SignalingConnectionState.Connected
 
-                    // ĐĂNG KÝ (HANDSHAKE) THEO YÊU CẦU TUẦN 1
+                    // ĐĂNG KÝ (HANDSHAKE) THEO YÊU CẦU TUẦN 1.
+                    // Chỉ coi là "đã đăng ký" khi server trả webrtc_config (server có thể từ chối).
                     currentUserId?.let { uid ->
-                        val registerJson = gson.toJson(RegisterMessage(userId = uid))
-                        Log.d(TAG, "Gửi gói tin đăng ký Handshake: $registerJson")
+                        val registerJson = gson.toJson(
+                            RegisterMessage(userId = uid, deviceKey = deviceKey, token = currentToken)
+                        )
+                        Log.d(TAG, "Gửi gói tin đăng ký Handshake cho $uid")
                         webSocket.send(registerJson)
-                        _connectionState.value = SignalingConnectionState.Registered(uid)
                     }
                     flushPendingLocked(webSocket)
                 }
@@ -189,12 +214,28 @@ class SignalingClient(
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 if (webSocket !== this@SignalingClient.webSocket) return
-                Log.d(TAG, "Nhận tin nhắn: $text")
-                SignalingMessageParser.parse(gson, text)?.let { _events.tryEmit(it) }
+                Log.d(TAG, "Nhận tin nhắn: ${text.take(200)}")
+                val event = SignalingMessageParser.parse(gson, text) ?: return
+                if (event is SignalingEvent.ConfigReceived) {
+                    currentUserId?.let { _connectionState.value = SignalingConnectionState.Registered(it) }
+                }
+                _events.tryEmit(event)
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
                 Log.d(TAG, "WebSocket đang đóng: code=$code, reason=$reason")
+                if (code in 4000..4999) {
+                    // Server từ chối (sai mã, trùng tên...): thử lại cũng vô ích -> dừng và báo lỗi
+                    synchronized(lock) {
+                        if (webSocket === this@SignalingClient.webSocket) {
+                            shouldReconnect = false
+                            isRejected = true
+                            reconnectJob?.cancel()
+                            isOpen = false
+                            _connectionState.value = SignalingConnectionState.Error(describeRejection(code))
+                        }
+                    }
+                }
                 webSocket.close(NORMAL_CLOSURE_STATUS, null)
             }
 
@@ -203,6 +244,7 @@ class SignalingClient(
                     if (webSocket !== this@SignalingClient.webSocket) return
                     Log.d(TAG, "WebSocket đã đóng.")
                     isOpen = false
+                    if (!shouldReconnect) return // giữ nguyên thông báo lỗi bị từ chối
                     _connectionState.value = SignalingConnectionState.Disconnected
                     scheduleReconnectLocked()
                 }

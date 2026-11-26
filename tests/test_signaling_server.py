@@ -23,7 +23,9 @@ class SignalingServerTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         srv.connected_clients.clear()
         srv.offline_queue.clear()
-        srv.stats.update(messages_forwarded=0, messages_queued=0, registrations=0)
+        srv.claims.clear()
+        srv.stats.update(messages_forwarded=0, messages_queued=0, registrations=0, rejected=0)
+        self._old_token = os.environ.pop("SIGNALING_TOKEN", None)
         srv.PEERS_BROADCAST_DELAY_SECONDS = 0.02
         srv._peers_broadcast_task = None
         self.server = await srv.start_server("127.0.0.1", 0)
@@ -35,15 +37,28 @@ class SignalingServerTest(unittest.IsolatedAsyncioTestCase):
             await ws.close()
         self.server.close()
         await self.server.wait_closed()
+        os.environ.pop("SIGNALING_TOKEN", None)
+        if self._old_token is not None:
+            os.environ["SIGNALING_TOKEN"] = self._old_token
 
     # ------------------------------------------------------------ tiện ích
 
-    async def connect(self, user_id=None):
+    async def connect(self, user_id=None, device_key=None, token=None):
         ws = await websockets.connect(self.url)
         self.sockets.append(ws)
         if user_id is not None:
-            await ws.send(json.dumps({"type": "register", "user_id": user_id}))
+            msg = {"type": "register", "user_id": user_id,
+                   "device_key": device_key or f"may-cua-{user_id}-0123456789"}
+            if token is not None:
+                msg["token"] = token
+            await ws.send(json.dumps(msg))
         return ws
+
+    async def expect_closed(self, ws, code):
+        with self.assertRaises(websockets.exceptions.ConnectionClosed) as ctx:
+            while True:
+                await asyncio.wait_for(ws.recv(), timeout=2)
+        self.assertEqual(ctx.exception.rcvd.code, code)
 
     async def recv_type(self, ws, msg_type, timeout=2.0):
         """Đọc tới khi gặp gói đúng loại (bỏ qua các gói khác, vd: peers)."""
@@ -169,6 +184,62 @@ class SignalingServerTest(unittest.IsolatedAsyncioTestCase):
         st = await self.recv_type(a, "stats")
         self.assertEqual(st["online"], 1)
         self.assertEqual(st["registrations"], 1)
+
+    # ------------------------------------------------------------ Bảo mật
+
+    async def test_token_required_when_configured(self):
+        os.environ["SIGNALING_TOKEN"] = "ma-bi-mat-cua-nhom"
+        stranger = await self.connect("KeLa", token="doan-bua")
+        await self.expect_closed(stranger, srv.CLOSE_UNAUTHORIZED)
+        no_token = await self.connect("KeLa2")
+        await self.expect_closed(no_token, srv.CLOSE_UNAUTHORIZED)
+        member = await self.connect("A", token="ma-bi-mat-cua-nhom")
+        await self.recv_type(member, "webrtc_config")
+
+    async def test_cannot_steal_online_user_id(self):
+        victim = await self.connect("A", device_key="may-that-cua-A-123456")
+        await self.recv_type(victim, "webrtc_config")
+        thief = await self.connect("A", device_key="may-ke-gian-999999999")
+        await self.expect_closed(thief, srv.CLOSE_USER_ID_TAKEN)
+        b = await self.connect("B")
+        await self.recv_type(b, "webrtc_config")
+        await b.send(json.dumps({"type": "offer", "target_id": "A", "sdp": "x"}))
+        self.assertEqual((await self.recv_type(victim, "offer"))["sdp"], "x")
+
+    async def test_user_id_reserved_after_drop_then_expires(self):
+        a = await self.connect("A", device_key="may-that-cua-A-123456")
+        await self.recv_type(a, "webrtc_config")
+        await a.close()
+        await asyncio.sleep(0.1)
+        thief = await self.connect("A", device_key="may-ke-gian-999999999")
+        await self.expect_closed(thief, srv.CLOSE_USER_ID_TAKEN)
+        # Sau CLAIM_TTL_SECONDS tên được nhả ra cho máy khác dùng
+        srv.claims["A"]["released_at"] -= srv.CLAIM_TTL_SECONDS + 1
+        newcomer = await self.connect("A", device_key="may-moi-cua-A-77777777")
+        await self.recv_type(newcomer, "webrtc_config")
+
+    async def test_bad_register_rejected(self):
+        no_key = await websockets.connect(self.url)
+        self.sockets.append(no_key)
+        await no_key.send(json.dumps({"type": "register", "user_id": "A"}))
+        await self.expect_closed(no_key, srv.CLOSE_BAD_REQUEST)
+        weird = await self.connect("A B<script>")
+        await self.expect_closed(weird, srv.CLOSE_BAD_REQUEST)
+
+    async def test_stats_requires_registration(self):
+        stranger = await self.connect()
+        await stranger.send(json.dumps({"type": "stats"}))
+        with self.assertRaises(AssertionError):
+            await self.recv_type(stranger, "stats", timeout=0.3)
+
+    async def test_health_check(self):
+        port = self.server.sockets[0].getsockname()[1]
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"GET /healthz HTTP/1.1\r\nHost: x\r\n\r\n")
+        await writer.drain()
+        status = await asyncio.wait_for(reader.readline(), timeout=2)
+        writer.close()
+        self.assertIn(b"200", status)
 
     async def test_bad_json_is_ignored(self):
         a = await self.connect("A")

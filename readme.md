@@ -57,6 +57,19 @@ python signaling_server.py
 - Thử độ chịu tải: `python tools/load_test_signaling.py --clients 200 --messages 30`
 - Kiểm tra tự động giao thức máy chủ: `python -m unittest discover -s tests -v`
 
+### Bảo mật máy chủ
+
+- **Mã truy cập:** đặt `SIGNALING_TOKEN` trong `.env`. App phải nhập đúng mã mới kết nối được và mới nhận được tài khoản TURN. Để trống thì ai biết địa chỉ cũng vào được, chỉ nên dùng khi thử trong mạng nhà.
+- **Giữ tên:** mỗi máy tự sinh một mã riêng (`device_key`). Tên (user_id) đang được máy khác dùng, hoặc vừa rớt mạng chưa quá 10 phút, thì máy lạ không đăng ký đè được.
+- Bị từ chối thì app báo lỗi và **không** tự kết nối lại: sai mã truy cập (4001), trùng tên (4009), tên không hợp lệ (4000).
+
+### Đưa máy chủ lên cloud (Render, miễn phí)
+
+1. Đăng nhập https://render.com, chọn **New → Blueprint**, chọn repo này (Render đọc `render.yaml`).
+2. Điền `TURN_USERNAME` / `TURN_CREDENTIAL` khi Render hỏi. `SIGNALING_TOKEN` được tự sinh, xem ở tab **Environment**.
+3. Địa chỉ cho app: `wss://<tên-dịch-vụ>.onrender.com`. Kiểm tra: mở `https://<tên-dịch-vụ>.onrender.com/healthz` thấy `OK`.
+4. Gói miễn phí sẽ ngủ sau 15 phút không dùng, lần kết nối đầu sau đó mất khoảng 1 phút.
+
 ### Gọi thử thật giữa 2 điện thoại
 
 1. Chạy máy chủ như trên, xem IP của máy tính (`ipconfig`).
