@@ -57,6 +57,11 @@ class MainActivity : ComponentActivity() {
         HandsFreeSettings.initialize(applicationContext)
         HandsFreeSession.initialize(this)
         AudioRouteGuard.start(applicationContext)
+        com.example.damthoai.data.remote.RemoteEventRepository.init(applicationContext)
+        val session = com.example.damthoai.data.remote.EventSession.getSession()
+        if (session != null) {
+            com.example.damthoai.data.remote.LiveCueClient.start(session.userId, "STAGE")
+        }
 
         // ĐIỂM NỐI TV2/TV4 (Tuần 4): Cài đặt bộ điều khiển tuyến âm thanh WebRTC thực tế
         val callManager = DamThoaiCallManager.getInstance(applicationContext)
@@ -193,6 +198,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        com.example.damthoai.data.remote.LiveCueClient.stop()
         com.example.damthoai.hardware.diagnostics.FieldTestLogger.stop()
         RogerBeepPlayer.release()
         AudioRouteGuard.stop()

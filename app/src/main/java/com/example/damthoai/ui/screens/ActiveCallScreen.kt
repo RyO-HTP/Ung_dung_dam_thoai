@@ -30,8 +30,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.damthoai.R
-import com.example.damthoai.data.fake.FakeCallData
-import com.example.damthoai.data.fake.FakeRemainingUiData
+import com.example.damthoai.ui.preview.PreviewSamples
+import com.example.damthoai.data.model.CallChannel
+import com.example.damthoai.data.model.CallContent
+import com.example.damthoai.data.remote.LiveCueClient
 import com.example.damthoai.data.fake.NetworkStatus
 import com.example.damthoai.network.NetworkStatusProvider
 import com.example.damthoai.data.SpeakingStateProvider
@@ -101,7 +103,7 @@ fun ActiveCallScreen(
     val observedNetworkStatus by NetworkStatusProvider.source.status.collectAsState()
     val networkStatus = networkStatusOverride ?: observedNetworkStatus
     val speakingByChannel by SpeakingStateProvider.source.speakingByChannel.collectAsState()
-    val liveCue by FakeRemainingUiData.liveCueState.collectAsState()
+    val liveCue by LiveCueClient.currentLiveCue.collectAsState()
     val duckSecondaryEnabled by HandsFreeSettings.duckSecondaryEnabled.collectAsState()
     val offlineQueueState = callManager?.offlineVoiceQueue?.state?.collectAsState()?.value
     val duckingStates = callManager?.audioDucking?.channelStates?.collectAsState()?.value ?: emptyMap()
@@ -116,7 +118,42 @@ fun ActiveCallScreen(
     } else {
         baseState
     }
-    val content = FakeCallData.contentFor(displayState)
+    val currentEvent by com.example.damthoai.data.remote.RemoteEventRepository.currentEvent.collectAsState()
+    val content = if (isInPreview) {
+        PreviewSamples.contentFor(displayState)
+    } else {
+        val eventChannels = currentEvent?.channels ?: emptyList()
+        val callChannels = eventChannels.map { ch ->
+            CallChannel(
+                iconRes = when {
+                    ch.isDefault || ch.id == "ch_01" -> R.drawable.ic_crown
+                    ch.id == "ch_02" -> R.drawable.ic_stage
+                    else -> R.drawable.ic_mic
+                },
+                name = ch.name,
+                valueLabel = "100%",
+                volume = 0.8f,
+                speaker = ch.currentSpeaker ?: "Không ai đang nói",
+                speakerColor = com.example.damthoai.ui.theme.CallStatusMint
+            )
+        }.ifEmpty { PreviewSamples.contentFor(displayState).channels }
+
+        CallContent(
+            statusTitle = when (displayState) {
+                CallUiState.CallTalk -> "Bạn đang phát"
+                CallUiState.CallTake -> "Chiếm quyền"
+                CallUiState.CallBusy -> "Kênh bận"
+                CallUiState.CallCut -> "Bị ngắt lời"
+                CallUiState.CallOffline -> "Mất kết nối"
+                else -> "Nghe kép đang bật"
+            },
+            statusDescription = currentEvent?.name ?: "Sự kiện Đàm Thoại",
+            statusIconRes = R.drawable.ic_radio,
+            statusColor = com.example.damthoai.ui.theme.CallStatusMint,
+            statusBackground = com.example.damthoai.ui.theme.CallStatusMintBg,
+            channels = callChannels
+        )
+    }
     val currentAudioRoute by AudioRouteGuard.currentRoute.collectAsState()
     val availableAudioRoutes by AudioRouteGuard.availableRoutes.collectAsState()
     val activeIncident by com.example.damthoai.hardware.audio.AudioIncidentBus.activeIncident.collectAsState()

@@ -55,7 +55,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.platform.LocalContext
 import com.example.damthoai.data.SpeakerInfo
 import com.example.damthoai.R
-import com.example.damthoai.data.fake.FakeVolumeChannel
+import com.example.damthoai.data.model.CallChannel
 import com.example.damthoai.hardware.HapticController
 import com.example.damthoai.ui.screens.CallUiState
 import com.example.damthoai.ui.screens.CallUiState.CallBusy
@@ -187,7 +187,7 @@ fun getSpeakerStatusLabel(speakerName: String?, fallbackSpeaker: String): String
 
 @Composable
 fun VolumeRow(
-    channel: FakeVolumeChannel,
+    channel: CallChannel,
     modifier: Modifier = Modifier,
     speakerInfo: SpeakerInfo? = null,
     onVolumeChange: (Float) -> Unit = {}

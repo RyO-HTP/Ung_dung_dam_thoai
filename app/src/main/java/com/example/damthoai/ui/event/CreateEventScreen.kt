@@ -53,9 +53,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
 import com.example.damthoai.data.AppStartPrefs
-import com.example.damthoai.data.fake.FakeEventRepository
-import com.example.damthoai.data.fake.FakeRemainingUiData
+import com.example.damthoai.ui.preview.PreviewSamples
 import com.example.damthoai.data.model.MemberLevel
+import com.example.damthoai.data.remote.RemoteEventRepository
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.GlassCard
@@ -102,12 +104,14 @@ fun CreateEventScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
     var eventName by rememberSaveable { mutableStateOf("Đêm nhạc Chào Tân sinh viên") }
     var adminCode by rememberSaveable { mutableStateOf("") }
     var showSuccessSheet by rememberSaveable { mutableStateOf(false) }
+    var isLoading by rememberSaveable { mutableStateOf(false) }
     val creator = remember {
-        FakeRemainingUiData.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
+        PreviewSamples.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
     }
     val isFormValid = eventName.isNotBlank()
 
@@ -189,15 +193,31 @@ fun CreateEventScreen(
 
             Spacer(Modifier.height(12.dp))
             PrimaryButton(
-                text = "Tạo sự kiện",
+                text = if (isLoading) "Đang tạo..." else "Tạo sự kiện",
                 onClick = {
-                    val code = generateSuggestedAdminCode()
-                    adminCode = code
-                    FakeEventRepository.createEvent(eventName.trim(), code)
-                    showSuccessSheet = true
+                    if (isLoading) return@PrimaryButton
+                    isLoading = true
+                    scope.launch {
+                        val code = generateSuggestedAdminCode()
+                        adminCode = code
+                        val createRes = RemoteEventRepository.createEvent(eventName.trim(), "Sự kiện điều phối bộ đàm đa kênh thời gian thực", code)
+                        if (createRes.isSuccess) {
+                            val event = createRes.getOrNull()
+                            val joinRes = RemoteEventRepository.joinByPin(context, event?.pinCode ?: code, "Đạo diễn", "Tổng đạo diễn", 1, 1)
+                            isLoading = false
+                            if (joinRes.isSuccess) {
+                                showSuccessSheet = true
+                            } else {
+                                android.widget.Toast.makeText(context, "Lỗi tham gia sự kiện: ${joinRes.exceptionOrNull()?.message}", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        } else {
+                            isLoading = false
+                            android.widget.Toast.makeText(context, "Lỗi tạo sự kiện: ${createRes.exceptionOrNull()?.message}", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = isFormValid,
+                enabled = isFormValid && !isLoading,
                 height = 54.dp
             )
             Spacer(Modifier.height(8.dp))

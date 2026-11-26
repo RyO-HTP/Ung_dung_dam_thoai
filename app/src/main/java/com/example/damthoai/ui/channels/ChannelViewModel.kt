@@ -10,8 +10,7 @@ package com.example.damthoai.ui.channels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.damthoai.data.model.Channel
-import com.example.damthoai.data.fake.FakeEventRepository
-import com.example.damthoai.data.fake.FakeRepositories
+import com.example.damthoai.ui.preview.PreviewSamples
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,10 +31,10 @@ class ChannelViewModel : ViewModel() {
 
     private fun observeEventChannels() {
         viewModelScope.launch {
-            FakeEventRepository.currentEvent.collect { event ->
+            com.example.damthoai.data.remote.RemoteEventRepository.currentEvent.collect { event ->
                 val currentState = _uiState.value
                 val previousChannels = currentState.channels.associateBy { it.channel.id }
-                val channelStates = (event?.channels ?: FakeRepositories.sampleChannels).map { channel ->
+                val channelStates = (event?.channels ?: PreviewSamples.sampleChannels).map { channel ->
                     previousChannels[channel.id]?.copy(channel = channel)
                         ?: initialChannelState(channel)
                 }
@@ -48,7 +47,7 @@ class ChannelViewModel : ViewModel() {
 
                 _uiState.update {
                     it.copy(
-                        eventName = event?.name ?: FakeRepositories.sampleEvent.name,
+                        eventName = event?.name ?: PreviewSamples.sampleEvent.name,
                         channels = channelStates,
                         activeMicChannelId = activeMicChannelId,
                         selectedMenuChannel = selectedMenuChannel
@@ -103,6 +102,11 @@ class ChannelViewModel : ViewModel() {
 
     fun selectMicChannel(channelId: String) {
         _uiState.update { it.copy(activeMicChannelId = channelId) }
+        val chNum = channelId.takeLast(1).toIntOrNull() ?: 1
+        val listening = _uiState.value.channels.mapNotNull { it.channel.id.takeLast(1).toIntOrNull() }
+        viewModelScope.launch {
+            com.example.damthoai.data.remote.RemoteEventRepository.switchChannel(chNum, listening)
+        }
     }
 
     fun openChannelMenu(item: ChannelItemUiState) {
@@ -126,6 +130,10 @@ class ChannelViewModel : ViewModel() {
                 activeMicChannelId = activeMicChannelId,
                 selectedMenuChannel = null
             )
+        }
+        val chNum = channelId.takeLast(1).toIntOrNull() ?: 1
+        viewModelScope.launch {
+            com.example.damthoai.data.remote.RemoteEventRepository.leaveChannel(chNum)
         }
     }
 

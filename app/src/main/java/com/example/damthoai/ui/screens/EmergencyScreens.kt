@@ -74,8 +74,13 @@ import com.example.damthoai.data.model.Member
 import com.example.damthoai.data.model.MemberLevel
 import com.example.damthoai.hardware.PttController
 import com.example.damthoai.hardware.PttSource
+import com.example.damthoai.data.remote.ApiClient
+import com.example.damthoai.data.remote.EventSession
+import com.example.damthoai.service.DamThoaiCallManager
 import com.example.damthoai.hardware.emergency.EmergencyAlert
 import com.example.damthoai.hardware.emergency.EmergencyAlertManager
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import com.example.damthoai.ui.components.AvatarCircle
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.BgVariant
@@ -355,6 +360,8 @@ private fun HoldToCallButton(
     onShortHold: () -> Unit,
     previewProgress: Float? = null
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val enabled = selectedIds.isNotEmpty()
     var isHolding by remember { mutableStateOf(false) }
     var progress by remember { mutableFloatStateOf(0f) }
@@ -418,7 +425,20 @@ private fun HoldToCallButton(
                                                 haptic.performHapticFeedback(
                                                     HapticFeedbackType.LongPress
                                                 )
-                                                currentOnCall(currentSelectedIds)
+                                                val session = EventSession.getSession()
+                                                if (session?.level == 1) {
+                                                    DamThoaiCallManager.getInstance(context).triggerEmergency(
+                                                        fromName = session.displayName,
+                                                        fromRole = session.roleTitle,
+                                                        isDirectCall = true
+                                                    )
+                                                    scope.launch {
+                                                        ApiClient.post<Any>("/api/v1/floor/emergency-override", mapOf("userId" to (session.userId), "displayName" to (session.displayName)))
+                                                    }
+                                                    currentOnCall(currentSelectedIds)
+                                                } else {
+                                                    Toast.makeText(context, "Chỉ Cấp 1 (Tổng đạo diễn) mới được phát khẩn cấp.", Toast.LENGTH_SHORT).show()
+                                                }
                                             }
                                             releasedBeforeTimeout == true ->
                                                 currentOnShortHold()

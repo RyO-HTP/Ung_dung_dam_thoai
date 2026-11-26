@@ -1,5 +1,7 @@
 package com.example.damthoai.data
 
+import com.example.damthoai.data.remote.ApiClient
+import com.example.damthoai.data.remote.EventSession
 import com.example.damthoai.hardware.PttController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,7 +32,7 @@ object SpeakingStateProvider {
  * ĐIỂM NỐI TV5/TV2: Hàm nhận sự kiện phát biểu từ xa (Floor Control WebSocket), cập nhật thông tin người đang phát biểu theo channelId.
  */
 object SpeakingStateRepository : SpeakingStateSource {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _speakingByChannel = MutableStateFlow<Map<String, SpeakerInfo>>(emptyMap())
     override val speakingByChannel: StateFlow<Map<String, SpeakerInfo>> = _speakingByChannel.asStateFlow()
@@ -42,16 +44,37 @@ object SpeakingStateRepository : SpeakingStateSource {
     init {
         scope.launch {
             PttController.isPttActive.collect { isLocalActive ->
+                val session = EventSession.getSession()
+                val primaryCh = session?.primaryChannelId ?: "ch_01"
+                val chIdNum = primaryCh.takeLast(1).toIntOrNull() ?: 1
                 val current = _speakingByChannel.value.toMutableMap()
-                val localChannelId = "ch_03" // Default active local mic channel
+
                 if (isLocalActive) {
-                    current[localChannelId] = SpeakerInfo(name = "Bạn", levelLabel = "Cấp 1", isLocal = true)
+                    current[primaryCh] = SpeakerInfo(name = session?.displayName ?: "Bạn", levelLabel = "Cấp ${session?.level ?: 1}", isLocal = true)
+                    _speakingByChannel.value = current
+
+                    val reqBody = mapOf(
+                        "channelId" to chIdNum,
+                        "channelCode" to primaryCh,
+                        "userId" to (session?.userId ?: "user_1"),
+                        "displayName" to (session?.displayName ?: "Thành viên"),
+                        "roleTitle" to (session?.roleTitle ?: "Cộng tác viên"),
+                        "userLevel" to (session?.level ?: 3),
+                        "rolePriority" to (session?.priority ?: 1)
+                    )
+                    ApiClient.post<Any>("/api/v1/floor/request", reqBody)
                 } else {
-                    if (current[localChannelId]?.isLocal == true) {
-                        current.remove(localChannelId)
+                    if (current[primaryCh]?.isLocal == true) {
+                        current.remove(primaryCh)
+                        _speakingByChannel.value = current
                     }
+
+                    val reqBody = mapOf(
+                        "channelId" to chIdNum,
+                        "userId" to (session?.userId ?: "user_1")
+                    )
+                    ApiClient.post<Any>("/api/v1/floor/release", reqBody)
                 }
-                _speakingByChannel.value = current
             }
         }
     }

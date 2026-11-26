@@ -27,9 +27,12 @@ import com.example.damthoai.data.AppStartPrefs
 import com.example.damthoai.hardware.PttKeyDemoScreen
 import com.example.damthoai.hardware.emergency.EmergencyAlertManager
 import com.example.damthoai.hardware.emergency.EmergencyAlert
-import com.example.damthoai.data.fake.FakeRemainingUiData
-import com.example.damthoai.data.fake.FakeEventRepository
 import com.example.damthoai.data.model.MemberLevel
+import com.example.damthoai.data.remote.RemoteEventRepository
+import com.example.damthoai.data.remote.LiveCueClient
+import com.example.damthoai.data.remote.EventSession
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import com.example.damthoai.permission.PermissionScreen
 import com.example.damthoai.ui.channels.ChannelListScreen
 import com.example.damthoai.permission.MicDeniedScreen
@@ -224,10 +227,10 @@ fun AppNavHost(
 
         // === NHÓM E: KHẨN CẤP ===
         composable(AppRoute.EmergencyCallSelect.route) {
-            val currentEvent = FakeEventRepository.currentEvent.value
-            val currentMember = currentEvent?.members?.firstOrNull { it.id == currentEvent.ownerId }
-                ?: FakeRemainingUiData.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
-            if (currentMember.level != MemberLevel.LEVEL_1) {
+            val currentEvent = RemoteEventRepository.currentEvent.value
+            val currentMember = RemoteEventRepository.currentMember.value
+            val isDirector = (currentMember?.level == MemberLevel.LEVEL_1) || (EventSession.getSession()?.level == 1)
+            if (!isDirector) {
                 LaunchedEffect(Unit) {
                     android.widget.Toast.makeText(
                         context,
@@ -338,10 +341,9 @@ fun AppNavHost(
             arguments = listOf(androidx.navigation.navArgument("fromCreate") { defaultValue = false })
         ) { backStackEntry ->
             val fromCreate = backStackEntry.arguments?.getBoolean("fromCreate") ?: false
-            val currentEvent = FakeEventRepository.currentEvent.value
-            val currentMember = currentEvent?.members?.firstOrNull { it.id == currentEvent.ownerId }
-                ?: FakeRemainingUiData.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
-            if (currentMember.level != MemberLevel.LEVEL_1) {
+            val currentMember = RemoteEventRepository.currentMember.value
+            val isDirector = (currentMember?.level == MemberLevel.LEVEL_1) || (EventSession.getSession()?.level == 1)
+            if (!isDirector) {
                 LaunchedEffect(Unit) {
                     android.widget.Toast.makeText(
                         context,
@@ -362,7 +364,7 @@ fun AppNavHost(
                         }
                     },
                     onQrCode = {
-                        selectedQrChannelId = FakeEventRepository.currentEvent.value
+                        selectedQrChannelId = RemoteEventRepository.currentEvent.value
                             ?.channels
                             ?.firstOrNull { it.isDefault }
                             ?.id
@@ -397,8 +399,9 @@ fun AppNavHost(
             )
         }
         composable(AppRoute.MyQrCode.route) {
-            val event = FakeEventRepository.currentEvent.value ?: FakeRemainingUiData.event
-            val channel = FakeEventRepository.findChannel(selectedQrChannelId)
+            val event = RemoteEventRepository.currentEvent.value
+                ?: com.example.damthoai.ui.preview.PreviewSamples.sampleEvent
+            val channel = event.channels.firstOrNull { it.id == selectedQrChannelId }
                 ?: event.channels.firstOrNull { it.isDefault }
             MyQrCodeScreen(
                 onBack = { navController.popBackStack() },
@@ -424,10 +427,10 @@ fun AppNavHost(
             EventMembersScreen(onBack = { navController.popBackStack() })
         }
         composable(AppRoute.LiveCueDraft.route) {
-            val currentEvent = FakeEventRepository.currentEvent.value
-            val currentMember = currentEvent?.members?.firstOrNull { it.id == currentEvent.ownerId }
-                ?: FakeRemainingUiData.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
-            if (currentMember.level != MemberLevel.LEVEL_1) {
+            val scope = rememberCoroutineScope()
+            val currentMember = RemoteEventRepository.currentMember.value
+            val isDirector = (currentMember?.level == MemberLevel.LEVEL_1) || (EventSession.getSession()?.level == 1)
+            if (!isDirector) {
                 LaunchedEffect(Unit) {
                     android.widget.Toast.makeText(
                         context,
@@ -440,8 +443,10 @@ fun AppNavHost(
                 LiveCueDraftScreen(
                     onBack = { navController.popBackStack() },
                     onSendCue = { cue ->
-                        FakeRemainingUiData.sendLiveCue(cue)
-                        navController.popBackStack()
+                        scope.launch {
+                            LiveCueClient.fireCue("CUE-HOT", cue.title, cue.message, currentMember?.name ?: "Tổng đạo diễn")
+                            navController.popBackStack()
+                        }
                     }
                 )
             }

@@ -39,7 +39,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
-import com.example.damthoai.data.fake.FakeEventRepository
+import com.example.damthoai.data.remote.RemoteEventRepository
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.outerGlow
@@ -61,6 +63,7 @@ fun RestoreEventScreen(
     modifier: Modifier = Modifier
 ) {
     val clipboardManager = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
     var adminCode by rememberSaveable { mutableStateOf("") }
     var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
 
@@ -212,11 +215,14 @@ fun RestoreEventScreen(
             PrimaryButton(
                 text = "Khôi phục",
                 onClick = {
-                    if (FakeEventRepository.restoreEvent(adminCode) == null) {
-                        errorMessage = "Mã quản trị không đúng."
-                    } else {
-                        errorMessage = null
-                        onRestore()
+                    scope.launch {
+                        val res = RemoteEventRepository.restoreEvent(adminCode.trim().uppercase(), "Tổng đạo diễn (Khôi phục)")
+                        if (res.isSuccess) {
+                            errorMessage = null
+                            onRestore()
+                        } else {
+                            errorMessage = "Mã quản trị không đúng hoặc không tồn tại."
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),

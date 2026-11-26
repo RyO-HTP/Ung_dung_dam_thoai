@@ -56,9 +56,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.damthoai.R
 import com.example.damthoai.network.NetworkStatusProvider
 import com.example.damthoai.data.SpeakingStateProvider
-import com.example.damthoai.data.fake.FakeRemainingUiData
-import com.example.damthoai.data.fake.FakeRepositories
-import com.example.damthoai.data.fake.NetworkStatus
+import com.example.damthoai.data.remote.LiveCueClient
+import com.example.damthoai.ui.preview.PreviewSamples
+import com.example.damthoai.network.NetworkStatus
 import com.example.damthoai.ui.components.DamThoaiBackground
 import com.example.damthoai.ui.components.GlassCard
 import com.example.damthoai.ui.components.LiveCueCard
@@ -100,7 +100,7 @@ fun ChannelListScreen(
     val networkStatus by NetworkStatusProvider.source.status.collectAsState()
     val speakingByChannel by SpeakingStateProvider.source.speakingByChannel.collectAsState()
     val speakingChannelIds = speakingByChannel.keys
-    val liveCue by FakeRemainingUiData.liveCueState.collectAsState()
+    val liveCue by LiveCueClient.currentLiveCue.collectAsState()
     val (networkStatusLabel, networkStatusColor) = when (val status = networkStatus) {
         is NetworkStatus.Good -> "Internet · ${status.ms} ms" to AccentMint
         is NetworkStatus.Weak -> "Internet · ${status.ms} ms" to AccentAmber
@@ -585,7 +585,7 @@ private fun ChannelCardIdlePreview() {
             ) {
                 ChannelCardItem(
                     item = ChannelItemUiState(
-                        channel = FakeRepositories.sampleChannels.first().copy(currentSpeaker = null)
+                        channel = PreviewSamples.sampleChannels.first().copy(currentSpeaker = null)
                     ),
                     isSelectedMic = false,
                     isSpeaking = false,
@@ -611,7 +611,7 @@ private fun ChannelCardSpeakingPreview() {
                 contentAlignment = Alignment.Center
             ) {
                 ChannelCardItem(
-                    item = ChannelItemUiState(channel = FakeRepositories.sampleChannels.first()),
+                    item = ChannelItemUiState(channel = PreviewSamples.sampleChannels.first()),
                     isSelectedMic = false,
                     isSpeaking = true,
                     onCardClick = {},

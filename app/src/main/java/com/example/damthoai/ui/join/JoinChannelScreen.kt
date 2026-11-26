@@ -40,6 +40,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,8 +57,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.damthoai.R
+import com.example.damthoai.data.remote.RemoteEventRepository
 import com.example.damthoai.permission.AppPermission
 import com.example.damthoai.permission.PermissionManager
+import kotlinx.coroutines.launch
 import com.example.damthoai.permission.PermissionState
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.DamThoaiBackground
@@ -127,6 +130,7 @@ private fun JoinChannelScreenContent(
     initialPin: String = ""
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val activity = context as? Activity
     var selectedTab by remember { mutableStateOf(initialTab) }
     var realCameraState by remember {
@@ -222,7 +226,18 @@ private fun JoinChannelScreenContent(
                     PinInputTab(
                         initialPin = initialPin,
                         onPinSubmit = { pin ->
-                            if (pin == "000000") onJoinError() else onSuccessJoin()
+                            if (pin == "000000") {
+                                onJoinError()
+                            } else {
+                                scope.launch {
+                                    val res = RemoteEventRepository.joinByPin(context, pin, "Thành viên", "Cộng tác viên", 3, 2)
+                                    if (res.isSuccess) {
+                                        onSuccessJoin()
+                                    } else {
+                                        onJoinError()
+                                    }
+                                }
+                            }
                         }
                     )
                 }

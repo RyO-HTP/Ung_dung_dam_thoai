@@ -7,7 +7,7 @@ import com.example.damthoai.audio.offline.OfflineVoiceQueueManager
 import com.example.damthoai.audio.offline.QueuedVoiceMessage
 import com.example.damthoai.audio.offline.VoiceQueueTransport
 import com.example.damthoai.data.SpeakingStateRepository
-import com.example.damthoai.data.fake.NetworkStatus
+import com.example.damthoai.network.NetworkStatus
 import com.example.damthoai.hardware.HandsFreeSettings
 import com.example.damthoai.hardware.PttController
 import com.example.damthoai.hardware.audio.AudioFocusGuard

@@ -30,8 +30,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
-import com.example.damthoai.data.fake.FakeRemainingUiData
-import com.example.damthoai.data.fake.LiveCue
 import com.example.damthoai.ui.components.AvatarCircle
 import com.example.damthoai.ui.components.BackButton
 import com.example.damthoai.ui.components.DamThoaiBackground
@@ -43,6 +41,7 @@ import com.example.damthoai.ui.components.SectionLabel
 import com.example.damthoai.ui.theme.AccentAmber
 import com.example.damthoai.ui.theme.DamThoaiTheme
 import com.example.damthoai.ui.theme.DamType
+import com.example.damthoai.data.model.LiveCue
 import com.example.damthoai.ui.theme.TextPrimary
 import com.example.damthoai.ui.theme.TextSecondary
 
@@ -52,10 +51,10 @@ fun LiveCueDraftScreen(
     onSendCue: (LiveCue) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var title by remember { mutableStateOf(FakeRemainingUiData.liveCue.title) }
-    var message by remember { mutableStateOf(FakeRemainingUiData.liveCue.message) }
+    var title by remember { mutableStateOf("Tiết mục 4 – Ban nhạc khách mời") }
+    var message by remember { mutableStateOf("Hậu cần: chuẩn bị đạo cụ chuyển cảnh") }
     val previewCue = remember(title, message) {
-        FakeRemainingUiData.liveCue.copy(title = title, message = message)
+        LiveCue(title = title, message = message, channelName = "Toàn sự kiện", isPriority = true)
     }
 
     DamThoaiBackground(modifier = modifier) {

@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	week1signaling "damthoai/nguoi5server/Tuan_1_Signaling_SDP_ICE_va_Database"
 	week2routing "damthoai/nguoi5server/Tuan_2_API_Quan_ly_Su_kien_Kenh_va_Dinh_tuyen_Am_thanh"
@@ -71,8 +72,41 @@ func main() {
 		})
 	})
 
-	// Endpoints Tuần 2 (Sự kiện, PIN, Kênh)
+	// Endpoints Tuần 2 (Sự kiện, PIN, Kênh & Admin)
 	mux.HandleFunc("/api/v1/events", eventManager.HandleCreateEvent)
+	mux.HandleFunc("/api/v1/events/restore", eventManager.HandleRestoreEvent)
+	mux.HandleFunc("/api/v1/events/", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		if strings.HasSuffix(path, "/channels") && r.Method == http.MethodPost {
+			eventManager.HandleAddChannel(w, r)
+			return
+		}
+		if strings.Contains(path, "/channels/") {
+			if r.Method == http.MethodPatch || r.Method == http.MethodPut {
+				eventManager.HandleUpdateChannel(w, r)
+				return
+			}
+			if r.Method == http.MethodDelete {
+				eventManager.HandleDeleteChannel(w, r)
+				return
+			}
+		}
+		if strings.HasSuffix(path, "/members") && r.Method == http.MethodGet {
+			eventManager.HandleListMembers(w, r)
+			return
+		}
+		if strings.Contains(path, "/members/") {
+			if r.Method == http.MethodPatch || r.Method == http.MethodPut {
+				eventManager.HandleUpdateMember(w, r)
+				return
+			}
+			if r.Method == http.MethodDelete {
+				eventManager.HandleDeleteMember(w, r)
+				return
+			}
+		}
+		http.NotFound(w, r)
+	})
 	mux.HandleFunc("/api/v1/auth/join-pin", eventManager.HandleJoinByPin)
 	mux.HandleFunc("/api/v1/users/switch-channel", eventManager.HandleSwitchChannel)
 	mux.HandleFunc("/api/v1/users/leave-channel", eventManager.HandleLeaveChannel)
