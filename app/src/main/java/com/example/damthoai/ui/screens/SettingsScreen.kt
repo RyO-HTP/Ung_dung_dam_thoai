@@ -42,10 +42,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.damthoai.R
 import com.example.damthoai.data.model.Event
-import com.example.damthoai.data.fake.FakeEventRepository
-import com.example.damthoai.data.fake.FakeRemainingUiData
+import com.example.damthoai.data.model.Member
 import com.example.damthoai.data.model.MemberLevel
-import com.example.damthoai.data.fake.NetworkStatus
+import com.example.damthoai.data.remote.EventSession
+import com.example.damthoai.data.remote.RemoteEventRepository
+import com.example.damthoai.network.NetworkStatus
+import com.example.damthoai.ui.preview.PreviewSamples
 import com.example.damthoai.network.NetworkStatusProvider
 import com.example.damthoai.permission.PermissionManager
 import com.example.damthoai.ui.components.AvatarCircle
@@ -74,11 +76,35 @@ fun SettingsScreen(
     onNetworkTest: () -> Unit = {}
 ) {
     val networkStatus by NetworkStatusProvider.source.status.collectAsState()
-    val currentEvent by FakeEventRepository.currentEvent.collectAsStateWithLifecycle()
+    val currentEvent by RemoteEventRepository.currentEvent.collectAsStateWithLifecycle()
+    val currentMember by RemoteEventRepository.currentMember.collectAsStateWithLifecycle()
     val networkDescription = when (val status = networkStatus) {
         is NetworkStatus.Good -> "Internet đang dùng · ${status.ms} ms"
         is NetworkStatus.Weak -> "Internet yếu · ${status.ms} ms"
         NetworkStatus.Offline -> "Mất kết nối Internet"
+    }
+
+    val session = remember(currentEvent, currentMember) { EventSession.getSession() }
+    val displayEvent = currentEvent ?: session?.let {
+        Event(
+            id = it.eventId.toString(),
+            name = it.eventName,
+            pinCode = it.pinCode
+        )
+    } ?: Event(id = "", name = "Chưa tham gia sự kiện", pinCode = "")
+
+    val displayMember = currentMember ?: session?.let {
+        Member(
+            id = it.userId,
+            name = it.displayName,
+            roleTitle = it.roleTitle,
+            initials = it.displayName.take(2).uppercase(),
+            level = when (it.level) {
+                1 -> MemberLevel.LEVEL_1
+                2 -> MemberLevel.LEVEL_2
+                else -> MemberLevel.LEVEL_3
+            }
+        )
     }
 
     SettingsContent(
@@ -89,7 +115,8 @@ fun SettingsScreen(
         onHandsFree = onHandsFree,
         onNetworkTest = onNetworkTest,
         modifier = modifier,
-        event = currentEvent ?: FakeRemainingUiData.event,
+        event = displayEvent,
+        currentMember = displayMember,
         networkDescription = networkDescription
     )
 }
@@ -104,6 +131,7 @@ private fun SettingsContent(
     onNetworkTest: () -> Unit = {},
     modifier: Modifier = Modifier,
     event: Event,
+    currentMember: Member?,
     networkDescription: String
 ) {
     var showLeaveEventDialog by remember { mutableStateOf(false) }
@@ -132,23 +160,32 @@ private fun SettingsContent(
                     vertical = 10.dp
                 )
             ) {
+                val initials = currentMember?.initials ?: (currentMember?.name?.take(2)?.uppercase() ?: "--")
+                val displayName = currentMember?.name ?: "Chưa đăng nhập"
+                val roleDesc = buildString {
+                    append(currentMember?.roleTitle ?: "Thành viên")
+                    append(" · Cấp ${currentMember?.level?.code ?: 3}")
+                    if (event.isOwner || currentMember?.level == MemberLevel.LEVEL_1) {
+                        append(" · Chủ sự kiện")
+                    }
+                }
                 Row(
                     modifier = Modifier.clickable(onClick = onProfile),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    AvatarCircle("LP", size = 40.dp)
+                    AvatarCircle(initials, size = 40.dp)
                     Spacer(Modifier.width(10.dp))
                     Column(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         Text(
-                            text = "Lan Phương",
+                            text = displayName,
                             color = TextPrimary,
                             style = DamType.Heading
                         )
                         Text(
-                            text = "Tổng đạo diễn · Cấp 1 · Chủ sự kiện",
+                            text = roleDesc,
                             color = TextSecondary,
                             style = DamType.Small
                         )
@@ -169,9 +206,7 @@ private fun SettingsContent(
                     vertical = 10.dp
                 )
             ) {
-                val currentMember = event.members.firstOrNull { it.id == event.ownerId }
-                    ?: FakeRemainingUiData.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
-                val isLevel1 = currentMember.level == MemberLevel.LEVEL_1
+                val isLevel1 = (currentMember?.level == MemberLevel.LEVEL_1) || event.isOwner
 
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
@@ -377,7 +412,8 @@ private fun SettingsReleasePreview() {
             onLeaveEvent = {},
             onMultiLevel = {},
             onHandsFree = {},
-            event = FakeEventRepository.sampleEvent,
+            event = PreviewSamples.sampleEvent,
+            currentMember = PreviewSamples.sampleMembers.first(),
             networkDescription = "Internet đang dùng · 42 ms"
         )
     }

@@ -68,10 +68,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.damthoai.R
-import com.example.damthoai.data.fake.EmergencyCallParticipant
-import com.example.damthoai.data.fake.FakeEmergencyUiData
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.damthoai.data.model.EmergencyCallParticipant
 import com.example.damthoai.data.model.Member
 import com.example.damthoai.data.model.MemberLevel
+import com.example.damthoai.data.remote.RemoteEventRepository
+import com.example.damthoai.ui.preview.PreviewSamples
 import com.example.damthoai.hardware.PttController
 import com.example.damthoai.hardware.PttSource
 import com.example.damthoai.data.remote.ApiClient
@@ -131,17 +133,20 @@ fun EmergencyCallSelectScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val currentEvent by com.example.damthoai.data.remote.RemoteEventRepository.currentEvent.collectAsStateWithLifecycle()
+    val recipients = currentEvent?.members.orEmpty()
     var selectedIds by rememberSaveable(
         stateSaver = listSaver<Set<String>, String>(
             save = { it.toList() },
             restore = { it.toSet() }
         )
     ) {
-        mutableStateOf(setOf(FakeEmergencyUiData.recipients.first().id))
+        mutableStateOf(recipients.firstOrNull()?.id?.let { setOf(it) } ?: emptySet())
     }
 
     EmergencyCallSelectContent(
         selectedIds = selectedIds,
+        recipients = recipients,
         onSelectedIdsChange = { selectedIds = it },
         onBack = onBack,
         onCall = onCall,
@@ -164,9 +169,9 @@ private fun EmergencyCallSelectContent(
     onCall: (Set<String>) -> Unit,
     onShortHold: () -> Unit,
     modifier: Modifier = Modifier,
+    recipients: List<Member> = emptyList(),
     previewProgress: Float? = null
 ) {
-    val recipients = FakeEmergencyUiData.recipients
     val quickTargets = listOf(
         "Tổng đạo diễn" to recipients
             .filter { it.level == MemberLevel.LEVEL_1 }
@@ -661,21 +666,26 @@ fun EmergencyActiveCallScreen(
     selectedMemberIds: Set<String>? = null,
     caller: EmergencyAlert? = null
 ) {
+    val currentEvent by RemoteEventRepository.currentEvent.collectAsStateWithLifecycle()
+    val eventMembers = currentEvent?.members.orEmpty()
     val participants = selectedMemberIds?.let { ids ->
-        FakeEmergencyUiData.recipients
+        eventMembers
             .filter { it.id in ids }
             .map { member ->
                 EmergencyCallParticipant(member, status = "Đang chờ trả lời...")
             }
-    } ?: FakeEmergencyUiData.callParticipants
+    } ?: eventMembers.map { EmergencyCallParticipant(it, status = "Đã vào cuộc gọi") }
+
     val displayParticipants = caller?.let { alert ->
-        val callerTemplate = participants.firstOrNull()
-            ?: FakeEmergencyUiData.callParticipants.first()
-        val callerParticipant = callerTemplate.copy(
-            member = callerTemplate.member.copy(
-                name = alert.fromName,
-                roleTitle = alert.fromRole
-            ),
+        val callerMember = Member(
+            id = alert.id,
+            name = alert.fromName,
+            roleTitle = alert.fromRole,
+            initials = alert.fromName.take(2).uppercase(),
+            level = MemberLevel.LEVEL_1
+        )
+        val callerParticipant = EmergencyCallParticipant(
+            member = callerMember,
             status = "${alert.fromRole} · đang nói",
             isSpeaking = true
         )
@@ -946,7 +956,8 @@ private fun EmergencyCallSelectNoSelectionPreview() {
 private fun EmergencyCallSelectHalfHeldPreview() {
     DamThoaiTheme {
         EmergencyCallSelectContent(
-            selectedIds = setOf(FakeEmergencyUiData.recipients.first().id),
+            selectedIds = setOf(PreviewSamples.recipients.first().id),
+            recipients = PreviewSamples.recipients,
             onSelectedIdsChange = {},
             onBack = {},
             onCall = {},
@@ -969,20 +980,8 @@ private fun EmergencyAlertIncomingScreenPreview() {
 private fun EmergencyActiveCallScreenPreview() {
     DamThoaiTheme {
         EmergencyActiveCallContent(
-            participants = FakeEmergencyUiData.callParticipants,
+            participants = PreviewSamples.callParticipants,
             isTalking = false,
-            onEndCall = {}
-        )
-    }
-}
-
-@Preview(widthDp = 390, heightDp = 844)
-@Composable
-private fun EmergencyActiveCallTalkingPreview() {
-    DamThoaiTheme {
-        EmergencyActiveCallContent(
-            participants = FakeEmergencyUiData.callParticipants,
-            isTalking = true,
             onEndCall = {}
         )
     }

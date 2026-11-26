@@ -35,8 +35,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -61,13 +63,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.damthoai.R
 import com.example.damthoai.data.model.Channel
-import com.example.damthoai.data.fake.ChannelMutationResult
-import com.example.damthoai.data.fake.ChannelValidationError
+import com.example.damthoai.data.model.ChannelMutationResult
+import com.example.damthoai.data.model.ChannelValidationError
 import com.example.damthoai.data.model.Event
-import com.example.damthoai.data.fake.FakeEventRepository
-import com.example.damthoai.data.fake.FakeMultiLevelConnectionData
-import com.example.damthoai.data.fake.FakeRemainingUiData
-import com.example.damthoai.data.fake.FakeRepositories
+import com.example.damthoai.data.remote.EventSession
+import com.example.damthoai.data.remote.LiveCueClient
+import com.example.damthoai.data.remote.RemoteEventRepository
+import com.example.damthoai.ui.preview.PreviewSamples
 import com.example.damthoai.data.model.Member
 import com.example.damthoai.data.model.MemberLevel
 import com.example.damthoai.ui.channels.ChannelItemUiState
@@ -358,7 +360,7 @@ fun ChannelMenuRouteScreen(
     DamThoaiBackground {
         ChannelMenuSheet(
             channelItem = ChannelItemUiState(
-                channel = FakeRepositories.sampleChannels[1],
+                channel = PreviewSamples.sampleChannels[1],
                 isMuted = isMuted
             ),
             onDismiss = onDismiss,
@@ -373,16 +375,32 @@ fun MultiLevelConnectionScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val uiState by FakeMultiLevelConnectionData.uiState.collectAsState()
+    val context = LocalContext.current
+    val prefs = remember(context) {
+        context.getSharedPreferences("multilevel_connection_prefs", android.content.Context.MODE_PRIVATE)
+    }
+    var internetEnabled by remember {
+        mutableStateOf(prefs.getBoolean("internet_enabled", true))
+    }
+    var localNetworkEnabled by remember {
+        mutableStateOf(prefs.getBoolean("local_network_enabled", true))
+    }
+
     MultiLevelConnectionContent(
         onBack = onBack,
         modifier = modifier,
-        internetEnabled = uiState.internetEnabled,
-        localNetworkEnabled = uiState.localNetworkEnabled,
-        bluetoothDirectEnabled = uiState.bluetoothDirectEnabled,
-        onInternetChange = FakeMultiLevelConnectionData::setInternetEnabled,
-        onLocalNetworkChange = FakeMultiLevelConnectionData::setLocalNetworkEnabled,
-        onBluetoothDirectChange = FakeMultiLevelConnectionData::setBluetoothDirectEnabled
+        internetEnabled = internetEnabled,
+        localNetworkEnabled = localNetworkEnabled,
+        bluetoothDirectEnabled = false,
+        onInternetChange = { enabled ->
+            internetEnabled = enabled
+            prefs.edit().putBoolean("internet_enabled", enabled).apply()
+        },
+        onLocalNetworkChange = { enabled ->
+            localNetworkEnabled = enabled
+            prefs.edit().putBoolean("local_network_enabled", enabled).apply()
+        },
+        onBluetoothDirectChange = {}
     )
 }
 
@@ -426,8 +444,8 @@ private fun MultiLevelConnectionContent(
         ConnectionLayerCard(
             iconRes = R.drawable.ic_bt,
             title = "Bluetooth LE / Wi-Fi Direct",
-            description = "Ngang hàng 30–100 m khi không có mạng",
-            checked = bluetoothDirectEnabled,
+            description = "Ngang hàng 30–100 m khi không có mạng (chưa hỗ trợ)",
+            checked = false,
             onCheckedChange = onBluetoothDirectChange
         )
         GlassCard(
@@ -511,6 +529,19 @@ private fun ConnectionLayerIcon(iconRes: Int) {
     }
 }
 
+private fun validateChannelName(
+    name: String,
+    channels: List<Channel>,
+    excludingChannelId: String? = null
+): ChannelValidationError? {
+    val trimmed = name.trim()
+    if (trimmed.isEmpty()) return ChannelValidationError.EMPTY_NAME
+    val duplicate = channels.any { it.id != excludingChannelId && it.name.equals(trimmed, ignoreCase = true) }
+    if (duplicate) return ChannelValidationError.DUPLICATE_NAME
+    if (channels.size >= 20) return ChannelValidationError.CHANNEL_LIMIT_REACHED
+    return null
+}
+
 @Composable
 fun ManageEventScreen(
     onBack: () -> Unit,
@@ -519,14 +550,15 @@ fun ManageEventScreen(
     onLiveCue: () -> Unit,
     onEndEvent: () -> Unit,
     modifier: Modifier = Modifier,
-    event: Event = FakeEventRepository.sampleEvent,
-    channels: List<Channel> = FakeEventRepository.sampleEvent.channels,
     onChannelQrCode: (String) -> Unit = { onQrCode() },
     onNavigateToActiveCall: () -> Unit = {}
 ) {
-    val repositoryEvent by FakeEventRepository.currentEvent.collectAsStateWithLifecycle()
-    val displayedEvent = repositoryEvent ?: event
-    val displayedChannels = repositoryEvent?.channels ?: channels
+    val repositoryEvent by RemoteEventRepository.currentEvent.collectAsStateWithLifecycle()
+    val session = remember(repositoryEvent) { EventSession.getSession() }
+    val displayedEvent = repositoryEvent ?: session?.let {
+        Event(id = it.eventId.toString(), name = it.eventName, pinCode = it.pinCode)
+    } ?: Event(id = "", name = "Sự kiện", pinCode = "")
+    val displayedChannels = displayedEvent.channels
     ManageEventContent(
         onBack = onBack,
         onQrCode = onQrCode,
@@ -555,6 +587,8 @@ private fun ManageEventContent(
     onNavigateToActiveCall: () -> Unit = {}
 ) {
     val clipboardManager = LocalClipboardManager.current
+    val liveCue by LiveCueClient.currentLiveCue.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
     var showAdminCode by rememberSaveable { mutableStateOf(false) }
     var showEndEventDialog by rememberSaveable { mutableStateOf(false) }
     var showAddChannelSheet by rememberSaveable { mutableStateOf(false) }
@@ -563,8 +597,9 @@ private fun ManageEventContent(
     var deleteChannelId by rememberSaveable { mutableStateOf<String?>(null) }
     var channelName by rememberSaveable { mutableStateOf("") }
     var channelError by rememberSaveable { mutableStateOf<ChannelValidationError?>(null) }
-    val validationError = FakeEventRepository.validateChannelName(
+    val validationError = validateChannelName(
         channelName,
+        channels,
         excludingChannelId = renameChannelId
     )
     val shownChannelError = channelError
@@ -721,7 +756,7 @@ private fun ManageEventContent(
         ActionRow(
             R.drawable.ic_zap,
             "Live Cue",
-            FakeRemainingUiData.liveCue.title,
+            liveCue?.title ?: "Tạo và gửi lệnh đạo diễn",
             onLiveCue,
             "ƯU TIÊN"
         )
@@ -787,21 +822,15 @@ private fun ManageEventContent(
                 channelError = null
             },
             onSubmit = {
-                val result = if (isRenaming) {
-                    channelToRename?.let {
-                        FakeEventRepository.renameChannel(it.id, channelName)
-                    } ?: ChannelMutationResult.Rejected(ChannelValidationError.CHANNEL_NOT_FOUND)
-                } else {
-                    FakeEventRepository.addChannel(channelName)
-                }
-                when (result) {
-                    is ChannelMutationResult.Success -> {
-                        showAddChannelSheet = false
-                        renameChannelId = null
-                        channelError = null
-                    }
-                    is ChannelMutationResult.Rejected -> {
-                        channelError = result.reason
+                val targetId = channelToRename?.id
+                showAddChannelSheet = false
+                renameChannelId = null
+                channelError = null
+                coroutineScope.launch {
+                    if (isRenaming && targetId != null) {
+                        RemoteEventRepository.renameChannel(targetId, channelName)
+                    } else {
+                        RemoteEventRepository.addChannel(channelName)
                     }
                 }
             }
@@ -814,8 +843,11 @@ private fun ManageEventContent(
             primaryButtonText = "Xoá",
             secondaryButtonText = "Hủy",
             onPrimaryClick = {
-                FakeEventRepository.removeChannel(channel.id)
+                val targetId = channel.id
                 deleteChannelId = null
+                coroutineScope.launch {
+                    RemoteEventRepository.removeChannel(targetId)
+                }
             },
             onDismissRequest = { deleteChannelId = null },
             primaryBrush = DangerBrush
@@ -897,15 +929,19 @@ fun MyQrCodeScreen(
     onBack: () -> Unit,
     onShare: () -> Unit,
     modifier: Modifier = Modifier,
-    event: Event = FakeEventRepository.currentEvent.value ?: FakeRemainingUiData.event,
+    event: Event? = null,
     channel: Channel? = null
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    val currentEvent = FakeEventRepository.currentEvent.value ?: event
+    val repositoryEvent by RemoteEventRepository.currentEvent.collectAsStateWithLifecycle()
+    val session = remember(repositoryEvent) { EventSession.getSession() }
+    val currentEvent = repositoryEvent ?: event ?: session?.let {
+        Event(id = it.eventId.toString(), name = it.eventName, pinCode = it.pinCode)
+    } ?: Event(id = "", name = "Sự kiện", pinCode = "")
     val currentMember = currentEvent.members.firstOrNull { it.id == currentEvent.ownerId }
         ?: currentEvent.members.firstOrNull()
-        ?: FakeRemainingUiData.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
+        ?: Member(id = session?.userId ?: "mem_01", name = session?.displayName ?: "Thành viên", roleTitle = session?.roleTitle ?: "Chủ sự kiện", initials = "TV", level = MemberLevel.LEVEL_1)
     val userLevel = currentMember.level
 
     if (userLevel == MemberLevel.LEVEL_3) {
@@ -916,7 +952,7 @@ fun MyQrCodeScreen(
         return
     }
 
-    val allChannels = currentEvent.channels.ifEmpty { FakeRemainingUiData.event.channels }
+    val allChannels = currentEvent.channels
     val channels = when (userLevel) {
         MemberLevel.LEVEL_1 -> allChannels
         MemberLevel.LEVEL_2 -> allChannels.filter { it.name.contains(currentMember.roleTitle, ignoreCase = true) || it.isDefault }
@@ -924,7 +960,10 @@ fun MyQrCodeScreen(
     }.ifEmpty { allChannels }
 
     var selectedChannelId by rememberSaveable { mutableStateOf(channel?.id ?: channels.firstOrNull()?.id ?: "") }
-    val selectedChannel = channels.firstOrNull { it.id == selectedChannelId } ?: channels.firstOrNull() ?: allChannels.first()
+    val selectedChannel = channels.firstOrNull { it.id == selectedChannelId }
+        ?: channels.firstOrNull()
+        ?: allChannels.firstOrNull()
+        ?: Channel(id = "ch_01", name = currentEvent.name.ifBlank { "Toàn sự kiện" })
 
     ScreenFrame("Mã QR của ban", onBack, modifier) {
         if (channels.isNotEmpty()) {
@@ -1093,7 +1132,7 @@ fun EventMembersScreen(
     viewModel: EventMembersViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val repositoryEvent by FakeEventRepository.currentEvent.collectAsStateWithLifecycle()
+    val repositoryEvent by RemoteEventRepository.currentEvent.collectAsStateWithLifecycle()
     val displayedUiState = repositoryEvent?.let { uiState.copy(members = it.members) } ?: uiState
     var selectedMemberId by remember { mutableStateOf<String?>(null) }
     val selectedMember = displayedUiState.members.firstOrNull { it.id == selectedMemberId }
@@ -1405,6 +1444,8 @@ fun EventEndedScreen(
     onReturn: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val currentEvent by RemoteEventRepository.currentEvent.collectAsStateWithLifecycle()
+    val eventName = currentEvent?.name ?: EventSession.getSession()?.eventName ?: "sự kiện"
     ScreenFrame("Sự kiện đã kết thúc", onBack = null, modifier = modifier) {
         Spacer(Modifier.height(28.dp))
         GlassCard(
@@ -1426,7 +1467,7 @@ fun EventEndedScreen(
                 )
                 Text("Sự kiện đã kết thúc", color = TextPrimary, style = DamType.Title, textAlign = TextAlign.Center)
                 Text(
-                    FakeRemainingUiData.event.name,
+                    eventName,
                     color = TextSecondary,
                     style = DamType.Body,
                     textAlign = TextAlign.Center
@@ -1446,6 +1487,8 @@ fun RemovedFromEventScreen(
     onReturn: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val currentEvent by RemoteEventRepository.currentEvent.collectAsStateWithLifecycle()
+    val eventName = currentEvent?.name ?: EventSession.getSession()?.eventName ?: "sự kiện"
     ScreenFrame("Bạn đã bị xóa khỏi sự kiện", onBack = null, modifier = modifier) {
         Spacer(Modifier.height(28.dp))
         GlassCard(
@@ -1472,7 +1515,7 @@ fun RemovedFromEventScreen(
                     textAlign = TextAlign.Center
                 )
                 Text(
-                    "Tổng đạo diễn đã xóa bạn khỏi ${FakeRemainingUiData.event.name}. " +
+                    "Tổng đạo diễn đã xóa bạn khỏi $eventName. " +
                         "Bạn cần quét lại mã nếu muốn vào lại.",
                     color = TextSecondary,
                     style = DamType.Body,
@@ -1539,9 +1582,9 @@ private fun ManageEventScreenPreview() {
 @Preview(widthDp = 390, heightDp = 844)
 @Composable
 private fun ManageEventNewEventPreview() {
-    val owner = FakeRepositories.sampleMembers.first { it.level == MemberLevel.LEVEL_1 }
-    val channel = FakeEventRepository.sampleEvent.channels.first()
-    val event = FakeEventRepository.sampleEvent.copy(
+    val owner = PreviewSamples.sampleMembers.first { it.level == MemberLevel.LEVEL_1 }
+    val channel = PreviewSamples.sampleEvent.channels.first()
+    val event = PreviewSamples.sampleEvent.copy(
         name = "Sự kiện mới",
         channels = listOf(channel),
         members = listOf(owner),
@@ -1564,7 +1607,7 @@ private fun ManageEventNewEventPreview() {
 @Preview(widthDp = 390, heightDp = 844)
 @Composable
 private fun ManageEventFullPreview() {
-    val channels = FakeRepositories.sampleChannels + listOf(
+    val channels = PreviewSamples.sampleChannels + listOf(
         Channel(id = "preview_ch_04", name = "Kỹ thuật"),
         Channel(id = "preview_ch_05", name = "Đón tiếp")
     )
@@ -1577,7 +1620,7 @@ private fun ManageEventFullPreview() {
             level = MemberLevel.entries[index % MemberLevel.entries.size]
         )
     }
-    val event = FakeEventRepository.sampleEvent.copy(
+    val event = PreviewSamples.sampleEvent.copy(
         name = "Sự kiện mẫu đầy đủ",
         channels = channels,
         members = members,
@@ -1656,7 +1699,7 @@ private fun EventMembersEditScreenPreview() {
         EventMembersContent(
             onBack = {},
             uiState = EventMembersUiState(),
-            selectedMember = FakeRemainingUiData.eventMembers.first { it.name == "Thu Hà" },
+            selectedMember = PreviewSamples.eventMembers.first(),
             initialDraftLevel = MemberLevel.LEVEL_2,
             initialRoleTitle = "Trưởng ban Kỹ thuật"
         )

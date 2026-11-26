@@ -34,7 +34,7 @@ import com.example.damthoai.ui.preview.PreviewSamples
 import com.example.damthoai.data.model.CallChannel
 import com.example.damthoai.data.model.CallContent
 import com.example.damthoai.data.remote.LiveCueClient
-import com.example.damthoai.data.fake.NetworkStatus
+import com.example.damthoai.network.NetworkStatus
 import com.example.damthoai.network.NetworkStatusProvider
 import com.example.damthoai.data.SpeakingStateProvider
 import com.example.damthoai.data.SpeakerInfo

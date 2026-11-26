@@ -35,6 +35,7 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executors
 
+@androidx.camera.core.ExperimentalGetImage
 @Composable
 fun QrCameraScanner(
     onQrDetected: (String) -> Unit,
