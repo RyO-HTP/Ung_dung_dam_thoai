@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
-
-	"github.com/gorilla/websocket"
 )
 
 // Bổ sung AdminCode vào EventInfo

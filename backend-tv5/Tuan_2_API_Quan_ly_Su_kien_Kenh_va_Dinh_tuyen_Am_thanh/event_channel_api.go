@@ -38,21 +38,22 @@ type EventInfo struct {
 	CreatedAt   time.Time              `json:"createdAt"`
 	Channels    map[uint8]*ChannelInfo `json:"channels"`
 	ChannelList []*ChannelInfo         `json:"channelList"` // Mảng kênh tuần tự phục vụ LazyColumn trên Android
+	AdminCode   string                 `json:"-"`
 }
 
 type UserSession struct {
-	UserID            uint32   `json:"userId"`
-	UserCode          string   `json:"userCode"`          // ID chuỗi trên Android (VD: "Minh_Hau")
-	EventID           int64    `json:"eventId"`
-	DisplayName       string   `json:"displayName"`       // VD: "Minh Hậu"
-	RoleTitle         string   `json:"roleTitle"`         // VD: "Trưởng ban Sân khấu", "Trưởng ban Hậu cần"
-	UserLevel         uint8    `json:"userLevel"`         // Chuẩn UI Android: 1 = Tổng đạo diễn, 2 = Trưởng ban, 3 = CTV
-	RolePriority      uint8    `json:"rolePriority"`      // Chuẩn Server CAS: 3 = Tổng đạo diễn, 2 = Trưởng ban, 1 = CTV
-	PrimaryTxChannel  uint8    `json:"primaryTxChannel"`  // Kênh phát âm thanh chính (1..5)
-	PrimaryChannelID  string   `json:"primaryChannelId"`  // Mã kênh phát âm thanh trên Android ("ch_01".."ch_05")
-	ListeningChannels []uint8  `json:"listeningChannels"` // Danh sách kênh đang nghe (tối đa 3 kênh)
-	HmacSecretHex     string   `json:"hmacSecretHex"`
-	HmacSecretBytes   []byte   `json:"-"`
+	UserID            uint32  `json:"userId"`
+	UserCode          string  `json:"userCode"` // ID chuỗi trên Android (VD: "Minh_Hau")
+	EventID           int64   `json:"eventId"`
+	DisplayName       string  `json:"displayName"`       // VD: "Minh Hậu"
+	RoleTitle         string  `json:"roleTitle"`         // VD: "Trưởng ban Sân khấu", "Trưởng ban Hậu cần"
+	UserLevel         uint8   `json:"userLevel"`         // Chuẩn UI Android: 1 = Tổng đạo diễn, 2 = Trưởng ban, 3 = CTV
+	RolePriority      uint8   `json:"rolePriority"`      // Chuẩn Server CAS: 3 = Tổng đạo diễn, 2 = Trưởng ban, 1 = CTV
+	PrimaryTxChannel  uint8   `json:"primaryTxChannel"`  // Kênh phát âm thanh chính (1..5)
+	PrimaryChannelID  string  `json:"primaryChannelId"`  // Mã kênh phát âm thanh trên Android ("ch_01".."ch_05")
+	ListeningChannels []uint8 `json:"listeningChannels"` // Danh sách kênh đang nghe (tối đa 3 kênh)
+	HmacSecretHex     string  `json:"hmacSecretHex"`
+	HmacSecretBytes   []byte  `json:"-"`
 }
 
 // ConvertUserLevelToPriority quy đổi giữa Cấp bậc trên giao diện Android (UserLevel 1,2,3)
