@@ -87,8 +87,16 @@ fun NetworkTestScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                 PackageManager.PERMISSION_GRANTED
         )
     }
-    val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        hasMic = it
+    // Người vừa bấm "Gọi" khi chưa có quyền micro: chỉ gọi SAU KHI người dùng cấp quyền,
+    // nếu gọi ngay thì micro chưa mở được và bên kia sẽ không nghe thấy gì.
+    var pendingCallPeer by rememberSaveable { mutableStateOf<String?>(null) }
+    var micDenied by rememberSaveable { mutableStateOf(false) }
+    val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        hasMic = granted
+        micDenied = !granted
+        val peer = pendingCallPeer
+        pendingCallPeer = null
+        if (granted && peer != null) manager.startCall(peer)
     }
 
     val peers = if (mode == ConnectionMode.LAN_P2P) lanPeers.toList() else onlinePeers
@@ -159,8 +167,12 @@ fun NetworkTestScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                         Text(peer, color = TextPrimary, style = DamType.Body14SemiBold, modifier = Modifier.weight(1f))
                         OutlinedButton(
                             onClick = {
-                                if (!hasMic) micLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                manager.startCall(peer)
+                                if (hasMic) {
+                                    manager.startCall(peer)
+                                } else {
+                                    pendingCallPeer = peer
+                                    micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
                             },
                             enabled = callState is CallState.Idle || callState is CallState.CallEnded
                         ) { Text("Gọi") }
@@ -171,6 +183,13 @@ fun NetworkTestScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             // ---------------- 3. Cuộc gọi + PTT
             Section("3. Cuộc gọi") {
                 InfoLine("Trạng thái", describe(callState))
+                if (micDenied) {
+                    Text(
+                        "Chưa có quyền micro nên không gọi được. Nếu không thấy hỏi lại, vào Cài đặt điện thoại > Ứng dụng > Đàm Thoại > Quyền để bật Micro.",
+                        color = AccentRed,
+                        style = DamType.Body13
+                    )
+                }
                 if (!hasMic) {
                     OutlinedButton(onClick = { micLauncher.launch(Manifest.permission.RECORD_AUDIO) }) {
                         Text("Cấp quyền micro")
