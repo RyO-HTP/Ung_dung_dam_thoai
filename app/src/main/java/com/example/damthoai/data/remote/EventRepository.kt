@@ -5,6 +5,7 @@ import com.example.damthoai.data.model.Channel
 import com.example.damthoai.data.model.Event
 import com.example.damthoai.data.model.Member
 import com.example.damthoai.data.model.MemberLevel
+import com.google.gson.JsonElement
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +29,17 @@ interface EventRepository {
     suspend fun updateMember(memberId: String, userLevel: Int, roleTitle: String): Result<Unit>
     suspend fun removeMember(memberId: String): Result<Unit>
     fun logout(context: Context)
+}
+
+private fun parseListeningChannels(el: JsonElement?): List<Int>? {
+    if (el == null || el.isJsonNull) return null
+    return when {
+        el.isJsonArray -> el.asJsonArray.map { it.asInt }
+        el.isJsonPrimitive -> android.util.Base64
+            .decode(el.asString, android.util.Base64.DEFAULT)
+            .map { it.toInt() }
+        else -> null
+    }
 }
 
 object RemoteEventRepository : EventRepository {
@@ -98,7 +110,7 @@ object RemoteEventRepository : EventRepository {
                 level = member.level.code,
                 priority = 4 - member.level.code,
                 primaryChannelId = dto.session.primaryChannelId ?: "ch_01",
-                listeningChannels = dto.session.listeningChannels ?: listOf(1),
+                listeningChannels = parseListeningChannels(dto.session.listeningChannels) ?: listOf(1),
                 signalingUrl = dto.session.signalingUrl,
                 signalingToken = dto.session.signalingToken
             )
@@ -135,7 +147,7 @@ object RemoteEventRepository : EventRepository {
                 level = userLevel,
                 priority = rolePriority,
                 primaryChannelId = dto.session.primaryChannelId ?: "ch_0$preferredChannel",
-                listeningChannels = dto.session.listeningChannels ?: listOf(1, preferredChannel),
+                listeningChannels = parseListeningChannels(dto.session.listeningChannels) ?: listOf(1, preferredChannel),
                 signalingUrl = dto.session.signalingUrl,
                 signalingToken = dto.session.signalingToken
             )
@@ -167,7 +179,7 @@ object RemoteEventRepository : EventRepository {
                 level = member.level.code,
                 priority = 4 - member.level.code,
                 primaryChannelId = dto.session.primaryChannelId ?: "ch_01",
-                listeningChannels = dto.session.listeningChannels ?: listOf(1),
+                listeningChannels = parseListeningChannels(dto.session.listeningChannels) ?: listOf(1),
                 signalingUrl = dto.session.signalingUrl,
                 signalingToken = dto.session.signalingToken
             )

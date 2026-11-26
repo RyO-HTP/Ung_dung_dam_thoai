@@ -53,7 +53,7 @@ data class UserSessionDto(
     val rolePriority: Int,
     val primaryTxChannel: Int,
     val primaryChannelId: String?,
-    val listeningChannels: List<Int>?,
+    val listeningChannels: JsonElement?,
     val signalingUrl: String?,
     val signalingToken: String?
 ) {
