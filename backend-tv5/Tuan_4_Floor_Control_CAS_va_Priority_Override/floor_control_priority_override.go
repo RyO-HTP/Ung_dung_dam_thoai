@@ -4,13 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 )
 
 // =============================================================================
 // TUẦN 4 (NGƯỜI 5): LẬP TRÌNH FLOOR CONTROL (LOCK-FREE CAS) & PRIORITY OVERRIDE
-// Đã đồng bộ 100% với dự án Android DuAnLamChung:
+// Đã đồng bộ 100% với dự án Android:
 //   - ActiveCallScreen.kt (6 trạng thái UI: CallIdle, CallTalk, CallTake, CallBusy, CallCut, CallOffline)
 //   - ChannelListScreen.kt (Tự động bật cờ isDucked80 = true "HẠ ÂM 80%" khi Cấp 1 phát trên kênh ch_01)
 //   - EmergencyCallSelectScreen.kt (API kích hoạt Khẩn cấp / Cắt lời toàn sự kiện)
@@ -22,7 +24,7 @@ const (
 	RoleDirector  uint8 = 3 // Tổng Đạo diễn / Chỉ huy Sự kiện (Android: Cấp 1 -> Server Priority 3)
 
 	MaxSpeakDurationMs = 60_000 // Giới hạn nói tối đa 60 giây chống kẹt phím cứng trong túi quần (Pocket Mode)
-	StaleUdpSilenceMs  = 2_500  // Tự động nhả mic nếu rớt mạng > 2,5 giây không có gói UDP
+	StaleUdpSilenceMs  = 2_500  // Tự động nhả mic nếu luồng UDP đang hoạt động bị đứt > 2,5 giây
 )
 
 type FloorDecisionStatus string
@@ -33,6 +35,28 @@ const (
 	StatusFloorPreempted FloorDecisionStatus = "FLOOR_PREEMPTED" // Cấp cao hơn cắt ngang thành công
 	StatusFloorReleased  FloorDecisionStatus = "FLOOR_RELEASED"
 )
+
+// FlexibleUserID chấp nhận cả userId dạng chuỗi ("Minh_Hau_101_a1b2") từ app Android lẫn số nguyên từ script test.
+type FlexibleUserID string
+
+func (u *FlexibleUserID) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		*u = ""
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		*u = FlexibleUserID(strings.TrimSpace(s))
+		return nil
+	}
+	var n uint64
+	if err := json.Unmarshal(data, &n); err == nil {
+		*u = FlexibleUserID(strconv.FormatUint(n, 10))
+		return nil
+	}
+	return fmt.Errorf("userId không hợp lệ: %s", trimmed)
+}
 
 // NormalizeRoleAndLevel đồng bộ giữa Cấp độ trên UI Android (UserLevel 1,2,3)
 // và Độ ưu tiên xử lý CAS trên Server (RolePriority 3,2,1).
@@ -55,28 +79,28 @@ func NormalizeRoleAndLevel(userLevel uint8, rolePriority uint8) (level uint8, pr
 type FloorHolder struct {
 	ChannelID      uint8  `json:"channelId"`
 	ChannelCode    string `json:"channelCode"` // "ch_01".."ch_05"
-	UserID         uint32 `json:"userId"`
+	UserID         string `json:"userId"`
 	DisplayName    string `json:"displayName"`
 	RoleTitle      string `json:"roleTitle,omitempty"`
 	UserLevel      uint8  `json:"userLevel"`    // 1 = Tổng đạo diễn, 2 = Trưởng ban, 3 = CTV
 	RolePriority   uint8  `json:"rolePriority"` // 3 = Tổng đạo diễn, 2 = Trưởng ban, 1 = CTV
 	GrantedAtMs    int64  `json:"grantedAtMs"`
 	LastAudioPktMs int64  `json:"lastAudioPktMs"`
+	UdpActive      bool   `json:"-"`
 }
 
 // FloorRequest là yêu cầu xin quyền nói từ thiết bị Android gửi lên Server.
 type FloorRequest struct {
-	ChannelID    uint8  `json:"channelId"`
-	ChannelCode  string `json:"channelCode,omitempty"`
-	UserID       uint32 `json:"userId"`
-	DisplayName  string `json:"displayName"`
-	RoleTitle    string `json:"roleTitle,omitempty"`
-	UserLevel    uint8  `json:"userLevel,omitempty"`    // Hỗ trợ gửi từ Android (1, 2, 3)
-	RolePriority uint8  `json:"rolePriority,omitempty"` // Hỗ trợ gửi từ Stress Test (3, 2, 1)
+	ChannelID    uint8          `json:"channelId"`
+	ChannelCode  string         `json:"channelCode,omitempty"`
+	UserID       FlexibleUserID `json:"userId"`
+	DisplayName  string         `json:"displayName"`
+	RoleTitle    string         `json:"roleTitle,omitempty"`
+	UserLevel    uint8          `json:"userLevel,omitempty"`    // Hỗ trợ gửi từ Android (1, 2, 3)
+	RolePriority uint8          `json:"rolePriority,omitempty"` // Hỗ trợ gửi từ Stress Test (3, 2, 1)
 }
 
-// FloorDecision là kết quả phán quyết của Server trả về và quảng bá qua WebSocket.
-// Bổ sung các trường mapping trực tiếp với ActiveCallScreen.kt & ChannelListScreen.kt trên Android.
+// FloorDecision là kết quả phán quyết của Server trả về và quảng bá.
 type FloorDecision struct {
 	Status             FloorDecisionStatus `json:"status"`
 	ChannelID          uint8               `json:"channelId"`
@@ -87,7 +111,7 @@ type FloorDecision struct {
 	IsDucked80         bool                `json:"isDucked80"`                   // true -> Hiển thị nhãn "HẠ ÂM 80%" (-12dB) trên các kênh phụ
 	DuckingDb          int                 `json:"duckingDb"`                    // -12 (dB) khi Tổng đạo diễn phát lệnh
 	ActiveHolder       *FloorHolder        `json:"activeHolder,omitempty"`
-	RevokedUserID      uint32              `json:"revokedUserId,omitempty"`      // ID của người vừa bị ngắt mic
+	RevokedUserID      string              `json:"revokedUserId,omitempty"`      // ID của người vừa bị ngắt mic
 	RevokedDisplayName string              `json:"revokedDisplayName,omitempty"` // Tên của người vừa bị cắt ngang
 	Reason             string              `json:"reason,omitempty"`
 	TimestampMs        int64               `json:"timestampMs"`
@@ -99,7 +123,7 @@ type ChannelFloorSlot struct {
 
 type FloorControlEngine struct {
 	slots             [33]ChannelFloorSlot
-	onFloorEvent      func(decision FloorDecision) // Callback đẩy thông báo WebSocket tức thì cho các máy
+	onFloorEvent      func(decision FloorDecision) // Callback đẩy thông báo tức thì cho các máy
 	TotalGrants       atomic.Uint64
 	TotalPreemptions  atomic.Uint64
 	TotalDenied       atomic.Uint64
@@ -113,9 +137,6 @@ func NewFloorControlEngine(onFloorEvent func(decision FloorDecision)) *FloorCont
 }
 
 // RequestFloor xử lý tranh chấp quyền nói bằng thuật toán Lock-Free Compare-And-Swap (CAS).
-// Nếu Tổng Đạo diễn (Cấp 1 / RolePriority = 3) bấm nói khi Cộng tác viên (Cấp 3 / RolePriority = 1)
-// hoặc Trưởng ban (Cấp 2 / RolePriority = 2) đang giữ mic, hàm này lập tức thu hồi mic của người cũ
-// (chuyển UI sang `CallCut`) và cấp quyền phát sóng cho Tổng Đạo diễn (`CallTalk`).
 func (fc *FloorControlEngine) RequestFloor(req FloorRequest) FloorDecision {
 	nowMs := time.Now().UnixMilli()
 	if req.ChannelID == 0 || req.ChannelID > 32 {
@@ -124,6 +145,10 @@ func (fc *FloorControlEngine) RequestFloor(req FloorRequest) FloorDecision {
 	channelCode := req.ChannelCode
 	if channelCode == "" {
 		channelCode = fmt.Sprintf("ch_0%d", req.ChannelID)
+	}
+	reqUserID := strings.TrimSpace(string(req.UserID))
+	if reqUserID == "" {
+		reqUserID = "anonymous"
 	}
 	userLevel, rolePriority := NormalizeRoleAndLevel(req.UserLevel, req.RolePriority)
 	req.UserLevel = userLevel
@@ -140,7 +165,7 @@ func (fc *FloorControlEngine) RequestFloor(req FloorRequest) FloorDecision {
 	for {
 		current := slot.holder.Load()
 
-		// Kiểm tra xem người giữ mic hiện tại đã bị quá hạn 60s hoặc đứt mạng 2,5s chưa
+		// Kiểm tra xem người giữ mic hiện tại đã bị quá hạn 60s (hoặc đứt luồng UDP > 2,5s) chưa
 		if current != nil && fc.isHolderExpired(current, nowMs) {
 			slot.holder.CompareAndSwap(current, nil)
 			current = nil
@@ -151,7 +176,7 @@ func (fc *FloorControlEngine) RequestFloor(req FloorRequest) FloorDecision {
 			next := &FloorHolder{
 				ChannelID:      req.ChannelID,
 				ChannelCode:    channelCode,
-				UserID:         req.UserID,
+				UserID:         reqUserID,
 				DisplayName:    req.DisplayName,
 				RoleTitle:      req.RoleTitle,
 				UserLevel:      req.UserLevel,
@@ -176,11 +201,11 @@ func (fc *FloorControlEngine) RequestFloor(req FloorRequest) FloorDecision {
 				fc.emitEvent(decision)
 				return decision
 			}
-			continue // Thử lại vòng lặp CAS nếu có luồng khác vừa tác động ở cùng nano-giây
+			continue
 		}
 
 		// TRƯỜNG HỢP 2: Chính người đang giữ mic gửi lại yêu cầu (Idempotent Keep-Alive)
-		if current.UserID == req.UserID {
+		if current.UserID == reqUserID {
 			updated := &FloorHolder{
 				ChannelID:      current.ChannelID,
 				ChannelCode:    current.ChannelCode,
@@ -191,6 +216,7 @@ func (fc *FloorControlEngine) RequestFloor(req FloorRequest) FloorDecision {
 				RolePriority:   current.RolePriority,
 				GrantedAtMs:    current.GrantedAtMs,
 				LastAudioPktMs: nowMs,
+				UdpActive:      current.UdpActive,
 			}
 			slot.holder.CompareAndSwap(current, updated)
 			return FloorDecision{
@@ -212,7 +238,7 @@ func (fc *FloorControlEngine) RequestFloor(req FloorRequest) FloorDecision {
 			directorHolder := &FloorHolder{
 				ChannelID:      req.ChannelID,
 				ChannelCode:    channelCode,
-				UserID:         req.UserID,
+				UserID:         reqUserID,
 				DisplayName:    req.DisplayName,
 				RoleTitle:      req.RoleTitle,
 				UserLevel:      req.UserLevel,
@@ -237,7 +263,6 @@ func (fc *FloorControlEngine) RequestFloor(req FloorRequest) FloorDecision {
 					Reason:             "DIRECTOR_PRIORITY_OVERRIDE",
 					TimestampMs:        nowMs,
 				}
-				// Phát sự kiện qua WebSocket để chuyển máy bị cắt sang trạng thái CallCut ("BỊ NGẮT LỜI") ngay lập tức
 				fc.emitEvent(decision)
 				return decision
 			}
@@ -262,10 +287,11 @@ func (fc *FloorControlEngine) RequestFloor(req FloorRequest) FloorDecision {
 }
 
 // ReleaseFloor giải phóng kênh khi người nói nhả nút PTT (chuyển các máy về CallIdle).
-func (fc *FloorControlEngine) ReleaseFloor(channelID uint8, userID uint32) bool {
+func (fc *FloorControlEngine) ReleaseFloor(channelID uint8, userID string) bool {
 	if channelID == 0 || channelID > 32 {
 		return false
 	}
+	userID = strings.TrimSpace(userID)
 	slot := &fc.slots[channelID]
 	current := slot.holder.Load()
 	if current == nil || current.UserID != userID {
@@ -288,15 +314,15 @@ func (fc *FloorControlEngine) ReleaseFloor(channelID uint8, userID uint32) bool 
 	return false
 }
 
-// ValidateAndTouchAudioPacket được gọi trên mỗi gói UDP âm thanh (50 gói/giây) để kiểm tra
-// người gửi có thực sự đang giữ quyền phát sóng hay đã bị Tổng Đạo diễn ngắt mic.
+// ValidateAndTouchAudioPacket được gọi trên mỗi gói UDP âm thanh (50 gói/giây).
 func (fc *FloorControlEngine) ValidateAndTouchAudioPacket(channelID uint8, senderID uint32) bool {
 	if channelID == 0 || channelID > 32 {
 		return false
 	}
+	senderStr := strconv.FormatUint(uint64(senderID), 10)
 	slot := &fc.slots[channelID]
 	current := slot.holder.Load()
-	if current == nil || current.UserID != senderID {
+	if current == nil || (current.UserID != senderStr && !strings.Contains(current.UserID, "_"+senderStr+"_")) {
 		return false
 	}
 
@@ -316,15 +342,19 @@ func (fc *FloorControlEngine) ValidateAndTouchAudioPacket(channelID uint8, sende
 		RolePriority:   current.RolePriority,
 		GrantedAtMs:    current.GrantedAtMs,
 		LastAudioPktMs: nowMs,
+		UdpActive:      true,
 	}
 	slot.holder.CompareAndSwap(current, updated)
 	return true
 }
 
-// TriggerDirectorEmergencyOverrideAllChannels cưỡng bức ngắt mic trên toàn bộ 5 kênh sự kiện
-// khi bấm nút Báo động Khẩn cấp trên EmergencyCallSelectScreen.kt.
-func (fc *FloorControlEngine) TriggerDirectorEmergencyOverrideAllChannels(directorUserID uint32, directorName string) []FloorDecision {
+// TriggerDirectorEmergencyOverrideAllChannels cưỡng bức ngắt mic trên toàn bộ 5 kênh sự kiện.
+func (fc *FloorControlEngine) TriggerDirectorEmergencyOverrideAllChannels(directorUserID string, directorName string) []FloorDecision {
 	nowMs := time.Now().UnixMilli()
+	directorUserID = strings.TrimSpace(directorUserID)
+	if directorUserID == "" {
+		directorUserID = "director_999"
+	}
 	decisions := make([]FloorDecision, 0, 5)
 
 	for chID := uint8(1); chID <= 5; chID++ {
@@ -344,7 +374,7 @@ func (fc *FloorControlEngine) TriggerDirectorEmergencyOverrideAllChannels(direct
 		}
 		slot.holder.Store(emergencyHolder)
 
-		var revokedID uint32
+		var revokedID string
 		var revokedName string
 		if prev != nil && prev.UserID != directorUserID {
 			revokedID = prev.UserID
@@ -372,7 +402,7 @@ func (fc *FloorControlEngine) TriggerDirectorEmergencyOverrideAllChannels(direct
 	return decisions
 }
 
-// RunWatchdogLoop tự động thu hồi mic nếu người nói giữ quá 60s hoặc mất kết nối UDP > 2,5s.
+// RunWatchdogLoop tự động thu hồi mic nếu người nói giữ quá 60s (hoặc mất luồng UDP đang chạy > 2,5s).
 func (fc *FloorControlEngine) RunWatchdogLoop(stopCh <-chan struct{}) {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
@@ -413,7 +443,7 @@ func (fc *FloorControlEngine) isHolderExpired(h *FloorHolder, nowMs int64) bool 
 	if nowMs-h.GrantedAtMs >= MaxSpeakDurationMs {
 		return true
 	}
-	if nowMs-h.LastAudioPktMs >= StaleUdpSilenceMs {
+	if h.UdpActive && nowMs-h.LastAudioPktMs >= StaleUdpSilenceMs {
 		return true
 	}
 	return false
@@ -427,6 +457,10 @@ func (fc *FloorControlEngine) emitEvent(d FloorDecision) {
 
 // HandleFloorRequestHTTP cung cấp REST API xin quyền nói: POST /api/v1/floor/request
 func (fc *FloorControlEngine) HandleFloorRequestHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	var req FloorRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -439,15 +473,19 @@ func (fc *FloorControlEngine) HandleFloorRequestHTTP(w http.ResponseWriter, r *h
 
 // HandleFloorReleaseHTTP cung cấp REST API nhả nút PTT: POST /api/v1/floor/release
 func (fc *FloorControlEngine) HandleFloorReleaseHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	var req struct {
-		ChannelID uint8  `json:"channelId"`
-		UserID    uint32 `json:"userId"`
+		ChannelID uint8          `json:"channelId"`
+		UserID    FlexibleUserID `json:"userId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	released := fc.ReleaseFloor(req.ChannelID, req.UserID)
+	released := fc.ReleaseFloor(req.ChannelID, string(req.UserID))
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"released":  released,
@@ -458,18 +496,23 @@ func (fc *FloorControlEngine) HandleFloorReleaseHTTP(w http.ResponseWriter, r *h
 
 // HandleEmergencyOverrideHTTP cung cấp REST API phát khẩn cấp toàn sự kiện: POST /api/v1/floor/emergency-override
 func (fc *FloorControlEngine) HandleEmergencyOverrideHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	var req struct {
-		UserID      uint32 `json:"userId"`
-		DisplayName string `json:"displayName"`
+		UserID      FlexibleUserID `json:"userId"`
+		DisplayName string         `json:"displayName"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	if req.UserID == 0 {
-		req.UserID = 999
+	uid := strings.TrimSpace(string(req.UserID))
+	if uid == "" {
+		uid = "director_999"
 	}
-	if req.DisplayName == "" {
+	if strings.TrimSpace(req.DisplayName) == "" {
 		req.DisplayName = "Tổng đạo diễn A"
 	}
-	decisions := fc.TriggerDirectorEmergencyOverrideAllChannels(req.UserID, req.DisplayName)
+	decisions := fc.TriggerDirectorEmergencyOverrideAllChannels(uid, req.DisplayName)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":    "EMERGENCY_OVERRIDE_ACTIVE",
