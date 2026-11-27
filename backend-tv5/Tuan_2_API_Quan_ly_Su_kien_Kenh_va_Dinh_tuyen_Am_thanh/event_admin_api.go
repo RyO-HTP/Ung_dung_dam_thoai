@@ -16,6 +16,13 @@ var (
 	restoreRateRecords = make(map[string][]time.Time)
 )
 
+// ResetRestoreRateLimit xóa bộ đếm giới hạn thử sai (dùng cho test để các test không ảnh hưởng nhau).
+func ResetRestoreRateLimit() {
+	restoreRateMu.Lock()
+	defer restoreRateMu.Unlock()
+	restoreRateRecords = make(map[string][]time.Time)
+}
+
 func checkRestoreRateLimit(r *http.Request) bool {
 	ip := r.Header.Get("X-Forwarded-For")
 	if ip == "" {

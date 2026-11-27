@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -20,6 +21,7 @@ import (
 var validUserIDRegex = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
 func buildTestServer() *httptest.Server {
+	week2routing.ResetRestoreRateLimit()
 	audioRouter := week2routing.NewChannelAudioRouter()
 	eventManager := week2routing.NewEventManager(audioRouter)
 	qrService := week3qr.NewQrRoleProvisioningService("0123456789abcdef0123456789abcdef", eventManager)
@@ -59,23 +61,9 @@ func TestQrRolesCompatibleWithAndroidRepo(t *testing.T) {
 	srv := buildTestServer()
 	defer srv.Close()
 
-	restoreBody, _ := json.Marshal(map[string]interface{}{
-		"adminCode":   "240826",
-		"displayName": "Tổng Đạo Diễn",
-	})
-	restoreResp, err := http.Post(srv.URL+"/api/v1/events/restore", "application/json", bytes.NewReader(restoreBody))
-	if err != nil {
-		t.Fatalf("restore lỗi: %v", err)
-	}
-	var restoreRes struct {
-		Session struct {
-			UserID string `json:"userId"`
-		} `json:"session"`
-	}
-	_ = json.NewDecoder(restoreResp.Body).Decode(&restoreRes)
-	restoreResp.Body.Close()
+	qrEventID, adminUserID, _ := mustCreateAdminEvent(t, srv, "qr-compat-2026")
 
-	resp, err := http.Get(srv.URL + "/api/v1/events/qr-roles?eventId=1&actorUserId=" + restoreRes.Session.UserID)
+	resp, err := http.Get(fmt.Sprintf("%s/api/v1/events/qr-roles?eventId=%d&actorUserId=%s", srv.URL, qrEventID, adminUserID))
 	if err != nil {
 		t.Fatalf("GET qr-roles lỗi: %v", err)
 	}
@@ -376,12 +364,16 @@ func TestFloorHubWebSocketAndSnapshot(t *testing.T) {
 
 func TestLiveCueRegistryAndGroupA7(t *testing.T) {
 	t.Setenv("DEMO_MODE", "true")
-	srv := buildTestServer()
+	srv, _, registry := createTestServerWithManager()
 	defer srv.Close()
 
-	// 1. Join pin as Level 3 (Volunteer)
+	// Hai sự kiện thật, mỗi sự kiện có Cấp 1 riêng
+	eventA, adminA, pinA := mustCreateAdminEvent(t, srv, "cue-admin-aaa")
+	eventB, _, _ := mustCreateAdminEvent(t, srv, "cue-admin-bbb")
+
+	// Cấp 3 vào sự kiện A bằng PIN (máy chủ luôn hạ về Cấp 3)
 	joinBody3, _ := json.Marshal(map[string]interface{}{
-		"pinCode":     "240826",
+		"pinCode":     pinA,
 		"displayName": "Cộng tác viên B",
 		"userLevel":   3,
 	})
@@ -390,78 +382,88 @@ func TestLiveCueRegistryAndGroupA7(t *testing.T) {
 		t.Fatalf("join-pin lỗi: %v", err)
 	}
 	var res3 struct {
-		UserID string `json:"userId"`
-	}
-	_ = json.NewDecoder(resp3.Body).Decode(&res3)
-	resp3.Body.Close()
-
-	// 2. Restore event to get Level 1 session (Director)
-	restoreBody1, _ := json.Marshal(map[string]interface{}{
-		"adminCode":   "240826",
-		"displayName": "Tổng Đạo Diễn A",
-	})
-	resp1, err := http.Post(srv.URL+"/api/v1/events/restore", "application/json", bytes.NewReader(restoreBody1))
-	if err != nil {
-		t.Fatalf("restore lỗi: %v", err)
-	}
-	var res1 struct {
 		Session struct {
 			UserID string `json:"userId"`
 		} `json:"session"`
 	}
-	_ = json.NewDecoder(resp1.Body).Decode(&res1)
-	resp1.Body.Close()
-	adminUserID1 := res1.Session.UserID
-
-	// 3. Level 3 tries to fire cue via HTTP -> 403 FORBIDDEN_NOT_ADMIN
-	fireBody3, _ := json.Marshal(map[string]interface{}{
-		"userId":  res3.UserID,
-		"eventId": 1,
-		"title":   "Tiết mục mới",
-		"message": "Nội dung mới",
-	})
-	fireResp3, err := http.Post(srv.URL+"/api/v1/live-cue/fire", "application/json", bytes.NewReader(fireBody3))
-	if err != nil {
-		t.Fatalf("POST /api/v1/live-cue/fire lỗi: %v", err)
-	}
-	defer fireResp3.Body.Close()
-	if fireResp3.StatusCode != http.StatusForbidden {
-		t.Fatalf("mong đợi 403 khi Level 3 gọi fire cue, nhận %d", fireResp3.StatusCode)
+	_ = json.NewDecoder(resp3.Body).Decode(&res3)
+	resp3.Body.Close()
+	if res3.Session.UserID == "" {
+		t.Fatalf("join-pin không trả session.userId")
 	}
 
-	// 4. Level 1 fires cue (empty cueId -> creates new cue) via HTTP -> 200 OK
-	fireBody1, _ := json.Marshal(map[string]interface{}{
-		"userId":  adminUserID1,
-		"eventId": 1,
-		"title":   "Tiết mục đặc biệt A7",
-		"message": "Kỹ thuật: kiểm tra âm thanh",
-	})
-	fireResp1, err := http.Post(srv.URL+"/api/v1/live-cue/fire", "application/json", bytes.NewReader(fireBody1))
-	if err != nil {
-		t.Fatalf("POST /api/v1/live-cue/fire lỗi: %v", err)
+	fire := func(userID string, eventID int64, title string) (*http.Response, error) {
+		body := map[string]interface{}{"eventId": eventID, "title": title, "message": "Nội dung"}
+		if userID != "" {
+			body["userId"] = userID
+		}
+		b, _ := json.Marshal(body)
+		return http.Post(srv.URL+"/api/v1/live-cue/fire", "application/json", bytes.NewReader(b))
 	}
-	defer fireResp1.Body.Close()
-	if fireResp1.StatusCode != http.StatusOK {
-		t.Fatalf("mong đợi 200 khi Level 1 gọi fire cue, nhận %d", fireResp1.StatusCode)
+
+	// 1. Cấp 3 gửi cue -> 403
+	r3, err := fire(res3.Session.UserID, eventA, "Tiết mục của Cấp 3")
+	if err != nil {
+		t.Fatalf("fire lỗi: %v", err)
+	}
+	r3.Body.Close()
+	if r3.StatusCode != http.StatusForbidden {
+		t.Fatalf("mong đợi 403 khi Cấp 3 gửi cue, nhận %d", r3.StatusCode)
+	}
+
+	// 2. Không có userId -> 403 (trước đây bị bỏ qua kiểm tra quyền)
+	rAnon, err := fire("", eventA, "Tiết mục ẩn danh")
+	if err != nil {
+		t.Fatalf("fire lỗi: %v", err)
+	}
+	rAnon.Body.Close()
+	if rAnon.StatusCode != http.StatusForbidden {
+		t.Fatalf("mong đợi 403 khi gửi cue không có userId, nhận %d", rAnon.StatusCode)
+	}
+
+	// 3. Sự kiện mới: hub rỗng, không có cue nào
+	if snap := registry.GetHub(eventA).Snapshot(); snap.ActiveCue != nil || snap.Title != "" {
+		t.Fatalf("hub sự kiện mới phải rỗng, nhận title=%q activeCue=%v", snap.Title, snap.ActiveCue)
+	}
+
+	// 4. Cấp 1 của A gửi cue -> 200 và có trong hub A
+	r1, err := fire(adminA, eventA, "Tiết mục đặc biệt A7")
+	if err != nil {
+		t.Fatalf("fire lỗi: %v", err)
+	}
+	defer r1.Body.Close()
+	if r1.StatusCode != http.StatusOK {
+		t.Fatalf("mong đợi 200 khi Cấp 1 gửi cue, nhận %d", r1.StatusCode)
 	}
 	var snap struct {
-		Type      string `json:"type"`
 		ActiveCue struct {
-			Title   string `json:"title"`
-			Message string `json:"message"`
+			Title string `json:"title"`
 		} `json:"activeCue"`
 	}
-	if err := json.NewDecoder(fireResp1.Body).Decode(&snap); err != nil {
+	if err := json.NewDecoder(r1.Body).Decode(&snap); err != nil {
 		t.Fatalf("decode snapshot lỗi: %v", err)
 	}
 	if snap.ActiveCue.Title != "Tiết mục đặc biệt A7" {
 		t.Fatalf("mong đợi title 'Tiết mục đặc biệt A7', nhận %q", snap.ActiveCue.Title)
 	}
 
-	// 5. Test empty hub initialization
-	emptyHub := week5livecue.NewEmptyLiveCueBannerHub(99)
-	emptySnap := emptyHub.FireOrCreateModelCue("", "Đạo diễn", "", "")
-	if emptySnap.Title != "" || emptySnap.ActiveCue != nil {
-		t.Fatalf("empty hub snapshot phải rỗng, nhận title=%q activeCue=%v", emptySnap.Title, emptySnap.ActiveCue)
+	// 5. Cue của sự kiện A tuyệt đối không xuất hiện ở sự kiện B
+	if snapB := registry.GetHub(eventB).Snapshot(); snapB.ActiveCue != nil || snapB.Title != "" {
+		t.Fatalf("cue của sự kiện A bị lẫn sang sự kiện B: title=%q", snapB.Title)
+	}
+
+	// 6. Cấp 1 của A không được gửi cue vào sự kiện B
+	rCross, err := fire(adminA, eventB, "Gửi chéo sự kiện")
+	if err != nil {
+		t.Fatalf("fire lỗi: %v", err)
+	}
+	rCross.Body.Close()
+	if rCross.StatusCode != http.StatusForbidden {
+		t.Fatalf("mong đợi 403 khi gửi cue chéo sự kiện, nhận %d", rCross.StatusCode)
+	}
+
+	// 7. Hub rỗng tạo trực tiếp: snapshot không có cue
+	if es := week5livecue.NewEmptyLiveCueBannerHub(99).Snapshot(); es.Title != "" || es.ActiveCue != nil {
+		t.Fatalf("hub rỗng phải không có cue, nhận title=%q activeCue=%v", es.Title, es.ActiveCue)
 	}
 }

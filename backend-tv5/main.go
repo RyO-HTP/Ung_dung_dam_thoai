@@ -19,6 +19,14 @@ import (
 // Backend Go phụ trách: Sự kiện/PIN/Kênh, QR Phân vai, Floor Control, Live Cue.
 // =============================================================================
 
+type ServerDeps struct {
+	EventManager    *week2routing.EventManager
+	QrService       *week3qr.QrRoleProvisioningService
+	FloorEngine     *week4floor.FloorControlEngine
+	FloorHub        *week4floor.FloorHub
+	LiveCueRegistry *week5livecue.LiveCueRegistry
+}
+
 func main() {
 	httpAddr := resolveHTTPAddr()
 	udpAddr := getEnv("UDP_RELAY_ADDR", ":50000")
@@ -51,19 +59,19 @@ func main() {
 		}
 	}()
 
-	mux := newHTTPMux(eventManager, qrService, floorEngine, floorHub, liveCueRegistry)
+	mux := buildMux(ServerDeps{
+		EventManager:    eventManager,
+		QrService:       qrService,
+		FloorEngine:     floorEngine,
+		FloorHub:        floorHub,
+		LiveCueRegistry: liveCueRegistry,
+	})
 
 	log.Printf("[DamThoai Server - Người 5] Đang chạy HTTP/WS tại %s và UDP Audio tại %s", httpAddr, udpAddr)
 	log.Fatal(http.ListenAndServe(httpAddr, mux))
 }
 
-func newHTTPMux(
-	eventManager *week2routing.EventManager,
-	qrService *week3qr.QrRoleProvisioningService,
-	floorEngine *week4floor.FloorControlEngine,
-	floorHub *week4floor.FloorHub,
-	liveCueRegistry *week5livecue.LiveCueRegistry,
-) *http.ServeMux {
+func buildMux(deps ServerDeps) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Health check cho Render / Railway
@@ -88,26 +96,26 @@ func newHTTPMux(
 	})
 
 	// Endpoints Tuần 2 (Sự kiện, PIN, Kênh & Admin)
-	mux.HandleFunc("/api/v1/events", eventManager.HandleCreateEvent)
-	mux.HandleFunc("/api/v1/events/restore", eventManager.HandleRestoreEvent)
-	mux.HandleFunc("/api/v1/events/qr-roles", qrService.HandleGenerateDepartmentQrCodes)
+	mux.HandleFunc("/api/v1/events", deps.EventManager.HandleCreateEvent)
+	mux.HandleFunc("/api/v1/events/restore", deps.EventManager.HandleRestoreEvent)
+	mux.HandleFunc("/api/v1/events/qr-roles", deps.QrService.HandleGenerateDepartmentQrCodes)
 	mux.HandleFunc("/api/v1/events/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		trimmed := strings.TrimPrefix(path, "/api/v1/events/")
 		parts := strings.Split(strings.Trim(trimmed, "/"), "/")
 
 		if trimmed == "restore" {
-			eventManager.HandleRestoreEvent(w, r)
+			deps.EventManager.HandleRestoreEvent(w, r)
 			return
 		}
 		if trimmed == "qr-roles" {
-			qrService.HandleGenerateDepartmentQrCodes(w, r)
+			deps.QrService.HandleGenerateDepartmentQrCodes(w, r)
 			return
 		}
 
 		if len(parts) == 1 && parts[0] != "" {
 			if r.Method == http.MethodGet {
-				eventManager.HandleGetEvent(w, r)
+				deps.EventManager.HandleGetEvent(w, r)
 				return
 			}
 		}
@@ -116,53 +124,69 @@ func newHTTPMux(
 			sub := parts[1]
 			if sub == "channels" {
 				if r.Method == http.MethodPost && len(parts) == 2 {
-					eventManager.HandleAddChannel(w, r)
+					deps.EventManager.HandleAddChannel(w, r)
 					return
 				}
 				if len(parts) >= 3 && (r.Method == http.MethodPatch || r.Method == http.MethodPut) {
-					eventManager.HandleUpdateChannel(w, r)
+					deps.EventManager.HandleUpdateChannel(w, r)
 					return
 				}
 				if len(parts) >= 3 && r.Method == http.MethodDelete {
-					eventManager.HandleDeleteChannel(w, r)
+					deps.EventManager.HandleDeleteChannel(w, r)
 					return
 				}
 			}
 			if sub == "members" {
 				if r.Method == http.MethodGet && len(parts) == 2 {
-					eventManager.HandleListMembers(w, r)
+					deps.EventManager.HandleListMembers(w, r)
 					return
 				}
 				if len(parts) >= 3 && (r.Method == http.MethodPatch || r.Method == http.MethodPut) {
-					eventManager.HandleUpdateMember(w, r)
+					deps.EventManager.HandleUpdateMember(w, r)
 					return
 				}
 				if len(parts) >= 3 && r.Method == http.MethodDelete {
-					eventManager.HandleDeleteMember(w, r)
+					deps.EventManager.HandleDeleteMember(w, r)
 					return
 				}
 			}
 		}
 		http.NotFound(w, r)
 	})
-	mux.HandleFunc("/api/v1/auth/join-pin", eventManager.HandleJoinByPin)
-	mux.HandleFunc("/api/v1/users/switch-channel", eventManager.HandleSwitchChannel)
-	mux.HandleFunc("/api/v1/users/leave-channel", eventManager.HandleLeaveChannel)
+	mux.HandleFunc("/api/v1/auth/join-pin", deps.EventManager.HandleJoinByPin)
+	mux.HandleFunc("/api/v1/users/switch-channel", deps.EventManager.HandleSwitchChannel)
+	mux.HandleFunc("/api/v1/users/leave-channel", deps.EventManager.HandleLeaveChannel)
 
 	// Endpoints Tuần 3 (QR Role Provisioning)
-	mux.HandleFunc("/api/v1/auth/join-by-qr", qrService.HandleJoinByDepartmentQr)
+	mux.HandleFunc("/api/v1/auth/join-by-qr", deps.QrService.HandleJoinByDepartmentQr)
 
 	// Endpoints Tuần 4 (Floor Control CAS & Priority Override)
-	mux.HandleFunc("/api/v1/floor/request", floorEngine.HandleFloorRequestHTTP)
-	mux.HandleFunc("/api/v1/floor/release", floorEngine.HandleFloorReleaseHTTP)
-	mux.HandleFunc("/api/v1/floor/emergency-override", floorEngine.HandleEmergencyOverrideHTTP)
-	mux.HandleFunc("/ws/floor", floorHub.ServeFloorWS)
+	mux.HandleFunc("/api/v1/floor/request", deps.FloorEngine.HandleFloorRequestHTTP)
+	mux.HandleFunc("/api/v1/floor/release", deps.FloorEngine.HandleFloorReleaseHTTP)
+	mux.HandleFunc("/api/v1/floor/emergency-override", deps.FloorEngine.HandleEmergencyOverrideHTTP)
+	mux.HandleFunc("/ws/floor", deps.FloorHub.ServeFloorWS)
 
 	// Endpoints Tuần 5 (Live Cue Banner WebSocket & REST)
-	mux.HandleFunc("/ws/live-cue", liveCueRegistry.ServeLiveCueWS)
-	mux.HandleFunc("/api/v1/live-cue/fire", liveCueRegistry.HandleFireCueHTTP)
+	mux.HandleFunc("/ws/live-cue", deps.LiveCueRegistry.ServeLiveCueWS)
+	mux.HandleFunc("/api/v1/live-cue/fire", deps.LiveCueRegistry.HandleFireCueHTTP)
 
 	return mux
+}
+
+func newHTTPMux(
+	eventManager *week2routing.EventManager,
+	qrService *week3qr.QrRoleProvisioningService,
+	floorEngine *week4floor.FloorControlEngine,
+	floorHub *week4floor.FloorHub,
+	liveCueRegistry *week5livecue.LiveCueRegistry,
+) *http.ServeMux {
+	return buildMux(ServerDeps{
+		EventManager:    eventManager,
+		QrService:       qrService,
+		FloorEngine:     floorEngine,
+		FloorHub:        floorHub,
+		LiveCueRegistry: liveCueRegistry,
+	})
 }
 
 // resolveHTTPAddr ưu tiên HTTP_ADDR, sau đó đến biến PORT của Render/Railway, mặc định ":8080".

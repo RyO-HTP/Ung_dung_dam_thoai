@@ -417,6 +417,13 @@ func (h *LiveCueBannerHub) buildSnapshotLocked(msgType string) LiveCueBannerPayl
 	}
 }
 
+// Snapshot trả về trạng thái hiện tại của hub mà không thay đổi gì (hub mới: không có cue nào).
+func (h *LiveCueBannerHub) Snapshot() LiveCueBannerPayload {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.buildSnapshotLocked("LIVE_CUE_SYNC")
+}
+
 func (h *LiveCueBannerHub) broadcastPayload(payload LiveCueBannerPayload) {
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -624,7 +631,13 @@ func (reg *LiveCueRegistry) HandleFireCueHTTP(w http.ResponseWriter, r *http.Req
 		actorName = "Đạo diễn"
 	}
 
-	if reg.resolver != nil && userId != "" {
+	if reg.resolver != nil {
+		if userId == "" {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "USER_NOT_IN_EVENT", "message": "Missing userId"})
+			return
+		}
 		id, ok := reg.resolver.Resolve(userId)
 		if !ok {
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -652,12 +665,8 @@ func (reg *LiveCueRegistry) HandleFireCueHTTP(w http.ResponseWriter, r *http.Req
 		} else {
 			actorName = id.UserID
 		}
-	} else if userId == "" && eventId == 0 {
+	} else if eventId == 0 {
 		eventId = 1
-	} else if userId != "" && reg.resolver == nil {
-		if eventId == 0 {
-			eventId = 1
-		}
 	}
 
 	hub := reg.GetHub(eventId)

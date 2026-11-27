@@ -17,7 +17,38 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// mustCreateAdminEvent tạo sự kiện thật kèm adminCode và trả về eventId, userId Cấp 1 của người tạo, PIN.
+// (Các sự kiện mẫu 240826/889900/482910 không có adminCode nên không thể restore.)
+func mustCreateAdminEvent(t *testing.T, srv *httptest.Server, adminCode string) (int64, string, string) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]interface{}{
+		"eventName":   "Sự kiện thử " + adminCode,
+		"adminCode":   adminCode,
+		"displayName": "Tổng đạo diễn thử",
+	})
+	resp, err := http.Post(srv.URL+"/api/v1/events", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("tạo sự kiện lỗi: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("mong đợi 201 khi tạo sự kiện, nhận %d", resp.StatusCode)
+	}
+	var res struct {
+		EventID int64  `json:"eventId"`
+		PinCode string `json:"pinCode"`
+		Session struct {
+			UserID string `json:"userId"`
+		} `json:"session"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil || res.Session.UserID == "" {
+		t.Fatalf("phản hồi tạo sự kiện thiếu session.userId (err=%v)", err)
+	}
+	return res.EventID, res.Session.UserID, res.PinCode
+}
+
 func createTestServer() *httptest.Server {
+	week2routing.ResetRestoreRateLimit()
 	audioRouter := week2routing.NewChannelAudioRouter()
 	eventManager := week2routing.NewEventManager(audioRouter)
 	qrService := week3qr.NewQrRoleProvisioningService("0123456789abcdef0123456789abcdef", eventManager)
@@ -31,6 +62,7 @@ func createTestServer() *httptest.Server {
 }
 
 func createTestServerWithManager() (*httptest.Server, *week2routing.EventManager, *week5livecue.LiveCueRegistry) {
+	week2routing.ResetRestoreRateLimit()
 	audioRouter := week2routing.NewChannelAudioRouter()
 	eventManager := week2routing.NewEventManager(audioRouter)
 	qrService := week3qr.NewQrRoleProvisioningService("0123456789abcdef0123456789abcdef", eventManager)
@@ -564,26 +596,11 @@ func TestQRComprehensive(t *testing.T) {
 	srv := createTestServer()
 	defer srv.Close()
 
-	// Obtain valid Level 1 admin user for event 1 via restore
-	rBody, _ := json.Marshal(map[string]interface{}{
-		"adminCode":   "240826",
-		"displayName": "Admin QR",
-	})
-	rResp, err := http.Post(srv.URL+"/api/v1/events/restore", "application/json", bytes.NewReader(rBody))
-	if err != nil {
-		t.Fatalf("restore lỗi: %v", err)
-	}
-	var rRes struct {
-		Session struct {
-			UserID string `json:"userId"`
-		} `json:"session"`
-	}
-	_ = json.NewDecoder(rResp.Body).Decode(&rRes)
-	rResp.Body.Close()
-	adminQRUserID := rRes.Session.UserID
+	// Tạo sự kiện thật có adminCode -> nhận phiên Cấp 1 của người tạo
+	qrEventID, adminQRUserID, _ := mustCreateAdminEvent(t, srv, "qr-admin-2026")
 
-	// GET qr-roles -> valid cards
-	rolesResp, err := http.Get(srv.URL + "/api/v1/events/qr-roles?eventId=1&actorUserId=" + adminQRUserID)
+	// GET qr-roles -> thẻ dùng đúng eventId và PIN thật
+	rolesResp, err := http.Get(fmt.Sprintf("%s/api/v1/events/qr-roles?eventId=%d&actorUserId=%s", srv.URL, qrEventID, adminQRUserID))
 	if err != nil {
 		t.Fatalf("GET qr-roles lỗi: %v", err)
 	}

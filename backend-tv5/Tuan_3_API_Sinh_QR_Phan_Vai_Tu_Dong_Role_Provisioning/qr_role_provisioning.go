@@ -281,6 +281,10 @@ func (s *QrRoleProvisioningService) HandleGenerateDepartmentQrCodes(w http.Respo
 
 	cards := make([]DepartmentQrCard, 0, len(StandardDepartmentProfiles))
 	for _, prof := range StandardDepartmentProfiles {
+		// Không cho người cấp thấp sinh thẻ QR có quyền cao hơn chính mình (chặn leo thang đặc quyền).
+		if prof.UserLevel < actor.UserLevel {
+			continue
+		}
 		primaryChID := prof.PrimaryChannelID
 		primaryChCode := prof.PrimaryChannelCode
 		if chInfo, ok := ev.Channels[primaryChID]; ok {
