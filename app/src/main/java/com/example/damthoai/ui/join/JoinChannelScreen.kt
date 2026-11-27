@@ -230,7 +230,7 @@ private fun JoinChannelScreenContent(
                                 onJoinError()
                             } else {
                                 scope.launch {
-                                    val res = RemoteEventRepository.joinByPin(context, pin, "Thành viên", "Cộng tác viên", 3, 2)
+                                    val res = RemoteEventRepository.joinByPin(context, pin, "Thành viên", "Cộng tác viên", 2)
                                     if (res.isSuccess) {
                                         onSuccessJoin()
                                     } else {

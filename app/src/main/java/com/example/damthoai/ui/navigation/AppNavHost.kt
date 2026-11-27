@@ -91,6 +91,15 @@ fun AppNavHost(
         }
     }
 
+    LaunchedEffect(navController) {
+        RemoteEventRepository.removedFromEventFlow.collect {
+            navController.navigate(AppRoute.RemovedFromEvent.route) {
+                popUpTo(navController.graph.findStartDestination().id) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = startDestination,

@@ -5,21 +5,26 @@ import com.example.damthoai.data.model.Channel
 import com.example.damthoai.data.model.Event
 import com.example.damthoai.data.model.Member
 import com.example.damthoai.data.model.MemberLevel
-import com.google.gson.JsonElement
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 interface EventRepository {
     val currentEvent: StateFlow<Event?>
     val currentMember: StateFlow<Member?>
+    val removedFromEventFlow: SharedFlow<Unit>
 
-    suspend fun createEvent(eventName: String, description: String = "", pinCode: String = "", adminCode: String = ""): Result<Event>
-    suspend fun restoreEvent(adminCode: String, displayName: String): Result<Event>
-    suspend fun joinByPin(context: Context, pinCode: String, displayName: String, roleTitle: String, userLevel: Int, preferredChannel: Int): Result<Event>
+    suspend fun createEvent(eventName: String, description: String = "", pinCode: String = "", adminCode: String = "", displayName: String = "Tổng Đạo Diễn", roleTitle: String = "Tổng đạo diễn"): Result<Event>
+    suspend fun restoreEvent(adminCode: String, displayName: String, roleTitle: String = "Tổng đạo diễn"): Result<Event>
+    suspend fun joinByPin(context: Context, pinCode: String, displayName: String, roleTitle: String, preferredChannel: Int): Result<Event>
     suspend fun joinByQr(context: Context, qrToken: String, displayName: String): Result<Event>
+    suspend fun refreshEvent(): Result<Event>
     suspend fun switchChannel(primaryTxChannel: Int, listeningChannels: List<Int>): Result<Unit>
     suspend fun leaveChannel(channelId: Int): Result<Unit>
     suspend fun addChannel(name: String): Result<Channel>
@@ -31,17 +36,6 @@ interface EventRepository {
     fun logout(context: Context)
 }
 
-private fun parseListeningChannels(el: JsonElement?): List<Int>? {
-    if (el == null || el.isJsonNull) return null
-    return when {
-        el.isJsonArray -> el.asJsonArray.map { it.asInt }
-        el.isJsonPrimitive -> android.util.Base64
-            .decode(el.asString, android.util.Base64.DEFAULT)
-            .map { it.toInt() }
-        else -> null
-    }
-}
-
 object RemoteEventRepository : EventRepository {
     private var appContext: Context? = null
 
@@ -50,6 +44,9 @@ object RemoteEventRepository : EventRepository {
 
     private val _currentMember = MutableStateFlow<Member?>(null)
     override val currentMember: StateFlow<Member?> = _currentMember.asStateFlow()
+
+    private val _removedFromEventFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    override val removedFromEventFlow: SharedFlow<Unit> = _removedFromEventFlow.asSharedFlow()
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -60,6 +57,8 @@ object RemoteEventRepository : EventRepository {
                 id = session.eventId.toString(),
                 name = session.eventName,
                 pinCode = session.pinCode,
+                adminCode = session.adminCode,
+                channels = emptyList(),
                 members = listOf(
                     Member(
                         id = session.userId,
@@ -70,93 +69,174 @@ object RemoteEventRepository : EventRepository {
                             1 -> MemberLevel.LEVEL_1
                             2 -> MemberLevel.LEVEL_2
                             else -> MemberLevel.LEVEL_3
-                        }
+                        },
+                        isOnline = true
                     )
                 ),
                 isActive = true
             )
             _currentEvent.value = event
             _currentMember.value = event.members.firstOrNull()
+            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                refreshEvent()
+            }
         }
     }
 
-    override suspend fun createEvent(eventName: String, description: String, pinCode: String, adminCode: String): Result<Event> = withContext(Dispatchers.IO) {
+    private fun checkApiError(result: Result<*>, context: Context?): Boolean {
+        if (result.isFailure) {
+            val err = result.exceptionOrNull()
+            if (err is ApiException && (err.httpCode == 403 || err.httpCode == 404)) {
+                context?.let { logout(it) }
+                _removedFromEventFlow.tryEmit(Unit)
+                return true
+            }
+        }
+        return false
+    }
+
+    override suspend fun createEvent(
+        eventName: String,
+        description: String,
+        pinCode: String,
+        adminCode: String,
+        displayName: String,
+        roleTitle: String
+    ): Result<Event> = withContext(Dispatchers.IO) {
         val body = mapOf(
             "eventName" to eventName,
             "description" to description,
             "pinCode" to pinCode,
-            "adminCode" to adminCode
+            "adminCode" to adminCode,
+            "displayName" to displayName,
+            "roleTitle" to roleTitle
         )
-        val result = ApiClient.post<EventInfo>("/api/v1/events", body)
-        result.map { eventInfo ->
-            eventInfo.toDomain()
+        val result = ApiClient.post<CreateEventResponseDto>("/api/v1/events", body)
+        if (result.isFailure) {
+            checkApiError(result, appContext)
+            return@withContext Result.failure(result.exceptionOrNull() ?: Exception("Lỗi tạo sự kiện"))
         }
+        val dto = result.getOrNull() ?: return@withContext Result.failure(Exception("Phản hồi rỗng từ máy chủ"))
+        val sessionDto = dto.session ?: return@withContext Result.failure(Exception("Phản hồi tạo sự kiện thiếu session"))
+
+        val member = sessionDto.toMember()
+        val sessionData = EventSession.SessionData(
+            eventId = dto.eventId,
+            eventName = dto.eventName,
+            pinCode = dto.pinCode,
+            userId = sessionDto.resolvedUserId,
+            userCode = sessionDto.userCode ?: sessionDto.resolvedUserId,
+            displayName = member.name,
+            roleTitle = member.roleTitle,
+            level = member.level.code,
+            priority = sessionDto.rolePriority,
+            primaryChannelId = sessionDto.primaryChannelId ?: "ch_01",
+            listeningChannels = listOf(1),
+            signalingUrl = sessionDto.signalingUrl,
+            signalingToken = sessionDto.signalingToken,
+            adminCode = dto.adminCode
+        )
+        appContext?.let { EventSession.saveSession(it, sessionData) }
+
+        val event = Event(
+            id = dto.eventId.toString(),
+            name = dto.eventName,
+            pinCode = dto.pinCode,
+            adminCode = dto.adminCode,
+            channels = dto.channelList?.map { it.toDomain() } ?: emptyList(),
+            members = listOf(member),
+            isActive = true
+        )
+        _currentEvent.value = event
+        _currentMember.value = member
+        Result.success(event)
     }
 
-    override suspend fun restoreEvent(adminCode: String, displayName: String): Result<Event> = withContext(Dispatchers.IO) {
-        val body = mapOf("adminCode" to adminCode, "displayName" to displayName)
+    override suspend fun restoreEvent(adminCode: String, displayName: String, roleTitle: String): Result<Event> = withContext(Dispatchers.IO) {
+        val body = mapOf(
+            "adminCode" to adminCode,
+            "displayName" to displayName,
+            "roleTitle" to roleTitle
+        )
         val result = ApiClient.post<JoinResponseDto>("/api/v1/events/restore", body)
-        result.map { dto ->
-            val event = dto.event.toDomain()
-            val member = dto.session.toMember()
-            val session = EventSession.SessionData(
-                eventId = dto.event.eventId,
-                eventName = dto.event.eventName,
-                pinCode = dto.event.pinCode,
-                userId = dto.session.resolvedUserId,
-                userCode = dto.session.userCode ?: dto.session.resolvedUserId,
-                displayName = member.name,
-                roleTitle = member.roleTitle,
-                level = member.level.code,
-                priority = 4 - member.level.code,
-                primaryChannelId = dto.session.primaryChannelId ?: "ch_01",
-                listeningChannels = parseListeningChannels(dto.session.listeningChannels) ?: listOf(1),
-                signalingUrl = dto.session.signalingUrl,
-                signalingToken = dto.session.signalingToken
-            )
-            appContext?.let { EventSession.saveSession(it, session) }
-            val updatedEvent = event.copy(members = listOf(member))
-            _currentEvent.value = updatedEvent
-            _currentMember.value = member
-            updatedEvent
+        if (result.isFailure) {
+            checkApiError(result, appContext)
+            return@withContext Result.failure(result.exceptionOrNull() ?: Exception("Lỗi khôi phục sự kiện"))
         }
+        val dto = result.getOrNull() ?: return@withContext Result.failure(Exception("Phản hồi rỗng"))
+        val eventInfo = dto.event ?: return@withContext Result.failure(Exception("Thiếu thông tin sự kiện"))
+        val sessionDto = dto.session ?: return@withContext Result.failure(Exception("Thiếu session"))
+
+        val member = sessionDto.toMember()
+        val sessionData = EventSession.SessionData(
+            eventId = eventInfo.eventId,
+            eventName = eventInfo.eventName,
+            pinCode = eventInfo.pinCode,
+            userId = sessionDto.resolvedUserId,
+            userCode = sessionDto.userCode ?: sessionDto.resolvedUserId,
+            displayName = member.name,
+            roleTitle = member.roleTitle,
+            level = member.level.code,
+            priority = sessionDto.rolePriority,
+            primaryChannelId = sessionDto.primaryChannelId ?: "ch_01",
+            listeningChannels = listOf(1),
+            signalingUrl = sessionDto.signalingUrl,
+            signalingToken = sessionDto.signalingToken,
+            adminCode = adminCode
+        )
+        appContext?.let { EventSession.saveSession(it, sessionData) }
+
+        val event = eventInfo.toDomain().copy(members = listOf(member))
+        _currentEvent.value = event
+        _currentMember.value = member
+        Result.success(event)
     }
 
-    override suspend fun joinByPin(context: Context, pinCode: String, displayName: String, roleTitle: String, userLevel: Int, preferredChannel: Int): Result<Event> = withContext(Dispatchers.IO) {
-        val rolePriority = 4 - userLevel
+    override suspend fun joinByPin(
+        context: Context,
+        pinCode: String,
+        displayName: String,
+        roleTitle: String,
+        preferredChannel: Int
+    ): Result<Event> = withContext(Dispatchers.IO) {
         val body = mapOf(
             "pinCode" to pinCode,
             "displayName" to displayName,
             "roleTitle" to roleTitle,
-            "userLevel" to userLevel,
-            "rolePriority" to rolePriority,
             "preferredChannel" to preferredChannel
         )
         val result = ApiClient.post<JoinResponseDto>("/api/v1/auth/join-pin", body)
-        result.map { dto ->
-            val event = dto.event.toDomain()
-            val member = dto.session.toMember()
-            val sessionData = EventSession.SessionData(
-                eventId = dto.event.eventId,
-                eventName = dto.event.eventName,
-                pinCode = dto.event.pinCode,
-                userId = dto.session.resolvedUserId,
-                userCode = dto.session.userCode ?: dto.session.resolvedUserId,
-                displayName = member.name,
-                roleTitle = member.roleTitle,
-                level = userLevel,
-                priority = rolePriority,
-                primaryChannelId = dto.session.primaryChannelId ?: "ch_0$preferredChannel",
-                listeningChannels = parseListeningChannels(dto.session.listeningChannels) ?: listOf(1, preferredChannel),
-                signalingUrl = dto.session.signalingUrl,
-                signalingToken = dto.session.signalingToken
-            )
-            EventSession.saveSession(context, sessionData)
-            val updatedEvent = event.copy(members = listOf(member))
-            _currentEvent.value = updatedEvent
-            _currentMember.value = member
-            updatedEvent
+        if (result.isFailure) {
+            checkApiError(result, context)
+            return@withContext Result.failure(result.exceptionOrNull() ?: Exception("Lỗi tham gia bằng PIN"))
         }
+        val dto = result.getOrNull() ?: return@withContext Result.failure(Exception("Phản hồi rỗng"))
+        val eventInfo = dto.event ?: return@withContext Result.failure(Exception("Thiếu thông tin sự kiện"))
+        val sessionDto = dto.session ?: return@withContext Result.failure(Exception("Thiếu session"))
+
+        val member = sessionDto.toMember()
+        val sessionData = EventSession.SessionData(
+            eventId = eventInfo.eventId,
+            eventName = eventInfo.eventName,
+            pinCode = eventInfo.pinCode,
+            userId = sessionDto.resolvedUserId,
+            userCode = sessionDto.userCode ?: sessionDto.resolvedUserId,
+            displayName = member.name,
+            roleTitle = member.roleTitle,
+            level = member.level.code,
+            priority = sessionDto.rolePriority,
+            primaryChannelId = sessionDto.primaryChannelId ?: "ch_0$preferredChannel",
+            listeningChannels = listOf(1, preferredChannel),
+            signalingUrl = sessionDto.signalingUrl ?: dto.signalingUrl,
+            signalingToken = sessionDto.signalingToken ?: dto.signalingToken
+        )
+        EventSession.saveSession(context, sessionData)
+        appContext = context.applicationContext
+
+        val event = eventInfo.toDomain().copy(members = listOf(member))
+        _currentEvent.value = event
+        _currentMember.value = member
+        Result.success(event)
     }
 
     override suspend fun joinByQr(context: Context, qrToken: String, displayName: String): Result<Event> = withContext(Dispatchers.IO) {
@@ -165,30 +245,67 @@ object RemoteEventRepository : EventRepository {
             "displayName" to displayName
         )
         val result = ApiClient.post<JoinResponseDto>("/api/v1/auth/join-by-qr", body)
-        result.map { dto ->
-            val event = dto.event.toDomain()
-            val member = dto.session.toMember()
-            val sessionData = EventSession.SessionData(
-                eventId = dto.event.eventId,
-                eventName = dto.event.eventName,
-                pinCode = dto.event.pinCode,
-                userId = dto.session.resolvedUserId,
-                userCode = dto.session.userCode ?: dto.session.resolvedUserId,
-                displayName = member.name,
-                roleTitle = member.roleTitle,
-                level = member.level.code,
-                priority = 4 - member.level.code,
-                primaryChannelId = dto.session.primaryChannelId ?: "ch_01",
-                listeningChannels = parseListeningChannels(dto.session.listeningChannels) ?: listOf(1),
-                signalingUrl = dto.session.signalingUrl,
-                signalingToken = dto.session.signalingToken
-            )
-            EventSession.saveSession(context, sessionData)
-            val updatedEvent = event.copy(members = listOf(member))
-            _currentEvent.value = updatedEvent
-            _currentMember.value = member
-            updatedEvent
+        if (result.isFailure) {
+            checkApiError(result, context)
+            return@withContext Result.failure(result.exceptionOrNull() ?: Exception("Lỗi tham gia bằng QR"))
         }
+        val dto = result.getOrNull() ?: return@withContext Result.failure(Exception("Phản hồi rỗng"))
+        val eventInfo = dto.event ?: return@withContext Result.failure(Exception("Thiếu thông tin sự kiện"))
+        val sessionDto = dto.session ?: return@withContext Result.failure(Exception("Thiếu session"))
+
+        val member = sessionDto.toMember()
+        val sessionData = EventSession.SessionData(
+            eventId = eventInfo.eventId,
+            eventName = eventInfo.eventName,
+            pinCode = eventInfo.pinCode,
+            userId = sessionDto.resolvedUserId,
+            userCode = sessionDto.userCode ?: sessionDto.resolvedUserId,
+            displayName = member.name,
+            roleTitle = member.roleTitle,
+            level = member.level.code,
+            priority = sessionDto.rolePriority,
+            primaryChannelId = sessionDto.primaryChannelId ?: "ch_01",
+            listeningChannels = listOf(1),
+            signalingUrl = sessionDto.signalingUrl ?: dto.signalingUrl,
+            signalingToken = sessionDto.signalingToken ?: dto.signalingToken
+        )
+        EventSession.saveSession(context, sessionData)
+        appContext = context.applicationContext
+
+        val event = eventInfo.toDomain().copy(members = listOf(member))
+        _currentEvent.value = event
+        _currentMember.value = member
+        Result.success(event)
+    }
+
+    override suspend fun refreshEvent(): Result<Event> = withContext(Dispatchers.IO) {
+        val session = EventSession.getSession() ?: return@withContext Result.failure(Exception("Chưa đăng nhập sự kiện"))
+        val eventId = _currentEvent.value?.id ?: session.eventId.toString()
+        val result = ApiClient.get<EventInfo>("/api/v1/events/$eventId?actorUserId=${session.userId}")
+        if (result.isFailure) {
+            checkApiError(result, appContext)
+            return@withContext Result.failure(result.exceptionOrNull() ?: Exception("Lỗi làm mới sự kiện"))
+        }
+        val eventInfo = result.getOrNull() ?: return@withContext Result.failure(Exception("Phản hồi rỗng"))
+        val currentMembers = _currentEvent.value?.members.orEmpty().ifEmpty {
+            listOf(
+                Member(
+                    id = session.userId,
+                    name = session.displayName,
+                    roleTitle = session.roleTitle,
+                    initials = session.displayName.take(2).uppercase(),
+                    level = when (session.level) {
+                        1 -> MemberLevel.LEVEL_1
+                        2 -> MemberLevel.LEVEL_2
+                        else -> MemberLevel.LEVEL_3
+                    },
+                    isOnline = true
+                )
+            )
+        }
+        val updatedEvent = eventInfo.toDomain().copy(members = currentMembers)
+        _currentEvent.value = updatedEvent
+        Result.success(updatedEvent)
     }
 
     override suspend fun switchChannel(primaryTxChannel: Int, listeningChannels: List<Int>): Result<Unit> = withContext(Dispatchers.IO) {
@@ -196,10 +313,14 @@ object RemoteEventRepository : EventRepository {
         val body = mapOf(
             "userId" to session.userId,
             "primaryTxChannel" to primaryTxChannel,
-            "listeningChannels" to listeningChannels
+            "listeningChannels" to listeningChannels.take(3)
         )
         val result = ApiClient.post<Any>("/api/v1/users/switch-channel", body)
-        result.map {}
+        if (result.isFailure) {
+            checkApiError(result, appContext)
+            return@withContext Result.failure(result.exceptionOrNull() ?: Exception("Lỗi chuyển kênh"))
+        }
+        Result.success(Unit)
     }
 
     override suspend fun leaveChannel(channelId: Int): Result<Unit> = withContext(Dispatchers.IO) {
@@ -209,68 +330,88 @@ object RemoteEventRepository : EventRepository {
             "channelId" to channelId
         )
         val result = ApiClient.post<Any>("/api/v1/users/leave-channel", body)
-        result.map {}
+        if (result.isFailure) {
+            checkApiError(result, appContext)
+            return@withContext Result.failure(result.exceptionOrNull() ?: Exception("Lỗi rời kênh"))
+        }
+        Result.success(Unit)
     }
 
     override suspend fun addChannel(name: String): Result<Channel> = withContext(Dispatchers.IO) {
         val session = EventSession.getSession() ?: return@withContext Result.failure(Exception("Chưa đăng nhập"))
         val event = _currentEvent.value ?: return@withContext Result.failure(Exception("Không có sự kiện"))
-        val body = mapOf("userId" to session.userId, "name" to name)
-        val result = ApiClient.post<ChannelDto>("/api/v1/events/${event.id}/channels", body)
-        result.map { it.toDomain() }.onSuccess { ch ->
-            val cur = _currentEvent.value
-            if (cur != null) {
-                _currentEvent.value = cur.copy(channels = cur.channels + ch)
-            }
+        val body = mapOf("name" to name)
+        val result = ApiClient.post<ChannelDto>("/api/v1/events/${event.id}/channels?actorUserId=${session.userId}", body)
+        if (result.isFailure) {
+            checkApiError(result, appContext)
+            return@withContext Result.failure(result.exceptionOrNull() ?: Exception("Lỗi thêm kênh"))
         }
+        val chDto = result.getOrNull() ?: return@withContext Result.failure(Exception("Phản hồi rỗng"))
+        refreshEvent()
+        Result.success(chDto.toDomain())
     }
 
     override suspend fun renameChannel(channelId: String, name: String): Result<Channel> = withContext(Dispatchers.IO) {
         val session = EventSession.getSession() ?: return@withContext Result.failure(Exception("Chưa đăng nhập"))
         val event = _currentEvent.value ?: return@withContext Result.failure(Exception("Không có sự kiện"))
-        val body = mapOf("userId" to session.userId, "name" to name)
-        val result = ApiClient.post<ChannelDto>("/api/v1/events/${event.id}/channels/$channelId", body)
-        result.map { it.toDomain() }.onSuccess { ch ->
-            val cur = _currentEvent.value
-            if (cur != null) {
-                _currentEvent.value = cur.copy(channels = cur.channels.map { if (it.id == channelId) ch else it })
-            }
+        val body = mapOf("name" to name)
+        val result = ApiClient.patch<ChannelDto>("/api/v1/events/${event.id}/channels/$channelId?actorUserId=${session.userId}", body)
+        if (result.isFailure) {
+            checkApiError(result, appContext)
+            return@withContext Result.failure(result.exceptionOrNull() ?: Exception("Lỗi đổi tên kênh"))
         }
+        val chDto = result.getOrNull() ?: return@withContext Result.failure(Exception("Phản hồi rỗng"))
+        refreshEvent()
+        Result.success(chDto.toDomain())
     }
 
     override suspend fun removeChannel(channelId: String): Result<Unit> = withContext(Dispatchers.IO) {
         val session = EventSession.getSession() ?: return@withContext Result.failure(Exception("Chưa đăng nhập"))
         val event = _currentEvent.value ?: return@withContext Result.failure(Exception("Không có sự kiện"))
-        val body = mapOf("userId" to session.userId)
-        val result = ApiClient.post<Any>("/api/v1/events/${event.id}/channels/$channelId", body)
-        result.map {}.onSuccess {
-            val cur = _currentEvent.value
-            if (cur != null) {
-                _currentEvent.value = cur.copy(channels = cur.channels.filterNot { it.id == channelId })
-            }
+        val result = ApiClient.delete<Any>("/api/v1/events/${event.id}/channels/$channelId?actorUserId=${session.userId}")
+        if (result.isFailure) {
+            checkApiError(result, appContext)
+            return@withContext Result.failure(result.exceptionOrNull() ?: Exception("Lỗi xóa kênh"))
         }
+        refreshEvent()
+        Result.success(Unit)
     }
 
     override suspend fun listMembers(): Result<List<Member>> = withContext(Dispatchers.IO) {
+        val session = EventSession.getSession() ?: return@withContext Result.success(emptyList())
         val event = _currentEvent.value ?: return@withContext Result.success(emptyList())
-        val result = ApiClient.get<List<UserSessionDto>>("/api/v1/events/${event.id}/members")
-        result.map { list -> list.map { it.toMember() } }
+        val result = ApiClient.get<List<UserSessionDto>>("/api/v1/events/${event.id}/members?actorUserId=${session.userId}")
+        if (result.isFailure) {
+            checkApiError(result, appContext)
+            return@withContext Result.success(emptyList())
+        }
+        val list = result.getOrNull().orEmpty()
+        Result.success(list.map { it.toMember() })
     }
 
     override suspend fun updateMember(memberId: String, userLevel: Int, roleTitle: String): Result<Unit> = withContext(Dispatchers.IO) {
         val session = EventSession.getSession() ?: return@withContext Result.failure(Exception("Chưa đăng nhập"))
         val event = _currentEvent.value ?: return@withContext Result.failure(Exception("Không có sự kiện"))
-        val body = mapOf("actorUserId" to session.userId, "userLevel" to userLevel, "roleTitle" to roleTitle)
-        val result = ApiClient.post<Any>("/api/v1/events/${event.id}/members/$memberId", body)
-        result.map {}
+        val body = mapOf("userLevel" to userLevel, "roleTitle" to roleTitle)
+        val result = ApiClient.patch<Any>("/api/v1/events/${event.id}/members/$memberId?actorUserId=${session.userId}", body)
+        if (result.isFailure) {
+            checkApiError(result, appContext)
+            return@withContext Result.failure(result.exceptionOrNull() ?: Exception("Lỗi cập nhật thành viên"))
+        }
+        refreshEvent()
+        Result.success(Unit)
     }
 
     override suspend fun removeMember(memberId: String): Result<Unit> = withContext(Dispatchers.IO) {
         val session = EventSession.getSession() ?: return@withContext Result.failure(Exception("Chưa đăng nhập"))
         val event = _currentEvent.value ?: return@withContext Result.failure(Exception("Không có sự kiện"))
-        val body = mapOf("actorUserId" to session.userId)
-        val result = ApiClient.post<Any>("/api/v1/events/${event.id}/members/$memberId", body)
-        result.map {}
+        val result = ApiClient.delete<Any>("/api/v1/events/${event.id}/members/$memberId?actorUserId=${session.userId}")
+        if (result.isFailure) {
+            checkApiError(result, appContext)
+            return@withContext Result.failure(result.exceptionOrNull() ?: Exception("Lỗi xóa thành viên"))
+        }
+        refreshEvent()
+        Result.success(Unit)
     }
 
     override fun logout(context: Context) {

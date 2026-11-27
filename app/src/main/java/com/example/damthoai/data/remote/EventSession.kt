@@ -22,7 +22,8 @@ object EventSession {
         val primaryChannelId: String,
         val listeningChannels: List<Int>,
         val signalingUrl: String? = null,
-        val signalingToken: String? = null
+        val signalingToken: String? = null,
+        val adminCode: String? = null
     )
 
     private val gson = Gson()

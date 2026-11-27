@@ -21,7 +21,7 @@ data class ChannelDto(
         isDefault = channelId == 1,
         isPriority = defaultPriority == 3,
         activeMembers = onlineCount,
-        currentSpeaker = statusText
+        currentSpeaker = null
     )
 }
 
@@ -31,14 +31,38 @@ data class EventInfo(
     val description: String?,
     val pinCode: String,
     val createdAt: String?,
+    val adminCode: String?,
+    val memberCount: Int?,
     val channelList: List<ChannelDto>?
 ) {
     fun toDomain(): Event = Event(
         id = eventId.toString(),
         name = eventName,
         pinCode = pinCode,
+        adminCode = adminCode,
         channels = channelList?.map { it.toDomain() } ?: emptyList(),
         members = emptyList(),
+        isActive = true
+    )
+}
+
+data class CreateEventResponseDto(
+    val eventId: Long,
+    val eventName: String,
+    val description: String?,
+    val pinCode: String,
+    val createdAt: String?,
+    val adminCode: String?,
+    val channelList: List<ChannelDto>?,
+    val session: UserSessionDto?
+) {
+    fun toDomain(): Event = Event(
+        id = eventId.toString(),
+        name = eventName,
+        pinCode = pinCode,
+        adminCode = adminCode,
+        channels = channelList?.map { it.toDomain() } ?: emptyList(),
+        members = session?.let { listOf(it.toMember()) } ?: emptyList(),
         isActive = true
     )
 }
@@ -55,7 +79,8 @@ data class UserSessionDto(
     val primaryChannelId: String?,
     val listeningChannels: JsonElement?,
     val signalingUrl: String?,
-    val signalingToken: String?
+    val signalingToken: String?,
+    val online: Boolean?
 ) {
     val resolvedUserId: String
         get() = when {
@@ -74,11 +99,17 @@ data class UserSessionDto(
             2 -> MemberLevel.LEVEL_2
             else -> MemberLevel.LEVEL_3
         },
-        isOnline = true
+        isOnline = online ?: true
     )
 }
 
 data class JoinResponseDto(
-    val event: EventInfo,
-    val session: UserSessionDto
+    val event: EventInfo?,
+    val session: UserSessionDto?,
+    val status: String?,
+    val userLevel: Int?,
+    val departmentCode: String?,
+    val userId: String?,
+    val signalingUrl: String?,
+    val signalingToken: String?
 )

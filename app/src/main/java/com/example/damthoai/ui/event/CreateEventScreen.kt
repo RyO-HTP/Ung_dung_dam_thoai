@@ -198,20 +198,20 @@ fun CreateEventScreen(
                     if (isLoading) return@PrimaryButton
                     isLoading = true
                     scope.launch {
-                        val code = generateSuggestedAdminCode()
-                        adminCode = code
-                        val createRes = RemoteEventRepository.createEvent(eventName.trim(), "Sự kiện điều phối bộ đàm đa kênh thời gian thực", code)
+                        val finalAdminCode = adminCode.trim().ifBlank { generateSuggestedAdminCode() }
+                        adminCode = finalAdminCode
+                        val createRes = RemoteEventRepository.createEvent(
+                            eventName = eventName.trim(),
+                            description = "Sự kiện điều phối bộ đàm đa kênh thời gian thực",
+                            pinCode = "240826",
+                            adminCode = finalAdminCode,
+                            displayName = "Tổng Đạo Diễn",
+                            roleTitle = "Tổng đạo diễn"
+                        )
+                        isLoading = false
                         if (createRes.isSuccess) {
-                            val event = createRes.getOrNull()
-                            val joinRes = RemoteEventRepository.joinByPin(context, event?.pinCode ?: code, "Đạo diễn", "Tổng đạo diễn", 1, 1)
-                            isLoading = false
-                            if (joinRes.isSuccess) {
-                                showSuccessSheet = true
-                            } else {
-                                android.widget.Toast.makeText(context, "Lỗi tham gia sự kiện: ${joinRes.exceptionOrNull()?.message}", android.widget.Toast.LENGTH_LONG).show()
-                            }
+                            showSuccessSheet = true
                         } else {
-                            isLoading = false
                             android.widget.Toast.makeText(context, "Lỗi tạo sự kiện: ${createRes.exceptionOrNull()?.message}", android.widget.Toast.LENGTH_LONG).show()
                         }
                     }

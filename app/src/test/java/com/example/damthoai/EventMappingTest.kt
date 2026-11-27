@@ -42,7 +42,8 @@ class EventMappingTest {
             primaryChannelId = "ch_02",
             listeningChannels = null,
             signalingUrl = null,
-            signalingToken = null
+            signalingToken = null,
+            online = true
         )
         assertEquals("user_999", sessionWithStringId.resolvedUserId)
 
@@ -58,7 +59,8 @@ class EventMappingTest {
             primaryChannelId = "ch_02",
             listeningChannels = null,
             signalingUrl = null,
-            signalingToken = null
+            signalingToken = null,
+            online = true
         )
         assertEquals("101", sessionWithNumberId.resolvedUserId)
     }
