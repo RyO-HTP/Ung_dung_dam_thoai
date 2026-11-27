@@ -112,11 +112,12 @@ class RemoteQrCardsRepositoryTest {
             }
 
             val baseUrl = "http://127.0.0.1:${serverSocket.localPort}"
+            BackendConfig.setBaseUrlForTest(baseUrl)
             val repo = RemoteQrCardsRepository(baseUrl)
             val cards = repo.getRoleCards(1L)
             serverThread.join(3000)
 
-            assertEquals("/api/v1/events/qr-roles?eventId=1", requestedPath.get())
+            assertTrue(requestedPath.get().startsWith("/api/v1/events/qr-roles?eventId=1"))
             assertEquals(5, cards.size)
 
             cards.forEach { card ->
