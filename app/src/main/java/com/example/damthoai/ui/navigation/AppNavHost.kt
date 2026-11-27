@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -236,8 +237,8 @@ fun AppNavHost(
 
         // === NHÓM E: KHẨN CẤP ===
         composable(AppRoute.EmergencyCallSelect.route) {
-            val currentEvent = RemoteEventRepository.currentEvent.value
-            val currentMember = RemoteEventRepository.currentMember.value
+            val currentEvent by RemoteEventRepository.currentEvent.collectAsState()
+            val currentMember by RemoteEventRepository.currentMember.collectAsState()
             val isDirector = (currentMember?.level == MemberLevel.LEVEL_1) || (EventSession.getSession()?.level == 1)
             if (!isDirector) {
                 LaunchedEffect(Unit) {
@@ -437,7 +438,7 @@ fun AppNavHost(
         }
         composable(AppRoute.LiveCueDraft.route) {
             val scope = rememberCoroutineScope()
-            val currentMember = RemoteEventRepository.currentMember.value
+            val currentMember by RemoteEventRepository.currentMember.collectAsState()
             val isDirector = (currentMember?.level == MemberLevel.LEVEL_1) || (EventSession.getSession()?.level == 1)
             if (!isDirector) {
                 LaunchedEffect(Unit) {
@@ -453,7 +454,8 @@ fun AppNavHost(
                     onBack = { navController.popBackStack() },
                     onSendCue = { cue ->
                         scope.launch {
-                            LiveCueClient.fireCue("CUE-HOT", cue.title, cue.message, currentMember?.name ?: "Tổng đạo diễn")
+                            val session = EventSession.getSession()
+                            LiveCueClient.fireCue("CUE-HOT", cue.title, cue.message, session?.userId ?: "dir", session?.eventId ?: 1L)
                             navController.popBackStack()
                         }
                     }

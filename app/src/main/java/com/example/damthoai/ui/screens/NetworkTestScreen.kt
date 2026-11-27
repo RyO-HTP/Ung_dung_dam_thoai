@@ -77,10 +77,11 @@ fun NetworkTestScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val pttPressed by manager.isPttPressed.collectAsState()
     val stats by manager.callStats.collectAsState()
 
-    var serverUrl by rememberSaveable { mutableStateOf("ws://192.168.1.10:8765") }
-    var accessToken by rememberSaveable { mutableStateOf("") }
+    val initialSession = remember { com.example.damthoai.data.remote.EventSession.getSession() }
+    var serverUrl by rememberSaveable { mutableStateOf(initialSession?.signalingUrl ?: "wss://damthoai-signaling.onrender.com") }
+    var accessToken by rememberSaveable { mutableStateOf(initialSession?.signalingToken.orEmpty()) }
     var userId by rememberSaveable {
-        mutableStateOf("${Build.MODEL.filter { it.isLetterOrDigit() }.take(10)}_${Random.nextInt(100, 999)}")
+        mutableStateOf(initialSession?.userId ?: "${Build.MODEL.filter { it.isLetterOrDigit() }.take(10)}_${Random.nextInt(100, 999)}")
     }
     var hasMic by remember {
         mutableStateOf(

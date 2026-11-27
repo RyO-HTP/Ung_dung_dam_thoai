@@ -438,7 +438,10 @@ private fun HoldToCallButton(
                                                         isDirectCall = true
                                                     )
                                                     scope.launch {
-                                                        ApiClient.post<Any>("/api/v1/floor/emergency-override", mapOf("userId" to (session.userId), "displayName" to (session.displayName)))
+                                                        val res = ApiClient.post<Any>("/api/v1/floor/emergency-override", mapOf("userId" to session.userId, "displayName" to session.displayName))
+                                                        if (res.isFailure) {
+                                                            Toast.makeText(context, "Lỗi phát khẩn cấp: ${res.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+                                                        }
                                                     }
                                                     currentOnCall(currentSelectedIds)
                                                 } else {
