@@ -2,30 +2,41 @@
  * Path: app/src/main/java/com/example/damthoai/data/qr/BackendConfig.kt
  *
  * Khối KDoc tiếng Việt:
- * Cấu hình địa chỉ máy chủ (Backend URL) và lưu trữ SharedPreferences.
- * 
- * ĐIỂM NỐI TV5: đặt BackendConfig.baseUrl khi biết địa chỉ máy chủ thực tế.
+ * Cấu hình địa chỉ máy chủ (Backend URL) từ BuildConfig và lưu trữ SharedPreferences.
  */
 package com.example.damthoai.data.qr
 
 import android.content.Context
-import android.content.SharedPreferences
+import com.example.damthoai.BuildConfig
 
 object BackendConfig {
     private const val PREFS_NAME = "damthoai_backend_config"
     private const val KEY_BASE_URL = "base_url"
 
-    var baseUrl: String? = null
+    val DEFAULT_BASE_URL: String = BuildConfig.BACKEND_BASE_URL.trim().removeSuffix("/")
+
+    @Volatile
+    var baseUrl: String? = DEFAULT_BASE_URL.takeIf { it.isNotBlank() }
         private set
 
     fun init(context: Context) {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        baseUrl = prefs.getString(KEY_BASE_URL, null)
+        val saved = prefs.getString(KEY_BASE_URL, null)?.trim()?.removeSuffix("/")?.takeIf { it.isNotEmpty() }
+        baseUrl = saved ?: DEFAULT_BASE_URL.takeIf { it.isNotBlank() }
     }
 
     fun setBaseUrl(context: Context, url: String?) {
-        baseUrl = url
+        val normalized = url?.trim()?.removeSuffix("/")?.takeIf { it.isNotEmpty() }
+        baseUrl = normalized ?: DEFAULT_BASE_URL.takeIf { it.isNotBlank() }
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putString(KEY_BASE_URL, url).apply()
+        if (normalized != null) {
+            prefs.edit().putString(KEY_BASE_URL, normalized).apply()
+        } else {
+            prefs.edit().remove(KEY_BASE_URL).apply()
+        }
+    }
+
+    internal fun setBaseUrlForTest(url: String?) {
+        baseUrl = url?.trim()?.removeSuffix("/")?.takeIf { it.isNotEmpty() }
     }
 }

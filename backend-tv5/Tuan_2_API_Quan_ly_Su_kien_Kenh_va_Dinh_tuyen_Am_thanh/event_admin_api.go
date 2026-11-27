@@ -1,14 +1,27 @@
 package week2routing
 
 import (
+<<<<<<< HEAD
 	"encoding/json"
 	"fmt"
 	"net/http"
+=======
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strconv"
+>>>>>>> origin/main
 	"strings"
 	"time"
 )
 
+<<<<<<< HEAD
 // Bổ sung AdminCode vào EventInfo
+=======
+// EventInfoAdmin mở rộng EventInfo khi cần trả kèm mã quản trị.
+>>>>>>> origin/main
 type EventInfoAdmin struct {
 	EventID     int64                  `json:"eventId"`
 	EventName   string                 `json:"eventName"`
@@ -36,6 +49,7 @@ func (em *EventManager) HandleRestoreEvent(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+<<<<<<< HEAD
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
@@ -48,6 +62,21 @@ func (em *EventManager) HandleRestoreEvent(w http.ResponseWriter, r *http.Reques
 	}
 
 	if targetEvent == nil {
+=======
+	trimmedCode := strings.TrimSpace(req.AdminCode)
+	em.mu.Lock()
+	var targetEvent *EventInfo
+	if trimmedCode != "" {
+		for _, ev := range em.eventsByPin {
+			if strings.EqualFold(ev.AdminCode, trimmedCode) {
+				targetEvent = ev
+				break
+			}
+		}
+	}
+	if targetEvent == nil {
+		em.mu.Unlock()
+>>>>>>> origin/main
 		writeJSON(w, http.StatusNotFound, map[string]interface{}{
 			"error":   "ADMIN_CODE_NOT_FOUND",
 			"message": "Mã quản trị sự kiện không tồn tại hoặc không chính xác",
@@ -55,6 +84,7 @@ func (em *EventManager) HandleRestoreEvent(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+<<<<<<< HEAD
 	if req.DisplayName == "" {
 		req.DisplayName = "Tổng đạo diễn (Khôi phục)"
 	}
@@ -64,6 +94,22 @@ func (em *EventManager) HandleRestoreEvent(w http.ResponseWriter, r *http.Reques
 	session := &UserSession{
 		UserID:            newUserID,
 		UserCode:          fmt.Sprintf("user_%d", newUserID),
+=======
+	if strings.TrimSpace(req.DisplayName) == "" {
+		req.DisplayName = "Tổng đạo diễn (Khôi phục)"
+	}
+
+	newNumericID := em.userSeq.Add(1)
+	uniqueUserID := em.generateUniqueUserIDLocked(req.DisplayName, newNumericID)
+	secretBytes := make([]byte, 32)
+	_, _ = rand.Read(secretBytes)
+	sigURL, sigToken := SignalingConfigFromEnv()
+
+	session := &UserSession{
+		NumericID:         newNumericID,
+		UserID:            uniqueUserID,
+		UserCode:          uniqueUserID,
+>>>>>>> origin/main
 		EventID:           targetEvent.EventID,
 		DisplayName:       req.DisplayName,
 		RoleTitle:         "Tổng đạo diễn",
@@ -72,6 +118,7 @@ func (em *EventManager) HandleRestoreEvent(w http.ResponseWriter, r *http.Reques
 		PrimaryTxChannel:  1,
 		PrimaryChannelID:  "ch_01",
 		ListeningChannels: []uint8{1, 2},
+<<<<<<< HEAD
 		HmacSecretBytes:   secretBytes,
 	}
 	em.usersByID[newUserID] = session
@@ -79,6 +126,27 @@ func (em *EventManager) HandleRestoreEvent(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"event":   targetEvent,
 		"session": session,
+=======
+		SignalingURL:      sigURL,
+		SignalingToken:    sigToken,
+		HmacSecretHex:     hex.EncodeToString(secretBytes),
+		HmacSecretBytes:   secretBytes,
+	}
+	em.usersByID[newNumericID] = session
+	em.usersByCode[uniqueUserID] = session
+	em.mu.Unlock()
+
+	if em.audioRouter != nil {
+		em.audioRouter.RegisterUserSession(newNumericID, secretBytes, session.ListeningChannels)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"userId":         session.UserID,
+		"signalingUrl":   session.SignalingURL,
+		"signalingToken": session.SignalingToken,
+		"event":          targetEvent,
+		"session":        session,
+>>>>>>> origin/main
 	})
 }
 
@@ -90,8 +158,13 @@ func (em *EventManager) HandleAddChannel(w http.ResponseWriter, r *http.Request)
 	}
 
 	var req struct {
+<<<<<<< HEAD
 		UserID uint32 `json:"userId"`
 		Name   string `json:"name"`
+=======
+		UserID FlexibleUserID `json:"userId"`
+		Name   string         `json:"name"`
+>>>>>>> origin/main
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -101,12 +174,18 @@ func (em *EventManager) HandleAddChannel(w http.ResponseWriter, r *http.Request)
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
+<<<<<<< HEAD
 	session, exists := em.usersByID[req.UserID]
 	if !exists || session.UserLevel != 1 {
+=======
+	session := em.findSessionLocked(req.UserID)
+	if session == nil || session.UserLevel != 1 {
+>>>>>>> origin/main
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "FORBIDDEN_NOT_ADMIN"})
 		return
 	}
 
+<<<<<<< HEAD
 	// Tìm sự kiện của session
 	var targetEvent *EventInfo
 	for _, ev := range em.eventsByPin {
@@ -115,6 +194,9 @@ func (em *EventManager) HandleAddChannel(w http.ResponseWriter, r *http.Request)
 			break
 		}
 	}
+=======
+	targetEvent := em.eventsByID[session.EventID]
+>>>>>>> origin/main
 	if targetEvent == nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "EVENT_NOT_FOUND"})
 		return
@@ -139,6 +221,12 @@ func (em *EventManager) HandleAddChannel(w http.ResponseWriter, r *http.Request)
 	}
 
 	newIDNum := uint8(len(targetEvent.ChannelList) + 1)
+<<<<<<< HEAD
+=======
+	for targetEvent.Channels[newIDNum] != nil {
+		newIDNum++
+	}
+>>>>>>> origin/main
 	newChID := fmt.Sprintf("ch_0%d", newIDNum)
 	newCh := &ChannelInfo{
 		ID:              newChID,
@@ -163,6 +251,7 @@ func (em *EventManager) HandleUpdateChannel(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+<<<<<<< HEAD
 	// Lấy channelId từ URL path đơn giản
 	path := r.URL.Path
 	parts := strings.Split(path, "/")
@@ -171,6 +260,14 @@ func (em *EventManager) HandleUpdateChannel(w http.ResponseWriter, r *http.Reque
 	var req struct {
 		UserID uint32 `json:"userId"`
 		Name   string `json:"name"`
+=======
+	parts := strings.Split(r.URL.Path, "/")
+	channelIdStr := parts[len(parts)-1]
+
+	var req struct {
+		UserID FlexibleUserID `json:"userId"`
+		Name   string         `json:"name"`
+>>>>>>> origin/main
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -180,12 +277,18 @@ func (em *EventManager) HandleUpdateChannel(w http.ResponseWriter, r *http.Reque
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
+<<<<<<< HEAD
 	session, exists := em.usersByID[req.UserID]
 	if !exists || session.UserLevel != 1 {
+=======
+	session := em.findSessionLocked(req.UserID)
+	if session == nil || session.UserLevel != 1 {
+>>>>>>> origin/main
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "FORBIDDEN_NOT_ADMIN"})
 		return
 	}
 
+<<<<<<< HEAD
 	var targetEvent *EventInfo
 	for _, ev := range em.eventsByPin {
 		if ev.EventID == session.EventID {
@@ -193,6 +296,9 @@ func (em *EventManager) HandleUpdateChannel(w http.ResponseWriter, r *http.Reque
 			break
 		}
 	}
+=======
+	targetEvent := em.eventsByID[session.EventID]
+>>>>>>> origin/main
 	if targetEvent == nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "EVENT_NOT_FOUND"})
 		return
@@ -227,24 +333,38 @@ func (em *EventManager) HandleDeleteChannel(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+<<<<<<< HEAD
 	path := r.URL.Path
 	parts := strings.Split(path, "/")
 	channelIdStr := parts[len(parts)-1]
 
 	var req struct {
 		UserID uint32 `json:"userId"`
+=======
+	parts := strings.Split(r.URL.Path, "/")
+	channelIdStr := parts[len(parts)-1]
+
+	var req struct {
+		UserID FlexibleUserID `json:"userId"`
+>>>>>>> origin/main
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
+<<<<<<< HEAD
 	session, exists := em.usersByID[req.UserID]
 	if !exists || session.UserLevel != 1 {
+=======
+	session := em.findSessionLocked(req.UserID)
+	if session == nil || session.UserLevel != 1 {
+>>>>>>> origin/main
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "FORBIDDEN_NOT_ADMIN"})
 		return
 	}
 
+<<<<<<< HEAD
 	var targetEvent *EventInfo
 	for _, ev := range em.eventsByPin {
 		if ev.EventID == session.EventID {
@@ -252,6 +372,9 @@ func (em *EventManager) HandleDeleteChannel(w http.ResponseWriter, r *http.Reque
 			break
 		}
 	}
+=======
+	targetEvent := em.eventsByID[session.EventID]
+>>>>>>> origin/main
 	if targetEvent == nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "EVENT_NOT_FOUND"})
 		return
@@ -282,10 +405,27 @@ func (em *EventManager) HandleListMembers(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+<<<<<<< HEAD
 	em.mu.RLock()
 	members := make([]*UserSession, 0, len(em.usersByID))
 	for _, u := range em.usersByID {
 		members = append(members, u)
+=======
+	var filterEventID int64
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) >= 4 {
+		if parsed, err := strconv.ParseInt(parts[3], 10, 64); err == nil && parsed > 0 {
+			filterEventID = parsed
+		}
+	}
+
+	em.mu.RLock()
+	members := make([]*UserSession, 0, len(em.usersByID))
+	for _, u := range em.usersByID {
+		if filterEventID == 0 || u.EventID == filterEventID {
+			members = append(members, u)
+		}
+>>>>>>> origin/main
 	}
 	em.mu.RUnlock()
 
@@ -299,10 +439,20 @@ func (em *EventManager) HandleUpdateMember(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+<<<<<<< HEAD
 	var req struct {
 		ActorUserID uint32 `json:"actorUserId"`
 		UserLevel   uint8  `json:"userLevel"`
 		RoleTitle   string `json:"roleTitle"`
+=======
+	parts := strings.Split(r.URL.Path, "/")
+	targetIDStr := FlexibleUserID(parts[len(parts)-1])
+
+	var req struct {
+		ActorUserID FlexibleUserID `json:"actorUserId"`
+		UserLevel   uint8          `json:"userLevel"`
+		RoleTitle   string         `json:"roleTitle"`
+>>>>>>> origin/main
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -312,12 +462,32 @@ func (em *EventManager) HandleUpdateMember(w http.ResponseWriter, r *http.Reques
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
+<<<<<<< HEAD
 	actor, exists := em.usersByID[req.ActorUserID]
 	if !exists || actor.UserLevel != 1 {
+=======
+	actor := em.findSessionLocked(req.ActorUserID)
+	if actor == nil || actor.UserLevel != 1 {
+>>>>>>> origin/main
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "FORBIDDEN_NOT_ADMIN"})
 		return
 	}
 
+<<<<<<< HEAD
+=======
+	target := em.findSessionLocked(targetIDStr)
+	if target != nil {
+		lvl, prio, _ := ConvertUserLevelToPriority(req.UserLevel, 0)
+		target.UserLevel = lvl
+		target.RolePriority = prio
+		if strings.TrimSpace(req.RoleTitle) != "" {
+			target.RoleTitle = strings.TrimSpace(req.RoleTitle)
+		}
+		writeJSON(w, http.StatusOK, target)
+		return
+	}
+
+>>>>>>> origin/main
 	writeJSON(w, http.StatusOK, map[string]string{"status": "UPDATED"})
 }
 
@@ -328,19 +498,41 @@ func (em *EventManager) HandleDeleteMember(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+<<<<<<< HEAD
 	var req struct {
 		ActorUserID uint32 `json:"actorUserId"`
+=======
+	parts := strings.Split(r.URL.Path, "/")
+	targetIDStr := FlexibleUserID(parts[len(parts)-1])
+
+	var req struct {
+		ActorUserID FlexibleUserID `json:"actorUserId"`
+>>>>>>> origin/main
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
+<<<<<<< HEAD
 	actor, exists := em.usersByID[req.ActorUserID]
 	if !exists || actor.UserLevel != 1 {
+=======
+	actor := em.findSessionLocked(req.ActorUserID)
+	if actor == nil || actor.UserLevel != 1 {
+>>>>>>> origin/main
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "FORBIDDEN_NOT_ADMIN"})
 		return
 	}
 
+<<<<<<< HEAD
 	writeJSON(w, http.StatusOK, map[string]string{"status": "REMOVED"})
+=======
+	if target := em.findSessionLocked(targetIDStr); target != nil {
+		delete(em.usersByID, target.NumericID)
+		delete(em.usersByCode, target.UserID)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "REMOVED", "userId": targetIDStr})
+>>>>>>> origin/main
 }

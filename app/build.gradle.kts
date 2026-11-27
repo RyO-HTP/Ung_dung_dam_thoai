@@ -14,6 +14,13 @@ android {
         versionCode = 1
         versionName = "1.0"
 
+        val backendBaseUrl = (project.findProperty("BACKEND_BASE_URL") as String?)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: System.getenv("BACKEND_BASE_URL")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: "https://damthoai-backend.onrender.com"
+        buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -38,6 +45,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"

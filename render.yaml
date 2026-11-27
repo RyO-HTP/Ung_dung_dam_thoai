@@ -1,6 +1,9 @@
-# TV1: đưa Signaling Server (signaling_server.py) lên Render để gọi được qua 4G / khác mạng.
-# Render > New > Blueprint > chọn repo này. Điền TURN_USERNAME / TURN_CREDENTIAL trên trang Render,
-# KHÔNG ghi vào file này. SIGNALING_TOKEN được Render tự sinh, xem ở tab Environment rồi gửi riêng cho nhóm.
+# Đưa cả máy chủ Signaling Python (TV1) và Backend Go (TV5) lên Render để gọi được qua 4G / khác mạng.
+# Render > New > Blueprint > chọn repo này.
+# - Điền TURN_USERNAME / TURN_CREDENTIAL cho damthoai-signaling.
+# - Xem SIGNALING_TOKEN được sinh ở damthoai-signaling, rồi điền SIGNALING_URL (wss://<tên-signaling>.onrender.com)
+#   và SIGNALING_TOKEN tương ứng vào tab Environment của damthoai-backend.
+# KHÔNG ghi khóa bí mật vào file này.
 services:
   - type: web
     name: damthoai-signaling
@@ -17,4 +20,18 @@ services:
       - key: TURN_USERNAME
         sync: false
       - key: TURN_CREDENTIAL
+        sync: false
+
+  - type: web
+    name: damthoai-backend
+    runtime: go
+    plan: free
+    rootDir: backend-tv5
+    buildCommand: go build -tags netgo -ldflags "-s -w" -o damthoai-backend .
+    startCommand: ./damthoai-backend
+    healthCheckPath: /healthz
+    envVars:
+      - key: SIGNALING_URL
+        sync: false
+      - key: SIGNALING_TOKEN
         sync: false

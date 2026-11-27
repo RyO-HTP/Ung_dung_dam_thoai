@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -46,12 +49,101 @@ func (c *ChannelIDList) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+<<<<<<< HEAD
+=======
+// FlexibleUserID chấp nhận cả chuỗi ("Minh_Hau_101_a1b2") lẫn số nguyên (101) trong JSON request.
+type FlexibleUserID string
+
+func (u *FlexibleUserID) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		*u = ""
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		*u = FlexibleUserID(strings.TrimSpace(s))
+		return nil
+	}
+	var n uint64
+	if err := json.Unmarshal(data, &n); err == nil {
+		*u = FlexibleUserID(strconv.FormatUint(n, 10))
+		return nil
+	}
+	return fmt.Errorf("userId không hợp lệ: %s", trimmed)
+}
+
+// SignalingConfigFromEnv đọc cấu hình máy chủ Signaling Python từ biến môi trường,
+// tự động chuẩn hóa https:// -> wss:// và http:// -> ws:// nếu người dùng dán URL HTTP từ Render/Railway.
+func SignalingConfigFromEnv() (signalingURL string, signalingToken string) {
+	rawURL := strings.TrimRight(strings.TrimSpace(os.Getenv("SIGNALING_URL")), "/")
+	switch {
+	case strings.HasPrefix(rawURL, "https://"):
+		rawURL = "wss://" + strings.TrimPrefix(rawURL, "https://")
+	case strings.HasPrefix(rawURL, "http://"):
+		rawURL = "ws://" + strings.TrimPrefix(rawURL, "http://")
+	}
+	return rawURL, strings.TrimSpace(os.Getenv("SIGNALING_TOKEN"))
+}
+
+var vietnameseASCII = strings.NewReplacer(
+	"à", "a", "á", "a", "ả", "a", "ã", "a", "ạ", "a",
+	"ă", "a", "ằ", "a", "ắ", "a", "ẳ", "a", "ẵ", "a", "ặ", "a",
+	"â", "a", "ầ", "a", "ấ", "a", "ẩ", "a", "ẫ", "a", "ậ", "a",
+	"À", "A", "Á", "A", "Ả", "A", "Ã", "A", "Ạ", "A",
+	"Ă", "A", "Ằ", "A", "Ắ", "A", "Ẳ", "A", "Ẵ", "A", "Ặ", "A",
+	"Â", "A", "Ầ", "A", "Ấ", "A", "Ẩ", "A", "Ẫ", "A", "Ậ", "A",
+	"đ", "d", "Đ", "D",
+	"è", "e", "é", "e", "ẻ", "e", "ẽ", "e", "ẹ", "e",
+	"ê", "e", "ề", "e", "ế", "e", "ể", "e", "ễ", "e", "ệ", "e",
+	"È", "E", "É", "E", "Ẻ", "E", "Ẽ", "E", "Ẹ", "E",
+	"Ê", "E", "Ề", "E", "Ế", "E", "Ể", "E", "Ễ", "E", "Ệ", "E",
+	"ì", "i", "í", "i", "ỉ", "i", "ĩ", "i", "ị", "i",
+	"Ì", "I", "Í", "I", "Ỉ", "I", "Ĩ", "I", "Ị", "I",
+	"ò", "o", "ó", "o", "ỏ", "o", "õ", "o", "ọ", "o",
+	"ô", "o", "ồ", "o", "ố", "o", "ổ", "o", "ỗ", "o", "ộ", "o",
+	"ơ", "o", "ờ", "o", "ớ", "o", "ở", "o", "ỡ", "o", "ợ", "o",
+	"Ò", "O", "Ó", "O", "Ỏ", "O", "Õ", "O", "Ọ", "O",
+	"Ô", "O", "Ồ", "O", "Ố", "O", "Ổ", "O", "Ỗ", "O", "Ộ", "O",
+	"Ơ", "O", "Ờ", "O", "Ớ", "O", "Ở", "O", "Ỡ", "O", "Ợ", "O",
+	"ù", "u", "ú", "u", "ủ", "u", "ũ", "u", "ụ", "u",
+	"ư", "u", "ừ", "u", "ứ", "u", "ử", "u", "ữ", "u", "ự", "u",
+	"Ù", "U", "Ú", "U", "Ủ", "U", "Ũ", "U", "Ụ", "U",
+	"Ư", "U", "Ừ", "U", "Ứ", "U", "Ử", "U", "Ữ", "U", "Ự", "U",
+	"ỳ", "y", "ý", "y", "ỷ", "y", "ỹ", "y", "ỵ", "y",
+	"Ỳ", "Y", "Ý", "Y", "Ỷ", "Y", "Ỹ", "Y", "Ỵ", "Y",
+)
+
+// SanitizeUserIDPrefix chuyển tên hiển thị sang chuỗi chỉ gồm [A-Za-z0-9._-] khớp signaling_server.py.
+func SanitizeUserIDPrefix(displayName string) string {
+	ascii := vietnameseASCII.Replace(strings.TrimSpace(displayName))
+	var b strings.Builder
+	lastUnderscore := false
+	for _, r := range ascii {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '-':
+			b.WriteRune(r)
+			lastUnderscore = false
+		case r == '_' || r == ' ':
+			if !lastUnderscore && b.Len() > 0 {
+				b.WriteByte('_')
+				lastUnderscore = true
+			}
+		}
+		if b.Len() >= 24 {
+			break
+		}
+	}
+	res := strings.Trim(b.String(), "._-")
+	if res == "" {
+		return "user"
+	}
+	return res
+}
+
+>>>>>>> origin/main
 // =============================================================================
 // TUẦN 2 (NGƯỜI 5): XÂY DỰNG REST API QUẢN LÝ NGƯỜI DÙNG, SỰ KIỆN, KÊNH
-// Đã đồng bộ 100% với dự án Android DuAnLamChung:
-//   - CreateEventScreen.kt & OnboardingScreen.kt (PIN: "240826")
-//   - JoinChannelScreen.kt & FakeRepositories.kt (PIN: "889900", chặn PIN "000000" -> JoinErrorScreen)
-//   - ChannelListScreen.kt (5 kênh ch_01..ch_05, UserLevel Cấp 1/2/3 <-> RolePriority 3/2/1)
 // =============================================================================
 
 type ChannelInfo struct {
@@ -76,6 +168,7 @@ type EventInfo struct {
 }
 
 type UserSession struct {
+<<<<<<< HEAD
 	UserID            uint32  `json:"userId"`
 	UserCode          string  `json:"userCode"` // ID chuỗi trên Android (VD: "Minh_Hau")
 	EventID           int64   `json:"eventId"`
@@ -88,6 +181,23 @@ type UserSession struct {
 	ListeningChannels ChannelIDList `json:"listeningChannels"` // Danh sách kênh đang nghe (tối đa 3 kênh)
 	HmacSecretHex     string  `json:"hmacSecretHex"`
 	HmacSecretBytes   []byte  `json:"-"`
+=======
+	NumericID         uint32        `json:"numericUserId"`     // ID số nội bộ cho gói UDP 18-byte
+	UserID            string        `json:"userId"`            // ID duy nhất gồm chữ, số và . _ - (khớp signaling_server.py)
+	UserCode          string        `json:"userCode"`          // Đồng bộ với UserID cho Android
+	EventID           int64         `json:"eventId"`           // ID sự kiện
+	DisplayName       string        `json:"displayName"`       // VD: "Minh Hậu"
+	RoleTitle         string        `json:"roleTitle"`         // VD: "Trưởng ban Sân khấu", "Trưởng ban Hậu cần"
+	UserLevel         uint8         `json:"userLevel"`         // Chuẩn UI Android: 1 = Tổng đạo diễn, 2 = Trưởng ban, 3 = CTV
+	RolePriority      uint8         `json:"rolePriority"`      // Chuẩn Server CAS: 3 = Tổng đạo diễn, 2 = Trưởng ban, 1 = CTV
+	PrimaryTxChannel  uint8         `json:"primaryTxChannel"`  // Kênh phát âm thanh chính (1..5)
+	PrimaryChannelID  string        `json:"primaryChannelId"`  // Mã kênh phát âm thanh trên Android ("ch_01".."ch_05")
+	ListeningChannels ChannelIDList `json:"listeningChannels"` // Danh sách kênh đang nghe (tối đa 3 kênh)
+	SignalingURL      string        `json:"signalingUrl"`      // Đọc từ biến môi trường SIGNALING_URL
+	SignalingToken    string        `json:"signalingToken"`    // Đọc từ biến môi trường SIGNALING_TOKEN
+	HmacSecretHex     string        `json:"hmacSecretHex"`
+	HmacSecretBytes   []byte        `json:"-"`
+>>>>>>> origin/main
 }
 
 // ConvertUserLevelToPriority quy đổi giữa Cấp bậc trên giao diện Android (UserLevel 1,2,3)
@@ -119,7 +229,9 @@ func ConvertUserLevelToPriority(userLevel uint8, rolePriority uint8) (level uint
 type EventManager struct {
 	mu          sync.RWMutex
 	eventsByPin map[string]*EventInfo
+	eventsByID  map[int64]*EventInfo
 	usersByID   map[uint32]*UserSession
+	usersByCode map[string]*UserSession
 	userSeq     atomic.Uint32
 	eventSeq    atomic.Int64
 	audioRouter *ChannelAudioRouter
@@ -128,16 +240,14 @@ type EventManager struct {
 func NewEventManager(router *ChannelAudioRouter) *EventManager {
 	em := &EventManager{
 		eventsByPin: make(map[string]*EventInfo),
+		eventsByID:  make(map[int64]*EventInfo),
 		usersByID:   make(map[uint32]*UserSession),
+		usersByCode: make(map[string]*UserSession),
 		audioRouter: router,
 	}
 	em.userSeq.Store(100)
 	em.eventSeq.Store(3)
 
-	// Khởi tạo sẵn 3 mã PIN khớp với toàn bộ kịch bản trong dự án DuAnLamChung:
-	// 1. PIN "240826": Hiển thị trên OnboardingScreen.kt & CreateEventScreen.kt
-	// 2. PIN "889900": Mặc định trong FakeRepositories.kt & JoinChannelScreen.kt
-	// 3. PIN "482910": Mã dự phòng trong script Stress Test
 	seedEvents := []struct {
 		id   int64
 		name string
@@ -151,7 +261,7 @@ func NewEventManager(router *ChannelAudioRouter) *EventManager {
 
 	for _, item := range seedEvents {
 		chMap, chList := createDefaultFiveChannels()
-		em.eventsByPin[item.pin] = &EventInfo{
+		ev := &EventInfo{
 			EventID:     item.id,
 			EventName:   item.name,
 			Description: item.desc,
@@ -160,12 +270,117 @@ func NewEventManager(router *ChannelAudioRouter) *EventManager {
 			Channels:    chMap,
 			ChannelList: chList,
 		}
+		em.eventsByPin[item.pin] = ev
+		em.eventsByID[item.id] = ev
 	}
 
 	return em
 }
 
-// createDefaultFiveChannels tạo 5 kênh mặc định khớp 100% với CreateEventScreen.kt (dòng 138) và ChannelListScreen.kt.
+// GetOrDefaultEvent trả về sự kiện khớp pinCode hoặc eventID; nếu không thấy trả về sự kiện mặc định.
+func (em *EventManager) GetOrDefaultEvent(eventID int64, pinCode string) *EventInfo {
+	em.mu.RLock()
+	defer em.mu.RUnlock()
+
+	if pinCode != "" {
+		if ev, ok := em.eventsByPin[pinCode]; ok {
+			return ev
+		}
+	}
+	if eventID > 0 {
+		if ev, ok := em.eventsByID[eventID]; ok {
+			return ev
+		}
+	}
+	return em.eventsByID[1]
+}
+
+func (em *EventManager) generateUniqueUserIDLocked(displayName string, numericID uint32) string {
+	prefix := SanitizeUserIDPrefix(displayName)
+	for {
+		randBytes := make([]byte, 2)
+		_, _ = rand.Read(randBytes)
+		candidate := fmt.Sprintf("%s_%d_%s", prefix, numericID, hex.EncodeToString(randBytes))
+		if len(candidate) > 64 {
+			candidate = candidate[:64]
+		}
+		if _, exists := em.usersByCode[candidate]; !exists {
+			return candidate
+		}
+	}
+}
+
+func (em *EventManager) findSessionLocked(ref FlexibleUserID) *UserSession {
+	key := strings.TrimSpace(string(ref))
+	if key == "" {
+		return nil
+	}
+	if s, ok := em.usersByCode[key]; ok {
+		return s
+	}
+	if n, err := strconv.ParseUint(key, 10, 32); err == nil {
+		if s, ok := em.usersByID[uint32(n)]; ok {
+			return s
+		}
+	}
+	return nil
+}
+
+// CreateSession khởi tạo phiên người dùng mới với userId duy nhất ([A-Za-z0-9._-]) và thông tin Signaling từ biến môi trường.
+func (em *EventManager) CreateSession(
+	ev *EventInfo,
+	displayName string,
+	roleTitle string,
+	userLevel uint8,
+	rolePriority uint8,
+	primaryCh uint8,
+	listening []uint8,
+) *UserSession {
+	secretBytes := make([]byte, 32)
+	_, _ = rand.Read(secretBytes)
+	newNumericID := em.userSeq.Add(1)
+	sigURL, sigToken := SignalingConfigFromEnv()
+
+	if primaryCh < 1 || primaryCh > 8 {
+		primaryCh = 2
+	}
+	if len(listening) == 0 {
+		listening = []uint8{1, primaryCh}
+		if primaryCh == 1 {
+			listening = []uint8{1, 2}
+		}
+	}
+
+	em.mu.Lock()
+	uniqueUserID := em.generateUniqueUserIDLocked(displayName, newNumericID)
+	session := &UserSession{
+		NumericID:         newNumericID,
+		UserID:            uniqueUserID,
+		UserCode:          uniqueUserID,
+		EventID:           ev.EventID,
+		DisplayName:       displayName,
+		RoleTitle:         roleTitle,
+		UserLevel:         userLevel,
+		RolePriority:      rolePriority,
+		PrimaryTxChannel:  primaryCh,
+		PrimaryChannelID:  fmt.Sprintf("ch_0%d", primaryCh),
+		ListeningChannels: listening,
+		SignalingURL:      sigURL,
+		SignalingToken:    sigToken,
+		HmacSecretHex:     hex.EncodeToString(secretBytes),
+		HmacSecretBytes:   secretBytes,
+	}
+	em.usersByID[newNumericID] = session
+	em.usersByCode[uniqueUserID] = session
+	em.mu.Unlock()
+
+	if em.audioRouter != nil {
+		em.audioRouter.RegisterUserSession(newNumericID, secretBytes, session.ListeningChannels)
+	}
+	return session
+}
+
+// createDefaultFiveChannels tạo 5 kênh mặc định khớp 100% với CreateEventScreen.kt và ChannelListScreen.kt.
 func createDefaultFiveChannels() (map[uint8]*ChannelInfo, []*ChannelInfo) {
 	list := []*ChannelInfo{
 		{ID: "ch_01", ChannelID: 1, Name: "Toàn sự kiện", DepartmentCode: "ALL_EVENT", DefaultPriority: 3, OnlineCount: 48, StatusText: "Đạo diễn A đang nói · Ưu tiên Cấp 1"},
@@ -192,6 +407,7 @@ func (em *EventManager) HandleCreateEvent(w http.ResponseWriter, r *http.Request
 		EventName   string `json:"eventName"`
 		Description string `json:"description"`
 		PinCode     string `json:"pinCode"`
+		AdminCode   string `json:"adminCode"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	if req.EventName == "" {
@@ -201,8 +417,15 @@ func (em *EventManager) HandleCreateEvent(w http.ResponseWriter, r *http.Request
 		req.Description = "Sự kiện điều phối bộ đàm đa kênh thời gian thực"
 	}
 
-	pinCode := req.PinCode
-	if len(pinCode) != 6 || pinCode == "000000" {
+	pinCode := strings.TrimSpace(req.PinCode)
+	isSixDigits := len(pinCode) == 6
+	for _, ch := range pinCode {
+		if ch < '0' || ch > '9' {
+			isSixDigits = false
+			break
+		}
+	}
+	if !isSixDigits || pinCode == "000000" {
 		pinNum, _ := rand.Int(rand.Reader, big.NewInt(900000))
 		pinCode = fmt.Sprintf("%06d", pinNum.Int64()+100000)
 	}
@@ -217,17 +440,19 @@ func (em *EventManager) HandleCreateEvent(w http.ResponseWriter, r *http.Request
 		CreatedAt:   time.Now(),
 		Channels:    chMap,
 		ChannelList: chList,
+		AdminCode:   strings.TrimSpace(req.AdminCode),
 	}
 
 	em.mu.Lock()
 	em.eventsByPin[pinCode] = ev
+	em.eventsByID[eventID] = ev
 	em.mu.Unlock()
 
 	writeJSON(w, http.StatusCreated, ev)
 }
 
 // HandleJoinByPin xử lý POST /api/v1/auth/join-pin — Người dùng nhập PIN 6 số để tham gia sự kiện.
-// Nếu nhập PIN "000000" hoặc PIN không tồn tại -> trả về HTTP 404 kèm thông báo cho JoinErrorScreen.kt.
+// Trả về event, session, cùng userId, signalingUrl và signalingToken để app tự kết nối gọi được ngay.
 func (em *EventManager) HandleJoinByPin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -269,52 +494,29 @@ func (em *EventManager) HandleJoinByPin(w http.ResponseWriter, r *http.Request) 
 	}
 
 	userLevel, rolePriority, defaultTitle := ConvertUserLevelToPriority(req.UserLevel, req.RolePriority)
-	if req.DisplayName == "" {
+	if strings.TrimSpace(req.DisplayName) == "" {
 		req.DisplayName = "Minh Hậu"
 	}
-	if req.RoleTitle == "" {
+	if strings.TrimSpace(req.RoleTitle) == "" {
 		req.RoleTitle = defaultTitle
 	}
 	if req.PreferredChannel < 1 || req.PreferredChannel > 5 {
 		req.PreferredChannel = 2 // Mặc định vào kênh 2 (Sân khấu - ch_02)
 	}
 
-	secretBytes := make([]byte, 32)
-	_, _ = rand.Read(secretBytes)
-	newUserID := em.userSeq.Add(1)
-
 	listening := []uint8{1, req.PreferredChannel}
 	if req.PreferredChannel == 1 {
 		listening = []uint8{1, 2}
 	}
 
-	session := &UserSession{
-		UserID:            newUserID,
-		UserCode:          fmt.Sprintf("user_%d", newUserID),
-		EventID:           ev.EventID,
-		DisplayName:       req.DisplayName,
-		RoleTitle:         req.RoleTitle,
-		UserLevel:         userLevel,
-		RolePriority:      rolePriority,
-		PrimaryTxChannel:  req.PreferredChannel,
-		PrimaryChannelID:  fmt.Sprintf("ch_0%d", req.PreferredChannel),
-		ListeningChannels: listening,
-		HmacSecretHex:     hex.EncodeToString(secretBytes),
-		HmacSecretBytes:   secretBytes,
-	}
-
-	em.mu.Lock()
-	em.usersByID[newUserID] = session
-	em.mu.Unlock()
-
-	// Đăng ký người dùng và kênh đã chọn vào Bộ định tuyến Âm thanh UDP (ChannelAudioRouter)
-	if em.audioRouter != nil {
-		em.audioRouter.RegisterUserSession(newUserID, secretBytes, session.ListeningChannels)
-	}
+	session := em.CreateSession(ev, req.DisplayName, req.RoleTitle, userLevel, rolePriority, req.PreferredChannel, listening)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"event":   ev,
-		"session": session,
+		"userId":         session.UserID,
+		"signalingUrl":   session.SignalingURL,
+		"signalingToken": session.SignalingToken,
+		"event":          ev,
+		"session":        session,
 	})
 }
 
@@ -326,9 +528,15 @@ func (em *EventManager) HandleSwitchChannel(w http.ResponseWriter, r *http.Reque
 	}
 
 	var req struct {
+<<<<<<< HEAD
 		UserID            uint32  `json:"userId"`
 		PrimaryTxChannel  uint8   `json:"primaryTxChannel"`
 		ListeningChannels ChannelIDList `json:"listeningChannels"`
+=======
+		UserID            FlexibleUserID `json:"userId"`
+		PrimaryTxChannel  uint8          `json:"primaryTxChannel"`
+		ListeningChannels ChannelIDList  `json:"listeningChannels"`
+>>>>>>> origin/main
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -341,8 +549,8 @@ func (em *EventManager) HandleSwitchChannel(w http.ResponseWriter, r *http.Reque
 	}
 
 	em.mu.Lock()
-	session, exists := em.usersByID[req.UserID]
-	if !exists {
+	session := em.findSessionLocked(req.UserID)
+	if session == nil {
 		em.mu.Unlock()
 		http.Error(w, "User session not found", http.StatusNotFound)
 		return
@@ -350,10 +558,11 @@ func (em *EventManager) HandleSwitchChannel(w http.ResponseWriter, r *http.Reque
 	session.PrimaryTxChannel = req.PrimaryTxChannel
 	session.PrimaryChannelID = fmt.Sprintf("ch_0%d", req.PrimaryTxChannel)
 	session.ListeningChannels = req.ListeningChannels
+	numericID := session.NumericID
 	em.mu.Unlock()
 
 	if em.audioRouter != nil {
-		em.audioRouter.UpdateUserSubscribedChannels(req.UserID, req.ListeningChannels)
+		em.audioRouter.UpdateUserSubscribedChannels(numericID, req.ListeningChannels)
 	}
 
 	writeJSON(w, http.StatusOK, session)
@@ -367,8 +576,8 @@ func (em *EventManager) HandleLeaveChannel(w http.ResponseWriter, r *http.Reques
 	}
 
 	var req struct {
-		UserID    uint32 `json:"userId"`
-		ChannelID uint8  `json:"channelId"`
+		UserID    FlexibleUserID `json:"userId"`
+		ChannelID uint8          `json:"channelId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -376,8 +585,10 @@ func (em *EventManager) HandleLeaveChannel(w http.ResponseWriter, r *http.Reques
 	}
 
 	em.mu.Lock()
-	session, exists := em.usersByID[req.UserID]
-	if exists {
+	session := em.findSessionLocked(req.UserID)
+	var numericID uint32
+	if session != nil {
+		numericID = session.NumericID
 		filtered := make([]uint8, 0, len(session.ListeningChannels))
 		for _, ch := range session.ListeningChannels {
 			if ch != req.ChannelID {
@@ -388,8 +599,8 @@ func (em *EventManager) HandleLeaveChannel(w http.ResponseWriter, r *http.Reques
 	}
 	em.mu.Unlock()
 
-	if em.audioRouter != nil && exists {
-		em.audioRouter.UpdateUserSubscribedChannels(req.UserID, session.ListeningChannels)
+	if em.audioRouter != nil && session != nil {
+		em.audioRouter.UpdateUserSubscribedChannels(numericID, session.ListeningChannels)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
