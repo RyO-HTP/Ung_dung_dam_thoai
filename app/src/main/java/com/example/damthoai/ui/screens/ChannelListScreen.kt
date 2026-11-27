@@ -19,6 +19,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -65,31 +67,32 @@ fun ChannelListScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Live Cue Banner
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = GlassBg)
-        ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text(
-                    text = "THANH KỊCH BẢN · ĐANG DIỄN",
-                    style = DamType.Label,
-                    color = TextSecondary
-                )
-                Text(
-                    text = "Tiết mục 4 – Ban nhạc khách mời",
-                    style = DamType.Body14Bold,
-                    color = TextPrimary
-                )
-                Text(
-                    text = "Tiếp theo: chuyển cảnh, hậu cần mang đạo cụ",
-                    style = DamType.Small12,
-                    color = TextSecondary.copy(alpha = 0.8f)
-                )
+        val liveCue by com.example.damthoai.data.remote.LiveCueClient.currentLiveCue.collectAsState()
+        if (liveCue != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = GlassBg)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = "THANH KỊCH BẢN · ĐANG DIỄN",
+                        style = DamType.Label,
+                        color = TextSecondary
+                    )
+                    Text(
+                        text = liveCue?.title.orEmpty(),
+                        style = DamType.Body14Bold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = liveCue?.message.orEmpty(),
+                        style = DamType.Small12,
+                        color = TextSecondary.copy(alpha = 0.8f)
+                    )
+                }
             }
+            Spacer(modifier = Modifier.height(16.dp))
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
 
         Text(text = "Danh sách kênh", color = TextPrimary, style = DamType.Heading16)
         Spacer(modifier = Modifier.height(8.dp))

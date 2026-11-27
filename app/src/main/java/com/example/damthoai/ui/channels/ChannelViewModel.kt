@@ -10,12 +10,10 @@ package com.example.damthoai.ui.channels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.damthoai.data.model.Channel
-import com.example.damthoai.ui.preview.PreviewSamples
-import kotlinx.coroutines.delay
+import com.example.damthoai.data.remote.RemoteEventRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -26,15 +24,15 @@ class ChannelViewModel : ViewModel() {
 
     init {
         observeEventChannels()
-        triggerMockRoleChangedBanner()
     }
 
     private fun observeEventChannels() {
         viewModelScope.launch {
-            com.example.damthoai.data.remote.RemoteEventRepository.currentEvent.collect { event ->
+            RemoteEventRepository.currentEvent.collect { event ->
                 val currentState = _uiState.value
                 val previousChannels = currentState.channels.associateBy { it.channel.id }
-                val channelStates = (event?.channels ?: PreviewSamples.sampleChannels).map { channel ->
+                val eventChannels = event?.channels.orEmpty()
+                val channelStates = eventChannels.map { channel ->
                     previousChannels[channel.id]?.copy(channel = channel)
                         ?: initialChannelState(channel)
                 }
@@ -47,7 +45,7 @@ class ChannelViewModel : ViewModel() {
 
                 _uiState.update {
                     it.copy(
-                        eventName = event?.name ?: PreviewSamples.sampleEvent.name,
+                        eventName = event?.name.orEmpty(),
                         channels = channelStates,
                         activeMicChannelId = activeMicChannelId,
                         selectedMenuChannel = selectedMenuChannel
@@ -58,21 +56,13 @@ class ChannelViewModel : ViewModel() {
     }
 
     private fun initialChannelState(channel: Channel): ChannelItemUiState =
-        when (channel.id) {
-            "ch_01" -> ChannelItemUiState(
-                channel = channel,
-                volume = 1.0f,
-                isTransmittingMic = false
-            )
-            "ch_02" -> ChannelItemUiState(channel = channel, volume = 0.7f)
-            "ch_03" -> ChannelItemUiState(
-                channel = channel,
-                volume = 0.2f,
-                isTransmittingMic = true,
-                isDucked80 = true
-            )
-            else -> ChannelItemUiState(channel = channel)
-        }
+        ChannelItemUiState(
+            channel = channel,
+            volume = if (channel.isDefault || channel.id == "ch_01") 1.0f else 0.7f,
+            isMuted = false,
+            isTransmittingMic = false,
+            isDucked80 = false
+        )
 
     fun updateChannelVolume(channelId: String, newVolume: Float) {
         _uiState.update { state ->
@@ -103,9 +93,9 @@ class ChannelViewModel : ViewModel() {
     fun selectMicChannel(channelId: String) {
         _uiState.update { it.copy(activeMicChannelId = channelId) }
         val chNum = channelId.takeLast(1).toIntOrNull() ?: 1
-        val listening = _uiState.value.channels.mapNotNull { it.channel.id.takeLast(1).toIntOrNull() }
+        val listening = _uiState.value.channels.mapNotNull { it.channel.id.takeLast(1).toIntOrNull() }.take(3)
         viewModelScope.launch {
-            com.example.damthoai.data.remote.RemoteEventRepository.switchChannel(chNum, listening)
+            RemoteEventRepository.switchChannel(chNum, listening)
         }
     }
 
@@ -133,24 +123,11 @@ class ChannelViewModel : ViewModel() {
         }
         val chNum = channelId.takeLast(1).toIntOrNull() ?: 1
         viewModelScope.launch {
-            com.example.damthoai.data.remote.RemoteEventRepository.leaveChannel(chNum)
+            RemoteEventRepository.leaveChannel(chNum)
         }
     }
 
     fun dismissRoleChangedBanner() {
         _uiState.update { it.copy(roleChangedNotification = null) }
-    }
-
-    private fun triggerMockRoleChangedBanner() {
-        viewModelScope.launch {
-            delay(2000)
-            _uiState.update {
-                it.copy(roleChangedNotification = RoleChangedUiState())
-            }
-            delay(5000)
-            _uiState.update {
-                it.copy(roleChangedNotification = null)
-            }
-        }
     }
 }

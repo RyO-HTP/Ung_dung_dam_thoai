@@ -17,17 +17,17 @@ data class ChannelItemUiState(
 )
 
 data class ChannelListUiState(
-    val eventName: String = "Đêm nhạc Chào Tân sinh viên",
-    val liveCueHeader: String = "LIVE CUE · ĐANG DIỄN",
-    val liveCueTitle: String = "Tiết mục 4 – Ban nhạc khách mời",
-    val liveCueSubtitle: String = "Hậu cần: chuẩn bị đạo cụ chuyển cảnh",
+    val eventName: String = "",
+    val liveCueHeader: String = "",
+    val liveCueTitle: String = "",
+    val liveCueSubtitle: String = "",
     val channels: List<ChannelItemUiState> = emptyList(),
-    val activeMicChannelId: String = "ch_03",
+    val activeMicChannelId: String = "",
     val selectedMenuChannel: ChannelItemUiState? = null,
     val roleChangedNotification: RoleChangedUiState? = null
 )
 
 data class RoleChangedUiState(
-    val title: String = "Lan Phương đã đổi chức vụ của bạn",
-    val subtitle: String = "Trưởng ban Hậu cần · Cấp 2"
+    val title: String = "Tổng đạo diễn đã đổi chức vụ của bạn",
+    val subtitle: String = ""
 )

@@ -51,8 +51,8 @@ fun LiveCueDraftScreen(
     onSendCue: (LiveCue) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var title by remember { mutableStateOf("Tiết mục 4 – Ban nhạc khách mời") }
-    var message by remember { mutableStateOf("Hậu cần: chuẩn bị đạo cụ chuyển cảnh") }
+    var title by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf("") }
     val previewCue = remember(title, message) {
         LiveCue(title = title, message = message, channelName = "Toàn sự kiện", isPriority = true)
     }
@@ -131,8 +131,8 @@ fun UserProfileScreen(
     onSave: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var displayName by remember { mutableStateOf("Lan Phương") }
-    var role by remember { mutableStateOf("Tổng đạo diễn") }
+    var displayName by remember { mutableStateOf(com.example.damthoai.data.remote.EventSession.getSession()?.displayName.orEmpty()) }
+    var role by remember { mutableStateOf(com.example.damthoai.data.remote.EventSession.getSession()?.roleTitle.orEmpty()) }
 
     DamThoaiBackground(modifier = modifier) {
         Column(

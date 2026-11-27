@@ -809,8 +809,9 @@ private fun EmergencyParticipantRow(
     participant: EmergencyCallParticipant,
     isUserTalking: Boolean
 ) {
-    val isSpeaking = participant.isSpeaking ||
-        (participant.member.name == "Minh Hậu" && isUserTalking)
+    val currentUserId = remember { com.example.damthoai.data.remote.EventSession.getSession()?.userId }
+    val isSelf = participant.member.id == currentUserId
+    val isSpeaking = participant.isSpeaking || (isSelf && isUserTalking)
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -819,7 +820,7 @@ private fun EmergencyParticipantRow(
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = if (participant.member.name == "Minh Hậu") {
+                text = if (isSelf) {
                     "${participant.member.name} (bạn)"
                 } else {
                     participant.member.name
@@ -828,7 +829,7 @@ private fun EmergencyParticipantRow(
                 style = DamType.Body.copy(fontWeight = FontWeight.SemiBold)
             )
             Text(
-                text = if (participant.member.name == "Minh Hậu" && isUserTalking) {
+                text = if (isSelf && isUserTalking) {
                     "đang nói"
                 } else {
                     participant.status

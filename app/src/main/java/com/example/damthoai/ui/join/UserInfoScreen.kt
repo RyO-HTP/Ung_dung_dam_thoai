@@ -67,8 +67,8 @@ fun UserInfoScreen(
     onEnterChannel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var displayName by remember { mutableStateOf("Minh Hậu") }
-    var roleTitle by remember { mutableStateOf("Trưởng ban Hậu cần") }
+    var displayName by remember { mutableStateOf(com.example.damthoai.data.remote.EventSession.getSession()?.displayName.orEmpty()) }
+    var roleTitle by remember { mutableStateOf(com.example.damthoai.data.remote.EventSession.getSession()?.roleTitle.orEmpty()) }
     var selectedLevel by remember { mutableStateOf(2) }
     var nameFocused by remember { mutableStateOf(true) }
 
