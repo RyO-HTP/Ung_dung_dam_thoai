@@ -1,9 +1,10 @@
 package com.example.damthoai.data.remote
 
 import android.content.Context
-import android.content.SharedPreferences
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
 object EventSession {
     private const val PREFS_NAME = "damthoai_event_session"
@@ -29,6 +30,9 @@ object EventSession {
     private val gson = Gson()
     private var cachedSession: SessionData? = null
 
+    private val _sessionState = MutableSharedFlow<SessionData?>(extraBufferCapacity = 1)
+    val sessionState: SharedFlow<SessionData?> = _sessionState.asSharedFlow()
+
     fun init(context: Context) {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val json = prefs.getString(KEY_SESSION_JSON, null)
@@ -41,6 +45,7 @@ object EventSession {
         } else {
             null
         }
+        _sessionState.tryEmit(cachedSession)
     }
 
     fun hasSession(): Boolean = cachedSession != null
@@ -51,11 +56,13 @@ object EventSession {
         cachedSession = session
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_SESSION_JSON, gson.toJson(session)).apply()
+        _sessionState.tryEmit(session)
     }
 
     fun clearSession(context: Context) {
         cachedSession = null
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().remove(KEY_SESSION_JSON).apply()
+        _sessionState.tryEmit(null)
     }
 }

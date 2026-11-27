@@ -9,6 +9,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -43,24 +44,24 @@ object SpeakingStateRepository : SpeakingStateSource {
 
     init {
         scope.launch {
-            PttController.isPttActive.collect { isLocalActive ->
-                val session = EventSession.getSession()
-                val primaryCh = session?.primaryChannelId ?: "ch_01"
+            PttController.isPttActive.drop(1).collect { isLocalActive ->
+                val session = EventSession.getSession() ?: return@collect
+                val primaryCh = session.primaryChannelId
                 val chIdNum = primaryCh.takeLast(1).toIntOrNull() ?: 1
                 val current = _speakingByChannel.value.toMutableMap()
 
                 if (isLocalActive) {
-                    current[primaryCh] = SpeakerInfo(name = session?.displayName ?: "Bạn", levelLabel = "Cấp ${session?.level ?: 1}", isLocal = true)
+                    current[primaryCh] = SpeakerInfo(name = session.displayName, levelLabel = "Cấp ${session.level}", isLocal = true)
                     _speakingByChannel.value = current
 
                     val reqBody = mapOf(
                         "channelId" to chIdNum,
                         "channelCode" to primaryCh,
-                        "userId" to (session?.userId ?: "user_1"),
-                        "displayName" to (session?.displayName ?: "Thành viên"),
-                        "roleTitle" to (session?.roleTitle ?: "Cộng tác viên"),
-                        "userLevel" to (session?.level ?: 3),
-                        "rolePriority" to (session?.priority ?: 1)
+                        "userId" to session.userId,
+                        "displayName" to session.displayName,
+                        "roleTitle" to session.roleTitle,
+                        "userLevel" to session.level,
+                        "rolePriority" to session.priority
                     )
                     ApiClient.post<Any>("/api/v1/floor/request", reqBody)
                 } else {
@@ -71,7 +72,7 @@ object SpeakingStateRepository : SpeakingStateSource {
 
                     val reqBody = mapOf(
                         "channelId" to chIdNum,
-                        "userId" to (session?.userId ?: "user_1")
+                        "userId" to session.userId
                     )
                     ApiClient.post<Any>("/api/v1/floor/release", reqBody)
                 }

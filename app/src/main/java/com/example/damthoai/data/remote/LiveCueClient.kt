@@ -44,31 +44,47 @@ object LiveCueClient {
 
     private var webSocket: WebSocket? = null
     private var isRunning = false
+    private var reconnectAttempt = 0
 
-    fun start(userId: String, department: String = "STAGE") {
+    fun start(userId: String, eventId: Long, department: String = "ALL_EVENT") {
         if (isRunning) return
         isRunning = true
+        reconnectAttempt = 0
+        connect(userId, eventId, department)
+    }
+
+    private fun connect(userId: String, eventId: Long, department: String) {
+        if (!isRunning) return
         scope.launch {
-            while (isRunning) {
+            try {
                 val baseUrl = ApiClient.currentBaseUrl.replace("http://", "ws://").replace("https://", "wss://")
-                val wsUrl = "$baseUrl/ws/live-cue?userId=$userId&dept=$department"
+                val wsUrl = "$baseUrl/ws/live-cue?userId=$userId&eventId=$eventId&dept=$department"
                 val request = Request.Builder().url(wsUrl).build()
 
+                webSocket?.close(1000, "Switch socket")
                 webSocket = client.newWebSocket(request, object : WebSocketListener() {
                     override fun onOpen(webSocket: WebSocket, response: Response) {
                         Log.d(TAG, "WebSocket LiveCue đã kết nối")
+                        reconnectAttempt = 0
                     }
 
                     override fun onMessage(webSocket: WebSocket, text: String) {
                         try {
                             val payload = gson.fromJson(text, LiveCuePayload::class.java)
                             if (payload != null) {
-                                val title = payload.liveCueTitle ?: payload.title ?: "Tiết mục"
+                                if (payload.type == "ERROR") {
+                                    return
+                                }
+                                val title = payload.liveCueTitle ?: payload.title
                                 val message = payload.liveCueSubtitle ?: payload.message ?: ""
+                                if (title.isNullOrBlank() && message.isBlank()) {
+                                    _currentLiveCue.value = null
+                                    return
+                                }
                                 val channelName = payload.channelName ?: "Toàn sự kiện"
                                 val isPriority = payload.isPriority
                                 _currentLiveCue.value = LiveCue(
-                                    title = title,
+                                    title = title ?: "",
                                     message = message,
                                     channelName = channelName,
                                     isPriority = isPriority
@@ -81,23 +97,30 @@ object LiveCueClient {
 
                     override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                         Log.w(TAG, "WebSocket LiveCue lỗi/mất kết nối: ${t.message}")
-                        reconnect()
+                        reconnect(userId, eventId, department)
                     }
 
                     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                         Log.d(TAG, "WebSocket LiveCue đóng: $reason")
-                        reconnect()
+                        reconnect(userId, eventId, department)
                     }
                 })
-                delay(10000)
+            } catch (e: Exception) {
+                Log.e(TAG, "Lỗi kết nối LiveCue WS: ${e.message}")
+                reconnect(userId, eventId, department)
             }
         }
     }
 
-    private fun reconnect() {
+    private fun reconnect(userId: String, eventId: Long, department: String) {
         if (!isRunning) return
         scope.launch {
-            delay(3000)
+            reconnectAttempt++
+            val delaySec = minOf(1 shl reconnectAttempt, 15)
+            delay(delaySec * 1000L)
+            if (isRunning) {
+                connect(userId, eventId, department)
+            }
         }
     }
 
@@ -105,14 +128,16 @@ object LiveCueClient {
         isRunning = false
         webSocket?.close(1000, "Client stop")
         webSocket = null
+        _currentLiveCue.value = null
     }
 
-    suspend fun fireCue(cueId: String, title: String, message: String, actorName: String): Result<Any> {
+    suspend fun fireCue(cueId: String, title: String, message: String, userId: String, eventId: Long): Result<Any> {
         val body = mapOf(
+            "userId" to userId,
+            "eventId" to eventId,
             "cueId" to cueId,
             "title" to title,
-            "message" to message,
-            "actorName" to actorName
+            "message" to message
         )
         return ApiClient.post<Any>("/api/v1/live-cue/fire", body)
     }
