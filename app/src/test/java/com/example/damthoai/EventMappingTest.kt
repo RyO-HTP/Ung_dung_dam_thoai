@@ -40,7 +40,7 @@ class EventMappingTest {
             rolePriority = 2,
             primaryTxChannel = 2,
             primaryChannelId = "ch_02",
-            listeningChannels = listOf(1, 2),
+            listeningChannels = null,
             signalingUrl = null,
             signalingToken = null
         )
@@ -56,7 +56,7 @@ class EventMappingTest {
             rolePriority = 2,
             primaryTxChannel = 2,
             primaryChannelId = "ch_02",
-            listeningChannels = listOf(1, 2),
+            listeningChannels = null,
             signalingUrl = null,
             signalingToken = null
         )
