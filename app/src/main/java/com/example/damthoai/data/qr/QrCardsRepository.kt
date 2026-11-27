@@ -99,13 +99,16 @@ class RemoteQrCardsRepository(private val baseUrl: String) : QrCardsRepository {
     }
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(5, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
         .build()
 
     private val gson = Gson()
 
-    data class QrRolesResponse(val cards: List<RoleQrCard>)
+    data class QrRolesResponse(
+        val cards: List<RoleQrCard>? = null,
+        val departmentCards: List<RoleQrCard>? = null
+    )
 
     override suspend fun getRoleCards(eventId: Long): List<RoleQrCard> = withContext(Dispatchers.IO) {
         try {
@@ -115,7 +118,7 @@ class RemoteQrCardsRepository(private val baseUrl: String) : QrCardsRepository {
                 if (response.isSuccessful) {
                     val body = response.body?.string()
                     val resp = gson.fromJson(body, QrRolesResponse::class.java)
-                    return@withContext resp?.cards ?: emptyList()
+                    return@withContext resp?.cards ?: resp?.departmentCards ?: emptyList()
                 }
             }
         } catch (e: IOException) {

@@ -5,8 +5,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
-	week1signaling "damthoai/nguoi5server/Tuan_1_Signaling_SDP_ICE_va_Database"
 	week2routing "damthoai/nguoi5server/Tuan_2_API_Quan_ly_Su_kien_Kenh_va_Dinh_tuyen_Am_thanh"
 	week3qr "damthoai/nguoi5server/Tuan_3_API_Sinh_QR_Phan_Vai_Tu_Dong_Role_Provisioning"
 	week4floor "damthoai/nguoi5server/Tuan_4_Floor_Control_CAS_va_Priority_Override"
@@ -14,27 +14,23 @@ import (
 )
 
 // =============================================================================
-// ENTRYPOINT HỢP NHẤT TOÀN BỘ 6 TUẦN CỦA NGƯỜI 5 (BACKEND & REALTIME SERVER)
-// Đã đồng bộ 100% các API và WebSocket với ứng dụng Android trên nhánh Tuan-4
+// ENTRYPOINT HỢP NHẤT BACKEND GO CỦA NGƯỜI 5 (BACKEND & REALTIME SERVER)
+// Máy chủ Signaling WebRTC dùng riêng signaling_server.py (Python);
+// Backend Go phụ trách: Sự kiện/PIN/Kênh, QR Phân vai, Floor Control, Live Cue.
 // =============================================================================
 
 func main() {
-	httpAddr := getEnv("HTTP_ADDR", ":8080")
+	httpAddr := resolveHTTPAddr()
 	udpAddr := getEnv("UDP_RELAY_ADDR", ":50000")
-	turnHost := getEnv("TURN_PUBLIC_IP", "10.0.2.2")
-	turnSecret := getEnv("TURN_SECRET", "damthoai_turn_secret_2026")
 
-	// 1. Tuần 1: Khởi tạo WebRTC Signaling Hub (SDP Offer/Answer, ICE Candidate, STUN/TURN, Voice Note, Handover)
-	signalingHub := week1signaling.NewSignalingHub(turnHost, turnSecret)
-
-	// 2. Tuần 2: Khởi tạo Bộ định tuyến Âm thanh UDP (ChannelAudioRouter) & Quản lý Sự kiện/Kênh (PIN: 240826, 889900)
+	// 1. Tuần 2: Khởi tạo Bộ định tuyến Âm thanh UDP (ChannelAudioRouter) & Quản lý Sự kiện/Kênh (PIN: 240826, 889900)
 	audioRouter := week2routing.NewChannelAudioRouter()
 	eventManager := week2routing.NewEventManager(audioRouter)
 
-	// 3. Tuần 3: Khởi tạo Dịch vụ Sinh & Xác thực Mã QR Phân vai Tự động (HMAC-SHA256 + MOCK_QR_EVENT_889900)
-	qrService := week3qr.NewQrRoleProvisioningService("0123456789abcdef0123456789abcdef")
+	// 2. Tuần 3: Khởi tạo Dịch vụ Sinh & Xác thực Mã QR Phân vai Tự động (HMAC-SHA256 + MOCK_QR_EVENT_889900)
+	qrService := week3qr.NewQrRoleProvisioningService("0123456789abcdef0123456789abcdef", eventManager)
 
-	// 4. Tuần 4: Khởi tạo Bộ điều khiển Quyền nói Lock-Free CAS & Priority Override (Cấp 1/2/3 <-> Priority 3/2/1)
+	// 3. Tuần 4: Khởi tạo Bộ điều khiển Quyền nói Lock-Free CAS & Priority Override (Cấp 1/2/3 <-> Priority 3/2/1)
 	floorEngine := week4floor.NewFloorControlEngine(func(decision week4floor.FloorDecision) {
 		log.Printf("[FloorControl] Kênh %s (%d) -> %s (Reason: %s)",
 			decision.ChannelCode, decision.ChannelID, decision.Status, decision.Reason)
@@ -43,7 +39,7 @@ func main() {
 	defer close(stopWatchdog)
 	go floorEngine.RunWatchdogLoop(stopWatchdog)
 
-	// 5. Tuần 5: Khởi tạo Hub Đồng bộ Thanh Kịch bản (Live Cue Banner: "Tiết mục 4 – Ban nhạc khách mời")
+	// 4. Tuần 5: Khởi tạo Hub Đồng bộ Thanh Kịch bản (Live Cue Banner: "Tiết mục 4 – Ban nhạc khách mời")
 	liveCueHub := week5livecue.NewLiveCueBannerHub(1)
 
 	// Khởi chạy UDP Audio Fast-Path trên cổng 50000
@@ -53,14 +49,31 @@ func main() {
 		}
 	}()
 
-	// Đăng ký toàn bộ HTTP REST API & WebSocket Endpoints
+	mux := newHTTPMux(eventManager, qrService, floorEngine, liveCueHub)
+
+	log.Printf("[DamThoai Server - Người 5] Đang chạy HTTP/WS tại %s và UDP Audio tại %s", httpAddr, udpAddr)
+	log.Fatal(http.ListenAndServe(httpAddr, mux))
+}
+
+func newHTTPMux(
+	eventManager *week2routing.EventManager,
+	qrService *week3qr.QrRoleProvisioningService,
+	floorEngine *week4floor.FloorControlEngine,
+	liveCueHub *week5livecue.LiveCueBannerHub,
+) *http.ServeMux {
 	mux := http.NewServeMux()
 
-	// Endpoints Tuần 1 (Hỗ trợ cả "/ws/signaling" và "/" cho SignalingClient.kt trên Android)
-	mux.HandleFunc("/ws/signaling", signalingHub.ServeWS)
+	// Health check cho Render / Railway
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK\n"))
+	})
+
+	// Thông tin trạng thái máy chủ (không đăng ký /ws/signaling để tránh trùng với signaling_server.py)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" && r.Header.Get("Upgrade") == "websocket" {
-			signalingHub.ServeWS(w, r)
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -71,8 +84,41 @@ func main() {
 		})
 	})
 
-	// Endpoints Tuần 2 (Sự kiện, PIN, Kênh)
+	// Endpoints Tuần 2 (Sự kiện, PIN, Kênh & Admin)
 	mux.HandleFunc("/api/v1/events", eventManager.HandleCreateEvent)
+	mux.HandleFunc("/api/v1/events/restore", eventManager.HandleRestoreEvent)
+	mux.HandleFunc("/api/v1/events/", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		if strings.HasSuffix(path, "/channels") && r.Method == http.MethodPost {
+			eventManager.HandleAddChannel(w, r)
+			return
+		}
+		if strings.Contains(path, "/channels/") {
+			if r.Method == http.MethodPatch || r.Method == http.MethodPut {
+				eventManager.HandleUpdateChannel(w, r)
+				return
+			}
+			if r.Method == http.MethodDelete {
+				eventManager.HandleDeleteChannel(w, r)
+				return
+			}
+		}
+		if strings.HasSuffix(path, "/members") && r.Method == http.MethodGet {
+			eventManager.HandleListMembers(w, r)
+			return
+		}
+		if strings.Contains(path, "/members/") {
+			if r.Method == http.MethodPatch || r.Method == http.MethodPut {
+				eventManager.HandleUpdateMember(w, r)
+				return
+			}
+			if r.Method == http.MethodDelete {
+				eventManager.HandleDeleteMember(w, r)
+				return
+			}
+		}
+		http.NotFound(w, r)
+	})
 	mux.HandleFunc("/api/v1/auth/join-pin", eventManager.HandleJoinByPin)
 	mux.HandleFunc("/api/v1/users/switch-channel", eventManager.HandleSwitchChannel)
 	mux.HandleFunc("/api/v1/users/leave-channel", eventManager.HandleLeaveChannel)
@@ -90,8 +136,21 @@ func main() {
 	mux.HandleFunc("/ws/live-cue", liveCueHub.ServeLiveCueWS)
 	mux.HandleFunc("/api/v1/live-cue/fire", liveCueHub.HandleFireCueHTTP)
 
-	log.Printf("[DamThoai Server - Người 5] Đang chạy HTTP/WS tại %s và UDP Audio tại %s", httpAddr, udpAddr)
-	log.Fatal(http.ListenAndServe(httpAddr, mux))
+	return mux
+}
+
+// resolveHTTPAddr ưu tiên HTTP_ADDR, sau đó đến biến PORT của Render/Railway, mặc định ":8080".
+func resolveHTTPAddr() string {
+	if addr := strings.TrimSpace(os.Getenv("HTTP_ADDR")); addr != "" {
+		return addr
+	}
+	if port := strings.TrimSpace(os.Getenv("PORT")); port != "" {
+		if strings.Contains(port, ":") {
+			return port
+		}
+		return ":" + port
+	}
+	return ":8080"
 }
 
 func getEnv(key, fallback string) string {
