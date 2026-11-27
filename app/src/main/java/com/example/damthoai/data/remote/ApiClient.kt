@@ -95,33 +95,53 @@ object ApiClient {
     }
 
     inline fun <reified T> get(path: String): Result<T> {
-        val url = "$currentBaseUrl${if (path.startsWith("/")) path else "/$path"}"
-        val request = Request.Builder().url(url).get().build()
-        return executeRequest<T>(request)
+        return try {
+            val url = "$currentBaseUrl${if (path.startsWith("/")) path else "/$path"}"
+            val request = Request.Builder().url(url).get().build()
+            executeRequest<T>(request)
+        } catch (e: Exception) {
+            val apiEx = if (e is ApiException) e else ApiException(0, "UNKNOWN_ERROR", e.message ?: "Lỗi")
+            Result.failure(apiEx)
+        }
     }
 
     inline fun <reified T> post(path: String, bodyObj: Any? = null): Result<T> {
-        val url = "$currentBaseUrl${if (path.startsWith("/")) path else "/$path"}"
-        val jsonBody = bodyObj?.let { gson.toJson(it) } ?: "{}"
-        val requestBody = jsonBody.toRequestBody("application/json; charset=utf-8".toMediaType())
-        val request = Request.Builder().url(url).post(requestBody).build()
-        return executeRequest<T>(request)
+        return try {
+            val url = "$currentBaseUrl${if (path.startsWith("/")) path else "/$path"}"
+            val jsonBody = bodyObj?.let { gson.toJson(it) } ?: "{}"
+            val requestBody = jsonBody.toRequestBody("application/json; charset=utf-8".toMediaType())
+            val request = Request.Builder().url(url).post(requestBody).build()
+            executeRequest<T>(request)
+        } catch (e: Exception) {
+            val apiEx = if (e is ApiException) e else ApiException(0, "UNKNOWN_ERROR", e.message ?: "Lỗi")
+            Result.failure(apiEx)
+        }
     }
 
     inline fun <reified T> patch(path: String, bodyObj: Any? = null): Result<T> {
-        val url = "$currentBaseUrl${if (path.startsWith("/")) path else "/$path"}"
-        val jsonBody = bodyObj?.let { gson.toJson(it) } ?: "{}"
-        val requestBody = jsonBody.toRequestBody("application/json; charset=utf-8".toMediaType())
-        val request = Request.Builder().url(url).patch(requestBody).build()
-        return executeRequest<T>(request)
+        return try {
+            val url = "$currentBaseUrl${if (path.startsWith("/")) path else "/$path"}"
+            val jsonBody = bodyObj?.let { gson.toJson(it) } ?: "{}"
+            val requestBody = jsonBody.toRequestBody("application/json; charset=utf-8".toMediaType())
+            val request = Request.Builder().url(url).patch(requestBody).build()
+            executeRequest<T>(request)
+        } catch (e: Exception) {
+            val apiEx = if (e is ApiException) e else ApiException(0, "UNKNOWN_ERROR", e.message ?: "Lỗi")
+            Result.failure(apiEx)
+        }
     }
 
     inline fun <reified T> delete(path: String, bodyObj: Any? = null): Result<T> {
-        val url = "$currentBaseUrl${if (path.startsWith("/")) path else "/$path"}"
-        val requestBody = bodyObj?.let {
-            gson.toJson(it).toRequestBody("application/json; charset=utf-8".toMediaType())
+        return try {
+            val url = "$currentBaseUrl${if (path.startsWith("/")) path else "/$path"}"
+            val requestBody = bodyObj?.let {
+                gson.toJson(it).toRequestBody("application/json; charset=utf-8".toMediaType())
+            }
+            val request = Request.Builder().url(url).delete(requestBody).build()
+            executeRequest<T>(request)
+        } catch (e: Exception) {
+            val apiEx = if (e is ApiException) e else ApiException(0, "UNKNOWN_ERROR", e.message ?: "Lỗi")
+            Result.failure(apiEx)
         }
-        val request = Request.Builder().url(url).delete(requestBody).build()
-        return executeRequest<T>(request)
     }
 }
