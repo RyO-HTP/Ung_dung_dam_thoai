@@ -3,78 +3,74 @@ package week5livecue
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
+	"damthoai/nguoi5server/identity"
 	"github.com/gorilla/websocket"
 )
-
-// =============================================================================
-// TUẦN 5 (NGƯỜI 5): ĐỒNG BỘ HÓA THANH KỊCH BẢN (LIVE CUE BANNER) QUA WEBSOCKETS
-// Đã đồng bộ 100% với dự án Android DuAnLamChung trên nhánh Tuan-4:
-//   - LiveCueCard.kt & FakeRemainingUiData.kt (data class LiveCue: title, message, channelName, isPriority)
-//   - ProfileLiveCueScreens.kt (LiveCueDraftScreen: nút "Đẩy lên mọi máy")
-//   - ChannelListUiState.kt & ChannelListScreen.kt (liveCueHeader, liveCueTitle, liveCueSubtitle)
-//   - ActiveCallScreen.kt (Thanh Live Cue hiển thị cố định phía trên nút PTT)
-// =============================================================================
 
 type CueStatus string
 
 const (
 	CueCompleted   CueStatus = "COMPLETED"
-	CueActiveNow   CueStatus = "ACTIVE_NOW"   // Đang hiển thị trên Thanh Kịch bản (Live Cue Banner)
-	CueNextStandby CueStatus = "NEXT_STANDBY" // Tiết mục chuẩn bị kế tiếp
+	CueDone        CueStatus = "DONE"
+	CueActiveNow   CueStatus = "ACTIVE_NOW"
+	CueActive      CueStatus = "ACTIVE"
+	CueNextStandby CueStatus = "NEXT_STANDBY"
 	CueUpcoming    CueStatus = "UPCOMING"
 )
 
 type CueItem struct {
-	CueID             string          `json:"cueId"`             // Mã tiết mục: C01, C02, C03, C04...
-	TimeSpec          string          `json:"timeSpec"`          // Giờ kịch bản: 19:30, 19:50...
-	Title             string          `json:"title"`             // Khớp data class LiveCue.title trên Android
-	Message           string          `json:"message"`           // Khớp data class LiveCue.message trên Android
-	ChannelName       string          `json:"channelName"`       // Khớp data class LiveCue.channelName ("Toàn sự kiện")
-	IsPriority        bool            `json:"isPriority"`        // Khớp data class LiveCue.isPriority (true)
-	LiveCueHeader     string          `json:"liveCueHeader"`     // Khớp ChannelListUiState: "LIVE CUE · ĐANG DIỄN"
-	LiveCueTitle      string          `json:"liveCueTitle"`      // Khớp ChannelListUiState: "Tiết mục 4 – Ban nhạc khách mời"
-	LiveCueSubtitle   string          `json:"liveCueSubtitle"`   // Khớp ChannelListUiState: "Hậu cần: chuẩn bị đạo cụ chuyển cảnh"
-	BannerText        string          `json:"bannerText"`        // Dòng chữ nhắc việc tổng hợp
-	DetailInstruction string          `json:"detailInstruction"` // Hướng dẫn chi tiết cho từng bộ phận
-	TargetDepartments []string        `json:"targetDepartments"` // ["ALL_EVENT", "STAGE", "LOGISTICS_SEC", "TECHNICAL", "RECEPTION"]
+	CueID             string          `json:"cueId"`
+	TimeSpec          string          `json:"timeSpec"`
+	Title             string          `json:"title"`
+	Message           string          `json:"message"`
+	ChannelName       string          `json:"channelName"`
+	IsPriority        bool            `json:"isPriority"`
+	LiveCueHeader     string          `json:"liveCueHeader"`
+	LiveCueTitle      string          `json:"liveCueTitle"`
+	LiveCueSubtitle   string          `json:"liveCueSubtitle"`
+	BannerText        string          `json:"bannerText"`
+	DetailInstruction string          `json:"detailInstruction"`
+	TargetDepartments []string        `json:"targetDepartments"`
 	Status            CueStatus       `json:"status"`
 	FiredByDirector   string          `json:"firedByDirector,omitempty"`
 	FiredAtMs         int64           `json:"firedAtMs,omitempty"`
-	AckedDepartments  map[string]bool `json:"ackedDepartments"` // Các bộ phận đã bấm xác nhận thấy lệnh nhắc việc
+	AckedDepartments  map[string]bool `json:"ackedDepartments"`
 }
 
-// LiveCueBannerPayload là bản tin WebSocket đẩy xuống toàn bộ thiết bị Android.
 type LiveCueBannerPayload struct {
-	Type            string     `json:"type"` // LIVE_CUE_BANNER_SYNC | LIVE_CUE_FIRED | LIVE_CUE_ACK_UPDATED
+	Type            string     `json:"type"`
 	EventID         int64      `json:"eventId"`
-	Revision        int64      `json:"revision"`        // Số thứ tự phiên bản kịch bản tăng dần
-	Title           string     `json:"title"`           // Khớp trực tiếp LiveCue.title (LiveCueCard.kt)
-	Message         string     `json:"message"`         // Khớp trực tiếp LiveCue.message (LiveCueCard.kt)
-	ChannelName     string     `json:"channelName"`     // Khớp trực tiếp LiveCue.channelName ("Toàn sự kiện")
-	IsPriority      bool       `json:"isPriority"`      // Khớp trực tiếp LiveCue.isPriority
-	LiveCueHeader   string     `json:"liveCueHeader"`   // Khớp trực tiếp ChannelListUiState.liveCueHeader
-	LiveCueTitle    string     `json:"liveCueTitle"`    // Khớp trực tiếp ChannelListUiState.liveCueTitle
-	LiveCueSubtitle string     `json:"liveCueSubtitle"` // Khớp trực tiếp ChannelListUiState.liveCueSubtitle
-	ActiveCue       *CueItem   `json:"activeCue"`       // Tiết mục đang diễn ra (hiển thị ngay trên Live Cue Banner)
-	NextCue         *CueItem   `json:"nextCue"`         // Tiết mục chuẩn bị tiếp theo
-	AllCues         []*CueItem `json:"allCues"`         // Toàn bộ danh sách kịch bản sự kiện
+	Revision        int64      `json:"revision"`
+	Title           string     `json:"title"`
+	Message         string     `json:"message"`
+	ChannelName     string     `json:"channelName"`
+	IsPriority      bool       `json:"isPriority"`
+	LiveCueHeader   string     `json:"liveCueHeader"`
+	LiveCueTitle    string     `json:"liveCueTitle"`
+	LiveCueSubtitle string     `json:"liveCueSubtitle"`
+	ActiveCue       *CueItem   `json:"activeCue"`
+	NextCue         *CueItem   `json:"nextCue"`
+	AllCues         []*CueItem `json:"allCues"`
 	ServerTimeMs    int64      `json:"serverTimeMs"`
 }
 
 type CueWsCommand struct {
-	Action          string `json:"action"` // FIRE_CUE | NEXT_CUE | ACK_CUE | UPDATE_BANNER_TEXT
+	Action          string `json:"action"`
 	CueID           string `json:"cueId"`
-	Title           string `json:"title"`           // Hỗ trợ gửi từ LiveCueDraftScreen ("Tiết mục đang diễn")
-	Message         string `json:"message"`         // Hỗ trợ gửi từ LiveCueDraftScreen ("Nhắc việc cho các ban")
-	ChannelName     string `json:"channelName"`     // Hỗ trợ gửi từ LiveCueDraftScreen ("Toàn sự kiện")
-	IsPriority      *bool  `json:"isPriority"`      // Hỗ trợ gửi từ LiveCueDraftScreen (true)
-	LiveCueTitle    string `json:"liveCueTitle"`    // Hỗ trợ gửi theo chuẩn ChannelListUiState
-	LiveCueSubtitle string `json:"liveCueSubtitle"` // Hỗ trợ gửi theo chuẩn ChannelListUiState
-	CustomBanner    string `json:"customBanner"`    // Cho phép Đạo diễn gõ nhanh dòng nhắc việc đột xuất
-	CustomSubtitle  string `json:"customSubtitle"`  // Ghi chú nhắc việc phụ cho bộ phận
+	UserID          string `json:"userId"`
+	EventID         int64  `json:"eventId"`
+	Title           string `json:"title"`
+	Message         string `json:"message"`
+	ChannelName     string `json:"channelName"`
+	IsPriority      *bool  `json:"isPriority"`
+	LiveCueTitle    string `json:"liveCueTitle"`
+	LiveCueSubtitle string `json:"liveCueSubtitle"`
+	CustomBanner    string `json:"customBanner"`
+	CustomSubtitle  string `json:"customSubtitle"`
 	ActorName       string `json:"actorName"`
 	Department      string `json:"department"`
 }
@@ -93,10 +89,52 @@ type LiveCueBannerHub struct {
 	cues        []*CueItem
 	subscribers map[string]*CueSubscriber
 	upgrader    websocket.Upgrader
+	resolver    identity.Resolver
+}
+
+type LiveCueRegistry struct {
+	mu       sync.RWMutex
+	resolver identity.Resolver
+	hubs     map[int64]*LiveCueBannerHub
+}
+
+func NewLiveCueRegistry(resolver identity.Resolver) *LiveCueRegistry {
+	return &LiveCueRegistry{
+		resolver: resolver,
+		hubs:     make(map[int64]*LiveCueBannerHub),
+	}
+}
+
+func (reg *LiveCueRegistry) GetHub(eventID int64) *LiveCueBannerHub {
+	if eventID == 0 {
+		eventID = 1
+	}
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
+	if hub, exists := reg.hubs[eventID]; exists {
+		return hub
+	}
+	hub := NewEmptyLiveCueBannerHub(eventID)
+	hub.resolver = reg.resolver
+	reg.hubs[eventID] = hub
+	return hub
+}
+
+func NewEmptyLiveCueBannerHub(eventID int64) *LiveCueBannerHub {
+	return &LiveCueBannerHub{
+		eventID:     eventID,
+		revision:    1,
+		cues:        []*CueItem{},
+		subscribers: make(map[string]*CueSubscriber),
+		upgrader: websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool { return true },
+		},
+	}
 }
 
 func NewLiveCueBannerHub(eventID int64) *LiveCueBannerHub {
-	defaultCues := []*CueItem{
+	hub := NewEmptyLiveCueBannerHub(eventID)
+	hub.cues = []*CueItem{
 		{
 			CueID:             "C01",
 			TimeSpec:          "19:30",
@@ -146,7 +184,6 @@ func NewLiveCueBannerHub(eventID int64) *LiveCueBannerHub {
 			AckedDepartments:  map[string]bool{"LOGISTICS_SEC": true},
 		},
 		{
-			// Khớp 100% với dữ liệu hiển thị trên FakeRemainingUiData.kt, ChannelListUiState.kt & ActiveCallScreen.kt
 			CueID:             "C04",
 			TimeSpec:          "19:50",
 			Title:             "Tiết mục 4 – Ban nhạc khách mời",
@@ -181,19 +218,9 @@ func NewLiveCueBannerHub(eventID int64) *LiveCueBannerHub {
 			AckedDepartments:  map[string]bool{},
 		},
 	}
-
-	return &LiveCueBannerHub{
-		eventID:     eventID,
-		revision:    1,
-		cues:        defaultCues,
-		subscribers: make(map[string]*CueSubscriber),
-		upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
-		},
-	}
+	return hub
 }
 
-// resolveCommandText chuẩn hóa dữ liệu từ cả LiveCueDraftScreen (title/message) lẫn ChannelListUiState (liveCueTitle/liveCueSubtitle).
 func resolveCommandText(cmd CueWsCommand) (title string, subtitle string, channelName string, isPriority bool) {
 	title = cmd.Title
 	if title == "" {
@@ -220,8 +247,7 @@ func resolveCommandText(cmd CueWsCommand) (title string, subtitle string, channe
 	return title, subtitle, channelName, isPriority
 }
 
-// FireCue chuyển Thanh Kịch bản sang tiết mục được chọn và đẩy ngay lập tức xuống mọi thiết bị qua WebSocket.
-func (h *LiveCueBannerHub) FireCue(cueID string, directorName string, customTitle string, customSubtitle string) LiveCueBannerPayload {
+func (h *LiveCueBannerHub) FireOrCreateModelCue(cueID string, directorName string, customTitle string, customSubtitle string) LiveCueBannerPayload {
 	h.mu.Lock()
 	targetIdx := -1
 	if cueID != "" {
@@ -261,13 +287,22 @@ func (h *LiveCueBannerHub) FireCue(cueID string, directorName string, customTitl
 				c.Status = CueUpcoming
 			}
 		}
-	} else if customTitle != "" {
-		// Cho phép Tổng Đạo diễn phát một dòng chữ nhắc việc từ LiveCueDraftScreen ("Đẩy lên mọi máy")
-		if customSubtitle == "" {
-			customSubtitle = "Lệnh điều phối trực tiếp từ " + directorName
+	} else {
+		for _, c := range h.cues {
+			if c.Status == CueActiveNow || c.Status == CueActive {
+				c.Status = CueDone
+				c.LiveCueHeader = "LIVE CUE · ĐÃ QUA"
+			}
 		}
-		adHocCue := &CueItem{
-			CueID:             "CUE-HOT",
+		newCueID := cueID
+		if newCueID == "" {
+			newCueID = "CUE-" + time.Now().Format("150405")
+		}
+		if customTitle == "" {
+			customTitle = "Tiết mục mới"
+		}
+		newCue := &CueItem{
+			CueID:             newCueID,
 			TimeSpec:          time.Now().Format("15:04"),
 			Title:             customTitle,
 			Message:           customSubtitle,
@@ -276,7 +311,7 @@ func (h *LiveCueBannerHub) FireCue(cueID string, directorName string, customTitl
 			LiveCueHeader:     "LIVE CUE · ĐANG DIỄN",
 			LiveCueTitle:      customTitle,
 			LiveCueSubtitle:   customSubtitle,
-			BannerText:        customTitle + " — " + customSubtitle,
+			BannerText:        customTitle,
 			DetailInstruction: customSubtitle,
 			TargetDepartments: []string{"ALL_EVENT", "STAGE", "LOGISTICS_SEC", "TECHNICAL", "RECEPTION"},
 			Status:            CueActiveNow,
@@ -284,13 +319,7 @@ func (h *LiveCueBannerHub) FireCue(cueID string, directorName string, customTitl
 			FiredAtMs:         nowMs,
 			AckedDepartments:  map[string]bool{},
 		}
-		for _, c := range h.cues {
-			if c.Status == CueActiveNow {
-				c.Status = CueCompleted
-				c.LiveCueHeader = "LIVE CUE · ĐÃ QUA"
-			}
-		}
-		h.cues = append([]*CueItem{adHocCue}, h.cues...)
+		h.cues = append(h.cues, newCue)
 	}
 
 	h.revision++
@@ -301,7 +330,10 @@ func (h *LiveCueBannerHub) FireCue(cueID string, directorName string, customTitl
 	return snapshot
 }
 
-// AcknowledgeCue ghi nhận một bộ phận (Âm thanh, Sân khấu, An ninh...) đã đọc dòng nhắc việc trên Banner.
+func (h *LiveCueBannerHub) FireCue(cueID string, directorName string, customTitle string, customSubtitle string) LiveCueBannerPayload {
+	return h.FireOrCreateModelCue(cueID, directorName, customTitle, customSubtitle)
+}
+
 func (h *LiveCueBannerHub) AcknowledgeCue(cueID string, department string) LiveCueBannerPayload {
 	h.mu.Lock()
 	for _, c := range h.cues {
@@ -325,22 +357,24 @@ func (h *LiveCueBannerHub) buildSnapshotLocked(msgType string) LiveCueBannerPayl
 	var activeCue *CueItem
 	var nextCue *CueItem
 	for _, c := range h.cues {
-		if c.Status == CueActiveNow && activeCue == nil {
+		if (c.Status == CueActiveNow || c.Status == CueActive) && activeCue == nil {
 			activeCue = c
 		} else if c.Status == CueNextStandby && nextCue == nil {
 			nextCue = c
 		}
 	}
 
-	header := "LIVE CUE · ĐANG DIỄN"
-	title := "Tiết mục 4 – Ban nhạc khách mời"
-	subtitle := "Hậu cần: chuẩn bị đạo cụ chuyển cảnh"
-	channelName := "Toàn sự kiện"
-	isPriority := true
+	header := ""
+	title := ""
+	subtitle := ""
+	channelName := ""
+	isPriority := false
 
 	if activeCue != nil {
 		if activeCue.LiveCueHeader != "" {
 			header = activeCue.LiveCueHeader
+		} else {
+			header = "LIVE CUE · ĐANG DIỄN"
 		}
 		if activeCue.LiveCueTitle != "" {
 			title = activeCue.LiveCueTitle
@@ -354,8 +388,15 @@ func (h *LiveCueBannerHub) buildSnapshotLocked(msgType string) LiveCueBannerPayl
 		}
 		if activeCue.ChannelName != "" {
 			channelName = activeCue.ChannelName
+		} else {
+			channelName = "Toàn sự kiện"
 		}
 		isPriority = activeCue.IsPriority
+	}
+
+	allCues := h.cues
+	if allCues == nil {
+		allCues = []*CueItem{}
 	}
 
 	return LiveCueBannerPayload{
@@ -371,7 +412,7 @@ func (h *LiveCueBannerHub) buildSnapshotLocked(msgType string) LiveCueBannerPayl
 		LiveCueSubtitle: subtitle,
 		ActiveCue:       activeCue,
 		NextCue:         nextCue,
-		AllCues:         h.cues,
+		AllCues:         allCues,
 		ServerTimeMs:    time.Now().UnixMilli(),
 	}
 }
@@ -391,20 +432,15 @@ func (h *LiveCueBannerHub) broadcastPayload(payload LiveCueBannerPayload) {
 	h.mu.RUnlock()
 }
 
-// ServeLiveCueWS xử lý kết nối WebSocket tại GET /ws/live-cue?userId=102&dept=STAGE
-func (h *LiveCueBannerHub) ServeLiveCueWS(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("userId")
-	if userID == "" {
-		userID = "anon-" + time.Now().Format("150405.000")
-	}
-	dept := r.URL.Query().Get("dept")
-	if dept == "" {
-		dept = "STAGE"
-	}
-
+func (h *LiveCueBannerHub) ServeLiveCueWSCore(w http.ResponseWriter, r *http.Request, userID string, dept string, eventID int64, userLevel uint8, sessionActorName string) {
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
+	}
+
+	subKey := userID
+	if subKey == "" {
+		subKey = "anon-" + time.Now().Format("150405.000")
 	}
 
 	sub := &CueSubscriber{
@@ -415,19 +451,20 @@ func (h *LiveCueBannerHub) ServeLiveCueWS(w http.ResponseWriter, r *http.Request
 	}
 
 	h.mu.Lock()
-	h.subscribers[userID] = sub
+	h.subscribers[subKey] = sub
 	initialSnapshot := h.buildSnapshotLocked("LIVE_CUE_BANNER_SYNC")
 	h.mu.Unlock()
 
-	// Đẩy ngay bản chụp Thanh Kịch bản hiện tại cho thiết bị vừa kết nối (hoặc vừa có mạng lại)
 	if raw, err := json.Marshal(initialSnapshot); err == nil {
 		sub.SendChan <- raw
 	}
 
 	defer func() {
 		h.mu.Lock()
-		delete(h.subscribers, userID)
-		close(sub.SendChan)
+		if h.subscribers[subKey] == sub {
+			delete(h.subscribers, subKey)
+			close(sub.SendChan)
+		}
 		h.mu.Unlock()
 		_ = conn.Close()
 	}()
@@ -452,26 +489,180 @@ func (h *LiveCueBannerHub) ServeLiveCueWS(w http.ResponseWriter, r *http.Request
 		}
 		customTitle, customSubtitle, _, _ := resolveCommandText(cmd)
 		switch cmd.Action {
-		case "FIRE_CUE", "UPDATE_BANNER_TEXT", "":
-			h.FireCue(cmd.CueID, cmd.ActorName, customTitle, customSubtitle)
+		case "FIRE_CUE", "UPDATE_BANNER_TEXT", "NEXT_CUE", "":
+			if userLevel != 1 {
+				errBytes, _ := json.Marshal(map[string]string{
+					"type":  "ERROR",
+					"error": "FORBIDDEN_NOT_ADMIN",
+				})
+				sub.SendChan <- errBytes
+				break
+			}
+			h.FireOrCreateModelCue(cmd.CueID, sessionActorName, customTitle, customSubtitle)
 		case "ACK_CUE":
 			h.AcknowledgeCue(cmd.CueID, sub.Department)
 		}
 	}
 }
 
-// HandleFireCueHTTP cung cấp REST API chuyển tiết mục Live Cue: POST /api/v1/live-cue/fire
+func (h *LiveCueBannerHub) ServeLiveCueWS(w http.ResponseWriter, r *http.Request) {
+	userId := r.URL.Query().Get("userId")
+	eventIdStr := r.URL.Query().Get("eventId")
+	var eventID int64 = h.eventID
+	if eventIdStr != "" {
+		eventID, _ = strconv.ParseInt(eventIdStr, 10, 64)
+	}
+	dept := r.URL.Query().Get("dept")
+	if dept == "" {
+		dept = "STAGE"
+	}
+
+	var userLevel uint8 = 1
+	var sessionActorName = userId
+	if h.resolver != nil && userId != "" {
+		if id, ok := h.resolver.Resolve(userId); ok {
+			userLevel = id.UserLevel
+			if id.DisplayName != "" {
+				sessionActorName = id.DisplayName
+			} else {
+				sessionActorName = id.UserID
+			}
+		}
+	}
+	if sessionActorName == "" {
+		sessionActorName = "Đạo diễn"
+	}
+
+	h.ServeLiveCueWSCore(w, r, userId, dept, eventID, userLevel, sessionActorName)
+}
+
 func (h *LiveCueBannerHub) HandleFireCueHTTP(w http.ResponseWriter, r *http.Request) {
 	var cmd CueWsCommand
 	if err := json.NewDecoder(r.Body).Decode(&cmd); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	if cmd.ActorName == "" {
-		cmd.ActorName = "Lan Phương (Tổng đạo diễn)"
+	actorName := cmd.ActorName
+	if actorName == "" {
+		actorName = "Đạo diễn"
 	}
 	customTitle, customSubtitle, _, _ := resolveCommandText(cmd)
-	snapshot := h.FireCue(cmd.CueID, cmd.ActorName, customTitle, customSubtitle)
+	snapshot := h.FireOrCreateModelCue(cmd.CueID, actorName, customTitle, customSubtitle)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(snapshot)
+}
+
+func (reg *LiveCueRegistry) ServeLiveCueWS(w http.ResponseWriter, r *http.Request) {
+	userId := r.URL.Query().Get("userId")
+	eventIdStr := r.URL.Query().Get("eventId")
+	var eventID int64
+	if eventIdStr != "" {
+		eventID, _ = strconv.ParseInt(eventIdStr, 10, 64)
+	}
+	dept := r.URL.Query().Get("dept")
+	if dept == "" {
+		dept = "STAGE"
+	}
+
+	var userLevel uint8 = 1
+	var sessionActorName string = userId
+
+	if reg.resolver != nil {
+		if userId == "" {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "USER_NOT_IN_EVENT", "message": "Missing userId"})
+			return
+		}
+		id, ok := reg.resolver.Resolve(userId)
+		if !ok {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "USER_NOT_IN_EVENT", "message": "User not found in event"})
+			return
+		}
+		if eventID != 0 && id.EventID != eventID {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "USER_NOT_IN_EVENT", "message": "User does not belong to event"})
+			return
+		}
+		if eventID == 0 {
+			eventID = id.EventID
+		}
+		userLevel = id.UserLevel
+		if id.DisplayName != "" {
+			sessionActorName = id.DisplayName
+		} else {
+			sessionActorName = id.UserID
+		}
+	} else {
+		if eventID == 0 {
+			eventID = 1
+		}
+		if userId == "" {
+			userId = "anon-" + time.Now().Format("150405.000")
+		}
+		sessionActorName = userId
+	}
+
+	hub := reg.GetHub(eventID)
+	hub.ServeLiveCueWSCore(w, r, userId, dept, eventID, userLevel, sessionActorName)
+}
+
+func (reg *LiveCueRegistry) HandleFireCueHTTP(w http.ResponseWriter, r *http.Request) {
+	var cmd CueWsCommand
+	if err := json.NewDecoder(r.Body).Decode(&cmd); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	userId := cmd.UserID
+	eventId := cmd.EventID
+	actorName := cmd.ActorName
+	if actorName == "" {
+		actorName = "Đạo diễn"
+	}
+
+	if reg.resolver != nil && userId != "" {
+		id, ok := reg.resolver.Resolve(userId)
+		if !ok {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "USER_NOT_IN_EVENT"})
+			return
+		}
+		if eventId != 0 && id.EventID != eventId {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "USER_NOT_IN_EVENT"})
+			return
+		}
+		if eventId == 0 {
+			eventId = id.EventID
+		}
+		if id.UserLevel != 1 {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "FORBIDDEN_NOT_ADMIN"})
+			return
+		}
+		if id.DisplayName != "" {
+			actorName = id.DisplayName
+		} else {
+			actorName = id.UserID
+		}
+	} else if userId == "" && eventId == 0 {
+		eventId = 1
+	} else if userId != "" && reg.resolver == nil {
+		if eventId == 0 {
+			eventId = 1
+		}
+	}
+
+	hub := reg.GetHub(eventId)
+	customTitle, customSubtitle, _, _ := resolveCommandText(cmd)
+	snapshot := hub.FireOrCreateModelCue(cmd.CueID, actorName, customTitle, customSubtitle)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(snapshot)
 }

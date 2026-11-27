@@ -41,8 +41,8 @@ func main() {
 	defer close(stopWatchdog)
 	go floorEngine.RunWatchdogLoop(stopWatchdog)
 
-	// 4. Tuần 5: Khởi tạo Hub Đồng bộ Thanh Kịch bản (Live Cue Banner: "Tiết mục 4 – Ban nhạc khách mời")
-	liveCueHub := week5livecue.NewLiveCueBannerHub(1)
+	// 4. Tuần 5: Khởi tạo Registry Đồng bộ Thanh Kịch bản (Live Cue Banner Registry)
+	liveCueRegistry := week5livecue.NewLiveCueRegistry(eventManager)
 
 	// Khởi chạy UDP Audio Fast-Path trên cổng 50000
 	go func() {
@@ -51,7 +51,7 @@ func main() {
 		}
 	}()
 
-	mux := newHTTPMux(eventManager, qrService, floorEngine, floorHub, liveCueHub)
+	mux := newHTTPMux(eventManager, qrService, floorEngine, floorHub, liveCueRegistry)
 
 	log.Printf("[DamThoai Server - Người 5] Đang chạy HTTP/WS tại %s và UDP Audio tại %s", httpAddr, udpAddr)
 	log.Fatal(http.ListenAndServe(httpAddr, mux))
@@ -62,7 +62,7 @@ func newHTTPMux(
 	qrService *week3qr.QrRoleProvisioningService,
 	floorEngine *week4floor.FloorControlEngine,
 	floorHub *week4floor.FloorHub,
-	liveCueHub *week5livecue.LiveCueBannerHub,
+	liveCueRegistry *week5livecue.LiveCueRegistry,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
 
@@ -160,8 +160,8 @@ func newHTTPMux(
 	mux.HandleFunc("/ws/floor", floorHub.ServeFloorWS)
 
 	// Endpoints Tuần 5 (Live Cue Banner WebSocket & REST)
-	mux.HandleFunc("/ws/live-cue", liveCueHub.ServeLiveCueWS)
-	mux.HandleFunc("/api/v1/live-cue/fire", liveCueHub.HandleFireCueHTTP)
+	mux.HandleFunc("/ws/live-cue", liveCueRegistry.ServeLiveCueWS)
+	mux.HandleFunc("/api/v1/live-cue/fire", liveCueRegistry.HandleFireCueHTTP)
 
 	return mux
 }

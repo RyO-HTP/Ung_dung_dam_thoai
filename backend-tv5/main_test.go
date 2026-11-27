@@ -26,8 +26,8 @@ func buildTestServer() *httptest.Server {
 	floorEngine := week4floor.NewFloorControlEngine(nil)
 	floorEngine.SetIdentityResolver(eventManager)
 	floorHub := week4floor.NewFloorHub(floorEngine)
-	liveCueHub := week5livecue.NewLiveCueBannerHub(1)
-	mux := newHTTPMux(eventManager, qrService, floorEngine, floorHub, liveCueHub)
+	liveCueRegistry := week5livecue.NewLiveCueRegistry(eventManager)
+	mux := newHTTPMux(eventManager, qrService, floorEngine, floorHub, liveCueRegistry)
 	return httptest.NewServer(mux)
 }
 
@@ -370,5 +370,95 @@ func TestFloorHubWebSocketAndSnapshot(t *testing.T) {
 	}
 	if dec.Type != "FLOOR_DECISION" || dec.Status != "FLOOR_GRANTED" {
 		t.Fatalf("mong đợi FLOOR_DECISION / FLOOR_GRANTED, nhận type=%q status=%q (msg=%s)", dec.Type, dec.Status, string(decMsg))
+	}
+}
+
+func TestLiveCueRegistryAndGroupA7(t *testing.T) {
+	t.Setenv("DEMO_MODE", "true")
+	srv := buildTestServer()
+	defer srv.Close()
+
+	// 1. Join pin as Level 3 (Volunteer)
+	joinBody3, _ := json.Marshal(map[string]interface{}{
+		"pinCode":     "240826",
+		"displayName": "Cộng tác viên B",
+		"userLevel":   3,
+	})
+	resp3, err := http.Post(srv.URL+"/api/v1/auth/join-pin", "application/json", bytes.NewReader(joinBody3))
+	if err != nil {
+		t.Fatalf("join-pin lỗi: %v", err)
+	}
+	var res3 struct {
+		UserID string `json:"userId"`
+	}
+	_ = json.NewDecoder(resp3.Body).Decode(&res3)
+	resp3.Body.Close()
+
+	// 2. Join pin as Level 1 (Director)
+	joinBody1, _ := json.Marshal(map[string]interface{}{
+		"pinCode":     "240826",
+		"displayName": "Tổng Đạo Diễn A",
+		"userLevel":   1,
+	})
+	resp1, err := http.Post(srv.URL+"/api/v1/auth/join-pin", "application/json", bytes.NewReader(joinBody1))
+	if err != nil {
+		t.Fatalf("join-pin lỗi: %v", err)
+	}
+	var res1 struct {
+		UserID string `json:"userId"`
+	}
+	_ = json.NewDecoder(resp1.Body).Decode(&res1)
+	resp1.Body.Close()
+
+	// 3. Level 3 tries to fire cue via HTTP -> 403 FORBIDDEN_NOT_ADMIN
+	fireBody3, _ := json.Marshal(map[string]interface{}{
+		"userId":  res3.UserID,
+		"eventId": 1,
+		"title":   "Tiết mục mới",
+		"message": "Nội dung mới",
+	})
+	fireResp3, err := http.Post(srv.URL+"/api/v1/live-cue/fire", "application/json", bytes.NewReader(fireBody3))
+	if err != nil {
+		t.Fatalf("POST /api/v1/live-cue/fire lỗi: %v", err)
+	}
+	defer fireResp3.Body.Close()
+	if fireResp3.StatusCode != http.StatusForbidden {
+		t.Fatalf("mong đợi 403 khi Level 3 gọi fire cue, nhận %d", fireResp3.StatusCode)
+	}
+
+	// 4. Level 1 fires cue (empty cueId -> creates new cue) via HTTP -> 200 OK
+	fireBody1, _ := json.Marshal(map[string]interface{}{
+		"userId":  res1.UserID,
+		"eventId": 1,
+		"title":   "Tiết mục đặc biệt A7",
+		"message": "Kỹ thuật: kiểm tra âm thanh",
+	})
+	fireResp1, err := http.Post(srv.URL+"/api/v1/live-cue/fire", "application/json", bytes.NewReader(fireBody1))
+	if err != nil {
+		t.Fatalf("POST /api/v1/live-cue/fire lỗi: %v", err)
+	}
+	defer fireResp1.Body.Close()
+	if fireResp1.StatusCode != http.StatusOK {
+		t.Fatalf("mong đợi 200 khi Level 1 gọi fire cue, nhận %d", fireResp1.StatusCode)
+	}
+	var snap struct {
+		Type      string `json:"type"`
+		ActiveCue struct {
+			Title   string `json:"title"`
+			Message string `json:"message"`
+		} `json:"activeCue"`
+	}
+	if err := json.NewDecoder(fireResp1.Body).Decode(&snap); err != nil {
+		t.Fatalf("decode snapshot lỗi: %v", err)
+	}
+	if snap.ActiveCue.Title != "Tiết mục đặc biệt A7" {
+		t.Fatalf("mong đợi title 'Tiết mục đặc biệt A7', nhận %q", snap.ActiveCue.Title)
+	}
+
+	// 5. Test empty hub initialization
+	emptyHub := week5livecue.NewEmptyLiveCueBannerHub(99)
+	emptySnap := emptyHub.FireOrCreateModelCue("", "Đạo diễn", "", "")
+	if emptySnap.Title != "" || emptySnap.ActiveCue != nil {
+		t.Fatalf("empty hub snapshot phải rỗng, nhận title=%q activeCue=%v", emptySnap.Title, emptySnap.ActiveCue)
 	}
 }
