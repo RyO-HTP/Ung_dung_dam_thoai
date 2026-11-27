@@ -243,4 +243,3 @@ func TestJoinPinAndJoinByQrReturnUniqueUserIDAndSignalingEnv(t *testing.T) {
 		t.Fatalf("mong đợi released=true khi nhả PTT")
 	}
 }
-

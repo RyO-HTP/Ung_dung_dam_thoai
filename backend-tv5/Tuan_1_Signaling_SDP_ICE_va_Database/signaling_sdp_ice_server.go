@@ -39,10 +39,10 @@ type SignalingPacket struct {
 	SenderID     string                   `json:"sender_id,omitempty"`
 	TargetID     string                   `json:"target_id,omitempty"`
 	Config       *WebRTCConfigPayload     `json:"config,omitempty"`
-	Candidates   []map[string]interface{} `json:"candidates,omitempty"`    // Tuần 3: ice_candidates_removed
-	NetworkType  string                   `json:"network_type,omitempty"`  // Tuần 4: network_change
-	ID           string                   `json:"id,omitempty"`            // Tuần 5: voice_note id
-	ChannelIDStr string                   `json:"channel_id,omitempty"`    // Tuần 5: voice_note channel_id
+	Candidates   []map[string]interface{} `json:"candidates,omitempty"`   // Tuần 3: ice_candidates_removed
+	NetworkType  string                   `json:"network_type,omitempty"` // Tuần 4: network_change
+	ID           string                   `json:"id,omitempty"`           // Tuần 5: voice_note id
+	ChannelIDStr string                   `json:"channel_id,omitempty"`   // Tuần 5: voice_note channel_id
 	RecordedAtMs int64                    `json:"recorded_at_ms,omitempty"`
 	DurationMs   int64                    `json:"duration_ms,omitempty"`
 	SampleRateHz int                      `json:"sample_rate_hz,omitempty"`

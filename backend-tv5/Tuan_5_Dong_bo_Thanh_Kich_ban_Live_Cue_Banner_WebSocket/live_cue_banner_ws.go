@@ -48,7 +48,7 @@ type CueItem struct {
 
 // LiveCueBannerPayload là bản tin WebSocket đẩy xuống toàn bộ thiết bị Android.
 type LiveCueBannerPayload struct {
-	Type            string     `json:"type"`            // LIVE_CUE_BANNER_SYNC | LIVE_CUE_FIRED | LIVE_CUE_ACK_UPDATED
+	Type            string     `json:"type"` // LIVE_CUE_BANNER_SYNC | LIVE_CUE_FIRED | LIVE_CUE_ACK_UPDATED
 	EventID         int64      `json:"eventId"`
 	Revision        int64      `json:"revision"`        // Số thứ tự phiên bản kịch bản tăng dần
 	Title           string     `json:"title"`           // Khớp trực tiếp LiveCue.title (LiveCueCard.kt)
@@ -65,7 +65,7 @@ type LiveCueBannerPayload struct {
 }
 
 type CueWsCommand struct {
-	Action          string `json:"action"`          // FIRE_CUE | NEXT_CUE | ACK_CUE | UPDATE_BANNER_TEXT
+	Action          string `json:"action"` // FIRE_CUE | NEXT_CUE | ACK_CUE | UPDATE_BANNER_TEXT
 	CueID           string `json:"cueId"`
 	Title           string `json:"title"`           // Hỗ trợ gửi từ LiveCueDraftScreen ("Tiết mục đang diễn")
 	Message         string `json:"message"`         // Hỗ trợ gửi từ LiveCueDraftScreen ("Nhắc việc cho các ban")

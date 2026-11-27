@@ -1,538 +1,167 @@
 package week2routing
 
 import (
-<<<<<<< HEAD
+	"crypto/subtle"
 	"encoding/json"
-	"fmt"
 	"net/http"
-=======
-	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"strconv"
->>>>>>> origin/main
 	"strings"
+	"sync"
 	"time"
 )
 
-<<<<<<< HEAD
-// Bổ sung AdminCode vào EventInfo
-=======
-// EventInfoAdmin mở rộng EventInfo khi cần trả kèm mã quản trị.
->>>>>>> origin/main
-type EventInfoAdmin struct {
-	EventID     int64                  `json:"eventId"`
-	EventName   string                 `json:"eventName"`
-	Description string                 `json:"description"`
-	PinCode     string                 `json:"pinCode"`
-	AdminCode   string                 `json:"adminCode,omitempty"`
-	CreatedAt   time.Time              `json:"createdAt"`
-	Channels    map[uint8]*ChannelInfo `json:"channels"`
-	ChannelList []*ChannelInfo         `json:"channelList"`
+var (
+	restoreRateMu      sync.Mutex
+	restoreRateRecords = make(map[string][]time.Time)
+)
+
+func checkRestoreRateLimit(r *http.Request) bool {
+	ip := r.Header.Get("X-Forwarded-For")
+	if ip == "" {
+		ip = r.RemoteAddr
+	} else {
+		parts := strings.Split(ip, ",")
+		ip = strings.TrimSpace(parts[0])
+	}
+	if idx := strings.LastIndex(ip, ":"); idx != -1 {
+		ip = ip[:idx]
+	}
+
+	restoreRateMu.Lock()
+	defer restoreRateMu.Unlock()
+
+	now := time.Now()
+	cutoff := now.Add(-1 * time.Minute)
+
+	for k, times := range restoreRateRecords {
+		valid := times[:0]
+		for _, t := range times {
+			if t.After(cutoff) {
+				valid = append(valid, t)
+			}
+		}
+		if len(valid) == 0 {
+			delete(restoreRateRecords, k)
+		} else {
+			restoreRateRecords[k] = valid
+		}
+	}
+
+	attempts := restoreRateRecords[ip]
+	validAttempts := attempts[:0]
+	for _, t := range attempts {
+		if t.After(cutoff) {
+			validAttempts = append(validAttempts, t)
+		}
+	}
+
+	if len(validAttempts) >= 5 {
+		restoreRateRecords[ip] = validAttempts
+		return false
+	}
+
+	validAttempts = append(validAttempts, now)
+	restoreRateRecords[ip] = validAttempts
+	return true
 }
 
-// HandleRestoreEvent xử lý POST /api/v1/events/restore {adminCode, displayName}
+func isValidAdminCode(code string) bool {
+	if len(code) < 6 || len(code) > 32 {
+		return false
+	}
+	for _, ch := range code {
+		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+// HandleRestoreEvent xử lý POST /api/v1/events/restore
 func (em *EventManager) HandleRestoreEvent(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
+			"error":   "METHOD_NOT_ALLOWED",
+			"message": "Method not allowed",
+		})
+		return
+	}
+
+	if !checkRestoreRateLimit(r) {
+		writeJSON(w, http.StatusTooManyRequests, map[string]interface{}{
+			"error":   "RATE_LIMITED",
+			"message": "Quá giới hạn thử lại, vui lòng thử lại sau 1 phút",
+		})
 		return
 	}
 
 	var req struct {
 		AdminCode   string `json:"adminCode"`
 		DisplayName string `json:"displayName"`
+		RoleTitle   string `json:"roleTitle"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-<<<<<<< HEAD
-	em.mu.Lock()
-	defer em.mu.Unlock()
-
-	var targetEvent *EventInfo
-	for _, ev := range em.eventsByPin {
-		if ev.AdminCode == req.AdminCode {
-			targetEvent = ev
-			break
-		}
-	}
-
-	if targetEvent == nil {
-=======
-	trimmedCode := strings.TrimSpace(req.AdminCode)
-	em.mu.Lock()
-	var targetEvent *EventInfo
-	if trimmedCode != "" {
-		for _, ev := range em.eventsByPin {
-			if strings.EqualFold(ev.AdminCode, trimmedCode) {
-				targetEvent = ev
-				break
-			}
-		}
-	}
-	if targetEvent == nil {
-		em.mu.Unlock()
->>>>>>> origin/main
-		writeJSON(w, http.StatusNotFound, map[string]interface{}{
-			"error":   "ADMIN_CODE_NOT_FOUND",
-			"message": "Mã quản trị sự kiện không tồn tại hoặc không chính xác",
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	adminCode := strings.TrimSpace(req.AdminCode)
+	if adminCode == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "ADMIN_CODE_EMPTY",
+			"message": "Mã quản trị không được để trống",
 		})
 		return
 	}
 
-<<<<<<< HEAD
-	if req.DisplayName == "" {
-		req.DisplayName = "Tổng đạo diễn (Khôi phục)"
+	em.mu.Lock()
+	var matchedEvent *EventInfo
+	normReqCode := []byte(strings.ToLower(adminCode))
+
+	for _, ev := range em.eventsByID {
+		if ev.AdminCode != "" {
+			normEvCode := []byte(strings.ToLower(ev.AdminCode))
+			if len(normReqCode) == len(normEvCode) && subtle.ConstantTimeCompare(normReqCode, normEvCode) == 1 {
+				matchedEvent = ev
+			}
+		}
 	}
 
-	newUserID := em.userSeq.Add(1)
-	secretBytes := make([]byte, 32)
-	session := &UserSession{
-		UserID:            newUserID,
-		UserCode:          fmt.Sprintf("user_%d", newUserID),
-=======
-	if strings.TrimSpace(req.DisplayName) == "" {
-		req.DisplayName = "Tổng đạo diễn (Khôi phục)"
+	if matchedEvent == nil {
+		em.mu.Unlock()
+		writeJSON(w, http.StatusNotFound, map[string]interface{}{
+			"error":   "ADMIN_CODE_NOT_FOUND",
+			"message": "Mã quản trị không tồn tại",
+		})
+		return
 	}
 
-	newNumericID := em.userSeq.Add(1)
-	uniqueUserID := em.generateUniqueUserIDLocked(req.DisplayName, newNumericID)
-	secretBytes := make([]byte, 32)
-	_, _ = rand.Read(secretBytes)
-	sigURL, sigToken := SignalingConfigFromEnv()
-
-	session := &UserSession{
-		NumericID:         newNumericID,
-		UserID:            uniqueUserID,
-		UserCode:          uniqueUserID,
->>>>>>> origin/main
-		EventID:           targetEvent.EventID,
-		DisplayName:       req.DisplayName,
-		RoleTitle:         "Tổng đạo diễn",
-		UserLevel:         1,
-		RolePriority:      3,
-		PrimaryTxChannel:  1,
-		PrimaryChannelID:  "ch_01",
-		ListeningChannels: []uint8{1, 2},
-<<<<<<< HEAD
-		HmacSecretBytes:   secretBytes,
+	// Hạ mọi phiên Cấp 1 cũ của sự kiện xuống Cấp 3
+	for _, sess := range em.usersByID {
+		if sess.EventID == matchedEvent.EventID && sess.UserLevel == 1 {
+			sess.UserLevel = 3
+			sess.RolePriority = 1
+			sess.RoleTitle = "Cộng tác viên"
+		}
 	}
-	em.usersByID[newUserID] = session
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"event":   targetEvent,
-		"session": session,
-=======
-		SignalingURL:      sigURL,
-		SignalingToken:    sigToken,
-		HmacSecretHex:     hex.EncodeToString(secretBytes),
-		HmacSecretBytes:   secretBytes,
-	}
-	em.usersByID[newNumericID] = session
-	em.usersByCode[uniqueUserID] = session
 	em.mu.Unlock()
 
-	if em.audioRouter != nil {
-		em.audioRouter.RegisterUserSession(newNumericID, secretBytes, session.ListeningChannels)
+	displayName := strings.TrimSpace(req.DisplayName)
+	if displayName == "" {
+		displayName = "Tổng đạo diễn"
+	}
+	roleTitle := strings.TrimSpace(req.RoleTitle)
+	if roleTitle == "" {
+		roleTitle = "Tổng đạo diễn"
 	}
 
+	session := em.CreateSession(matchedEvent, displayName, roleTitle, 1, 3, 1, nil)
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"userId":         session.UserID,
-		"signalingUrl":   session.SignalingURL,
-		"signalingToken": session.SignalingToken,
-		"event":          targetEvent,
-		"session":        session,
->>>>>>> origin/main
+		"event":   matchedEvent,
+		"session": session,
 	})
 }
 
-// HandleAddChannel xử lý POST /api/v1/events/{eventId}/channels {userId, name}
-func (em *EventManager) HandleAddChannel(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req struct {
-<<<<<<< HEAD
-		UserID uint32 `json:"userId"`
-		Name   string `json:"name"`
-=======
-		UserID FlexibleUserID `json:"userId"`
-		Name   string         `json:"name"`
->>>>>>> origin/main
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	em.mu.Lock()
-	defer em.mu.Unlock()
-
-<<<<<<< HEAD
-	session, exists := em.usersByID[req.UserID]
-	if !exists || session.UserLevel != 1 {
-=======
-	session := em.findSessionLocked(req.UserID)
-	if session == nil || session.UserLevel != 1 {
->>>>>>> origin/main
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "FORBIDDEN_NOT_ADMIN"})
-		return
-	}
-
-<<<<<<< HEAD
-	// Tìm sự kiện của session
-	var targetEvent *EventInfo
-	for _, ev := range em.eventsByPin {
-		if ev.EventID == session.EventID {
-			targetEvent = ev
-			break
-		}
-	}
-=======
-	targetEvent := em.eventsByID[session.EventID]
->>>>>>> origin/main
-	if targetEvent == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "EVENT_NOT_FOUND"})
-		return
-	}
-
-	if len(targetEvent.ChannelList) >= 8 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "CHANNEL_LIMIT_REACHED", "message": "Tối đa 8 kênh mỗi sự kiện"})
-		return
-	}
-
-	trimmedName := strings.TrimSpace(req.Name)
-	if trimmedName == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "EMPTY_NAME"})
-		return
-	}
-
-	for _, ch := range targetEvent.ChannelList {
-		if strings.EqualFold(ch.Name, trimmedName) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "DUPLICATE_NAME"})
-			return
-		}
-	}
-
-	newIDNum := uint8(len(targetEvent.ChannelList) + 1)
-<<<<<<< HEAD
-=======
-	for targetEvent.Channels[newIDNum] != nil {
-		newIDNum++
-	}
->>>>>>> origin/main
-	newChID := fmt.Sprintf("ch_0%d", newIDNum)
-	newCh := &ChannelInfo{
-		ID:              newChID,
-		ChannelID:       newIDNum,
-		Name:            trimmedName,
-		DepartmentCode:  "CUSTOM",
-		DefaultPriority: 2,
-		OnlineCount:     1,
-		StatusText:      "Kênh mới tạo",
-	}
-
-	targetEvent.Channels[newIDNum] = newCh
-	targetEvent.ChannelList = append(targetEvent.ChannelList, newCh)
-
-	writeJSON(w, http.StatusCreated, newCh)
-}
-
-// HandleUpdateChannel xử lý PATCH /api/v1/events/{eventId}/channels/{channelId} {userId, name}
-func (em *EventManager) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPatch && r.Method != http.MethodPut {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-<<<<<<< HEAD
-	// Lấy channelId từ URL path đơn giản
-	path := r.URL.Path
-	parts := strings.Split(path, "/")
-	channelIdStr := parts[len(parts)-1]
-
-	var req struct {
-		UserID uint32 `json:"userId"`
-		Name   string `json:"name"`
-=======
-	parts := strings.Split(r.URL.Path, "/")
-	channelIdStr := parts[len(parts)-1]
-
-	var req struct {
-		UserID FlexibleUserID `json:"userId"`
-		Name   string         `json:"name"`
->>>>>>> origin/main
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	em.mu.Lock()
-	defer em.mu.Unlock()
-
-<<<<<<< HEAD
-	session, exists := em.usersByID[req.UserID]
-	if !exists || session.UserLevel != 1 {
-=======
-	session := em.findSessionLocked(req.UserID)
-	if session == nil || session.UserLevel != 1 {
->>>>>>> origin/main
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "FORBIDDEN_NOT_ADMIN"})
-		return
-	}
-
-<<<<<<< HEAD
-	var targetEvent *EventInfo
-	for _, ev := range em.eventsByPin {
-		if ev.EventID == session.EventID {
-			targetEvent = ev
-			break
-		}
-	}
-=======
-	targetEvent := em.eventsByID[session.EventID]
->>>>>>> origin/main
-	if targetEvent == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "EVENT_NOT_FOUND"})
-		return
-	}
-
-	var foundCh *ChannelInfo
-	for _, ch := range targetEvent.ChannelList {
-		if ch.ID == channelIdStr {
-			foundCh = ch
-			break
-		}
-	}
-	if foundCh == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "CHANNEL_NOT_FOUND"})
-		return
-	}
-
-	trimmedName := strings.TrimSpace(req.Name)
-	if trimmedName == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "EMPTY_NAME"})
-		return
-	}
-
-	foundCh.Name = trimmedName
-	writeJSON(w, http.StatusOK, foundCh)
-}
-
-// HandleDeleteChannel xử lý DELETE /api/v1/events/{eventId}/channels/{channelId} {userId}
-func (em *EventManager) HandleDeleteChannel(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-<<<<<<< HEAD
-	path := r.URL.Path
-	parts := strings.Split(path, "/")
-	channelIdStr := parts[len(parts)-1]
-
-	var req struct {
-		UserID uint32 `json:"userId"`
-=======
-	parts := strings.Split(r.URL.Path, "/")
-	channelIdStr := parts[len(parts)-1]
-
-	var req struct {
-		UserID FlexibleUserID `json:"userId"`
->>>>>>> origin/main
-	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
-
-	em.mu.Lock()
-	defer em.mu.Unlock()
-
-<<<<<<< HEAD
-	session, exists := em.usersByID[req.UserID]
-	if !exists || session.UserLevel != 1 {
-=======
-	session := em.findSessionLocked(req.UserID)
-	if session == nil || session.UserLevel != 1 {
->>>>>>> origin/main
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "FORBIDDEN_NOT_ADMIN"})
-		return
-	}
-
-<<<<<<< HEAD
-	var targetEvent *EventInfo
-	for _, ev := range em.eventsByPin {
-		if ev.EventID == session.EventID {
-			targetEvent = ev
-			break
-		}
-	}
-=======
-	targetEvent := em.eventsByID[session.EventID]
->>>>>>> origin/main
-	if targetEvent == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "EVENT_NOT_FOUND"})
-		return
-	}
-
-	if channelIdStr == "ch_01" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "CANNOT_DELETE_DEFAULT_CHANNEL", "message": "Không được xóa kênh Toàn sự kiện"})
-		return
-	}
-
-	newList := make([]*ChannelInfo, 0, len(targetEvent.ChannelList))
-	for _, ch := range targetEvent.ChannelList {
-		if ch.ID != channelIdStr {
-			newList = append(newList, ch)
-		} else {
-			delete(targetEvent.Channels, ch.ChannelID)
-		}
-	}
-	targetEvent.ChannelList = newList
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "DELETED", "channelId": channelIdStr})
-}
-
-// HandleListMembers xử lý GET /api/v1/events/{eventId}/members
-func (em *EventManager) HandleListMembers(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-<<<<<<< HEAD
-	em.mu.RLock()
-	members := make([]*UserSession, 0, len(em.usersByID))
-	for _, u := range em.usersByID {
-		members = append(members, u)
-=======
-	var filterEventID int64
-	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(parts) >= 4 {
-		if parsed, err := strconv.ParseInt(parts[3], 10, 64); err == nil && parsed > 0 {
-			filterEventID = parsed
-		}
-	}
-
-	em.mu.RLock()
-	members := make([]*UserSession, 0, len(em.usersByID))
-	for _, u := range em.usersByID {
-		if filterEventID == 0 || u.EventID == filterEventID {
-			members = append(members, u)
-		}
->>>>>>> origin/main
-	}
-	em.mu.RUnlock()
-
-	writeJSON(w, http.StatusOK, members)
-}
-
-// HandleUpdateMember xử lý PATCH /api/v1/events/{eventId}/members/{userId} {actorUserId, userLevel, roleTitle}
-func (em *EventManager) HandleUpdateMember(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPatch && r.Method != http.MethodPut {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-<<<<<<< HEAD
-	var req struct {
-		ActorUserID uint32 `json:"actorUserId"`
-		UserLevel   uint8  `json:"userLevel"`
-		RoleTitle   string `json:"roleTitle"`
-=======
-	parts := strings.Split(r.URL.Path, "/")
-	targetIDStr := FlexibleUserID(parts[len(parts)-1])
-
-	var req struct {
-		ActorUserID FlexibleUserID `json:"actorUserId"`
-		UserLevel   uint8          `json:"userLevel"`
-		RoleTitle   string         `json:"roleTitle"`
->>>>>>> origin/main
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	em.mu.Lock()
-	defer em.mu.Unlock()
-
-<<<<<<< HEAD
-	actor, exists := em.usersByID[req.ActorUserID]
-	if !exists || actor.UserLevel != 1 {
-=======
-	actor := em.findSessionLocked(req.ActorUserID)
-	if actor == nil || actor.UserLevel != 1 {
->>>>>>> origin/main
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "FORBIDDEN_NOT_ADMIN"})
-		return
-	}
-
-<<<<<<< HEAD
-=======
-	target := em.findSessionLocked(targetIDStr)
-	if target != nil {
-		lvl, prio, _ := ConvertUserLevelToPriority(req.UserLevel, 0)
-		target.UserLevel = lvl
-		target.RolePriority = prio
-		if strings.TrimSpace(req.RoleTitle) != "" {
-			target.RoleTitle = strings.TrimSpace(req.RoleTitle)
-		}
-		writeJSON(w, http.StatusOK, target)
-		return
-	}
-
->>>>>>> origin/main
-	writeJSON(w, http.StatusOK, map[string]string{"status": "UPDATED"})
-}
-
-// HandleDeleteMember xử lý DELETE /api/v1/events/{eventId}/members/{userId} {actorUserId}
-func (em *EventManager) HandleDeleteMember(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-<<<<<<< HEAD
-	var req struct {
-		ActorUserID uint32 `json:"actorUserId"`
-=======
-	parts := strings.Split(r.URL.Path, "/")
-	targetIDStr := FlexibleUserID(parts[len(parts)-1])
-
-	var req struct {
-		ActorUserID FlexibleUserID `json:"actorUserId"`
->>>>>>> origin/main
-	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
-
-	em.mu.Lock()
-	defer em.mu.Unlock()
-
-<<<<<<< HEAD
-	actor, exists := em.usersByID[req.ActorUserID]
-	if !exists || actor.UserLevel != 1 {
-=======
-	actor := em.findSessionLocked(req.ActorUserID)
-	if actor == nil || actor.UserLevel != 1 {
->>>>>>> origin/main
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "FORBIDDEN_NOT_ADMIN"})
-		return
-	}
-
-<<<<<<< HEAD
-	writeJSON(w, http.StatusOK, map[string]string{"status": "REMOVED"})
-=======
-	if target := em.findSessionLocked(targetIDStr); target != nil {
-		delete(em.usersByID, target.NumericID)
-		delete(em.usersByCode, target.UserID)
-	}
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "REMOVED", "userId": targetIDStr})
->>>>>>> origin/main
-}
+// Stubs for A4 admin/channel/member API methods
+func (em *EventManager) HandleAddChannel(w http.ResponseWriter, r *http.Request)    {}
+func (em *EventManager) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {}
+func (em *EventManager) HandleDeleteChannel(w http.ResponseWriter, r *http.Request) {}
+func (em *EventManager) HandleListMembers(w http.ResponseWriter, r *http.Request)   {}
+func (em *EventManager) HandleUpdateMember(w http.ResponseWriter, r *http.Request)  {}
+func (em *EventManager) HandleDeleteMember(w http.ResponseWriter, r *http.Request)  {}

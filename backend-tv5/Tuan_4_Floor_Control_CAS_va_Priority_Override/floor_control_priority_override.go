@@ -104,12 +104,12 @@ type FloorRequest struct {
 type FloorDecision struct {
 	Status             FloorDecisionStatus `json:"status"`
 	ChannelID          uint8               `json:"channelId"`
-	ChannelCode        string              `json:"channelCode"`                  // "ch_01".."ch_05"
-	RequesterCallState string              `json:"requesterCallState"`           // CallTalk | CallBusy | CallIdle
-	ListenerCallState  string              `json:"listenerCallState"`            // CallTake | CallIdle
-	RevokedCallState   string              `json:"revokedCallState,omitempty"`   // CallCut (hiển thị banner đỏ "BỊ NGẮT LỜI" trên máy bị cắt)
-	IsDucked80         bool                `json:"isDucked80"`                   // true -> Hiển thị nhãn "HẠ ÂM 80%" (-12dB) trên các kênh phụ
-	DuckingDb          int                 `json:"duckingDb"`                    // -12 (dB) khi Tổng đạo diễn phát lệnh
+	ChannelCode        string              `json:"channelCode"`                // "ch_01".."ch_05"
+	RequesterCallState string              `json:"requesterCallState"`         // CallTalk | CallBusy | CallIdle
+	ListenerCallState  string              `json:"listenerCallState"`          // CallTake | CallIdle
+	RevokedCallState   string              `json:"revokedCallState,omitempty"` // CallCut (hiển thị banner đỏ "BỊ NGẮT LỜI" trên máy bị cắt)
+	IsDucked80         bool                `json:"isDucked80"`                 // true -> Hiển thị nhãn "HẠ ÂM 80%" (-12dB) trên các kênh phụ
+	DuckingDb          int                 `json:"duckingDb"`                  // -12 (dB) khi Tổng đạo diễn phát lệnh
 	ActiveHolder       *FloorHolder        `json:"activeHolder,omitempty"`
 	RevokedUserID      string              `json:"revokedUserId,omitempty"`      // ID của người vừa bị ngắt mic
 	RevokedDisplayName string              `json:"revokedDisplayName,omitempty"` // Tên của người vừa bị cắt ngang

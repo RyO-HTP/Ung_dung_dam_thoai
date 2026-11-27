@@ -13,6 +13,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"damthoai/nguoi5server/identity"
 )
 
 // ChannelIDList là danh sách ID kênh (1..5). Mặc định Go mã hóa []uint8 thành chuỗi base64
@@ -49,8 +51,6 @@ func (c *ChannelIDList) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-<<<<<<< HEAD
-=======
 // FlexibleUserID chấp nhận cả chuỗi ("Minh_Hau_101_a1b2") lẫn số nguyên (101) trong JSON request.
 type FlexibleUserID string
 
@@ -141,7 +141,6 @@ func SanitizeUserIDPrefix(displayName string) string {
 	return res
 }
 
->>>>>>> origin/main
 // =============================================================================
 // TUẦN 2 (NGƯỜI 5): XÂY DỰNG REST API QUẢN LÝ NGƯỜI DÙNG, SỰ KIỆN, KÊNH
 // =============================================================================
@@ -168,20 +167,6 @@ type EventInfo struct {
 }
 
 type UserSession struct {
-<<<<<<< HEAD
-	UserID            uint32  `json:"userId"`
-	UserCode          string  `json:"userCode"` // ID chuỗi trên Android (VD: "Minh_Hau")
-	EventID           int64   `json:"eventId"`
-	DisplayName       string  `json:"displayName"`       // VD: "Minh Hậu"
-	RoleTitle         string  `json:"roleTitle"`         // VD: "Trưởng ban Sân khấu", "Trưởng ban Hậu cần"
-	UserLevel         uint8   `json:"userLevel"`         // Chuẩn UI Android: 1 = Tổng đạo diễn, 2 = Trưởng ban, 3 = CTV
-	RolePriority      uint8   `json:"rolePriority"`      // Chuẩn Server CAS: 3 = Tổng đạo diễn, 2 = Trưởng ban, 1 = CTV
-	PrimaryTxChannel  uint8   `json:"primaryTxChannel"`  // Kênh phát âm thanh chính (1..5)
-	PrimaryChannelID  string  `json:"primaryChannelId"`  // Mã kênh phát âm thanh trên Android ("ch_01".."ch_05")
-	ListeningChannels ChannelIDList `json:"listeningChannels"` // Danh sách kênh đang nghe (tối đa 3 kênh)
-	HmacSecretHex     string  `json:"hmacSecretHex"`
-	HmacSecretBytes   []byte  `json:"-"`
-=======
 	NumericID         uint32        `json:"numericUserId"`     // ID số nội bộ cho gói UDP 18-byte
 	UserID            string        `json:"userId"`            // ID duy nhất gồm chữ, số và . _ - (khớp signaling_server.py)
 	UserCode          string        `json:"userCode"`          // Đồng bộ với UserID cho Android
@@ -197,7 +182,6 @@ type UserSession struct {
 	SignalingToken    string        `json:"signalingToken"`    // Đọc từ biến môi trường SIGNALING_TOKEN
 	HmacSecretHex     string        `json:"hmacSecretHex"`
 	HmacSecretBytes   []byte        `json:"-"`
->>>>>>> origin/main
 }
 
 // ConvertUserLevelToPriority quy đổi giữa Cấp bậc trên giao diện Android (UserLevel 1,2,3)
@@ -277,7 +261,48 @@ func NewEventManager(router *ChannelAudioRouter) *EventManager {
 	return em
 }
 
-// GetOrDefaultEvent trả về sự kiện khớp pinCode hoặc eventID; nếu không thấy trả về sự kiện mặc định.
+// A0. Identity Resolver & Member requirement
+func (em *EventManager) Resolve(ref string) (identity.Identity, bool) {
+	em.mu.RLock()
+	defer em.mu.RUnlock()
+	s := em.findSessionLocked(FlexibleUserID(ref))
+	if s == nil {
+		return identity.Identity{}, false
+	}
+	return identity.Identity{
+		UserID:       s.UserID,
+		NumericID:    s.NumericID,
+		EventID:      s.EventID,
+		DisplayName:  s.DisplayName,
+		RoleTitle:    s.RoleTitle,
+		UserLevel:    s.UserLevel,
+		RolePriority: s.RolePriority,
+	}, true
+}
+
+func (em *EventManager) requireMember(eventID int64, ref FlexibleUserID) (*UserSession, error) {
+	em.mu.RLock()
+	defer em.mu.RUnlock()
+	s := em.findSessionLocked(ref)
+	if s == nil || s.EventID != eventID {
+		return nil, fmt.Errorf("USER_NOT_IN_EVENT")
+	}
+	return s, nil
+}
+
+func (em *EventManager) FindEventByID(id int64) *EventInfo {
+	em.mu.RLock()
+	defer em.mu.RUnlock()
+	return em.eventsByID[id]
+}
+
+func (em *EventManager) FindEventByPin(pin string) *EventInfo {
+	em.mu.RLock()
+	defer em.mu.RUnlock()
+	return em.eventsByPin[pin]
+}
+
+// GetOrDefaultEvent giữ cho test cũ
 func (em *EventManager) GetOrDefaultEvent(eventID int64, pinCode string) *EventInfo {
 	em.mu.RLock()
 	defer em.mu.RUnlock()
@@ -380,14 +405,14 @@ func (em *EventManager) CreateSession(
 	return session
 }
 
-// createDefaultFiveChannels tạo 5 kênh mặc định khớp 100% với CreateEventScreen.kt và ChannelListScreen.kt.
+// createDefaultFiveChannels tạo 5 kênh mặc định với OnlineCount 0 và StatusText "".
 func createDefaultFiveChannels() (map[uint8]*ChannelInfo, []*ChannelInfo) {
 	list := []*ChannelInfo{
-		{ID: "ch_01", ChannelID: 1, Name: "Toàn sự kiện", DepartmentCode: "ALL_EVENT", DefaultPriority: 3, OnlineCount: 48, StatusText: "Đạo diễn A đang nói · Ưu tiên Cấp 1"},
-		{ID: "ch_02", ChannelID: 2, Name: "Sân khấu", DepartmentCode: "STAGE", DefaultPriority: 2, OnlineCount: 16, StatusText: "Đang nghe · Bấm giữ PTT để nói"},
-		{ID: "ch_03", ChannelID: 3, Name: "Hậu cần – An ninh", DepartmentCode: "LOGISTICS_SEC", DefaultPriority: 2, OnlineCount: 12, StatusText: "Rảnh · 12 người trực tuyến"},
-		{ID: "ch_04", ChannelID: 4, Name: "Kỹ thuật", DepartmentCode: "TECHNICAL", DefaultPriority: 2, OnlineCount: 8, StatusText: "Rảnh · 8 người trực tuyến"},
-		{ID: "ch_05", ChannelID: 5, Name: "Đón tiếp", DepartmentCode: "RECEPTION", DefaultPriority: 1, OnlineCount: 10, StatusText: "Chưa tham gia · Bấm để vào kênh"},
+		{ID: "ch_01", ChannelID: 1, Name: "Toàn sự kiện", DepartmentCode: "ALL_EVENT", DefaultPriority: 3, OnlineCount: 0, StatusText: ""},
+		{ID: "ch_02", ChannelID: 2, Name: "Sân khấu", DepartmentCode: "STAGE", DefaultPriority: 2, OnlineCount: 0, StatusText: ""},
+		{ID: "ch_03", ChannelID: 3, Name: "Hậu cần – An ninh", DepartmentCode: "LOGISTICS_SEC", DefaultPriority: 2, OnlineCount: 0, StatusText: ""},
+		{ID: "ch_04", ChannelID: 4, Name: "Kỹ thuật", DepartmentCode: "TECHNICAL", DefaultPriority: 2, OnlineCount: 0, StatusText: ""},
+		{ID: "ch_05", ChannelID: 5, Name: "Đón tiếp", DepartmentCode: "RECEPTION", DefaultPriority: 1, OnlineCount: 0, StatusText: ""},
 	}
 	chMap := make(map[uint8]*ChannelInfo, len(list))
 	for _, ch := range list {
@@ -396,10 +421,13 @@ func createDefaultFiveChannels() (map[uint8]*ChannelInfo, []*ChannelInfo) {
 	return chMap, list
 }
 
-// HandleCreateEvent xử lý POST /api/v1/events — Tạo sự kiện mới & sinh mã PIN 6 số.
+// A1. HandleCreateEvent
 func (em *EventManager) HandleCreateEvent(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
+			"error":   "METHOD_NOT_ALLOWED",
+			"message": "Method not allowed",
+		})
 		return
 	}
 
@@ -408,6 +436,8 @@ func (em *EventManager) HandleCreateEvent(w http.ResponseWriter, r *http.Request
 		Description string `json:"description"`
 		PinCode     string `json:"pinCode"`
 		AdminCode   string `json:"adminCode"`
+		DisplayName string `json:"displayName"`
+		RoleTitle   string `json:"roleTitle"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	if req.EventName == "" {
@@ -415,6 +445,29 @@ func (em *EventManager) HandleCreateEvent(w http.ResponseWriter, r *http.Request
 	}
 	if req.Description == "" {
 		req.Description = "Sự kiện điều phối bộ đàm đa kênh thời gian thực"
+	}
+
+	adminCode := strings.TrimSpace(req.AdminCode)
+	if adminCode != "" {
+		if !isValidAdminCode(adminCode) {
+			writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+				"error":   "ADMIN_CODE_INVALID",
+				"message": "Mã quản trị không hợp lệ (6-32 ký tự [A-Za-z0-9-])",
+			})
+			return
+		}
+		em.mu.RLock()
+		for _, ev := range em.eventsByID {
+			if ev.AdminCode != "" && strings.EqualFold(ev.AdminCode, adminCode) {
+				em.mu.RUnlock()
+				writeJSON(w, http.StatusConflict, map[string]interface{}{
+					"error":   "ADMIN_CODE_TAKEN",
+					"message": "Mã quản trị đã tồn tại ở sự kiện khác",
+				})
+				return
+			}
+		}
+		em.mu.RUnlock()
 	}
 
 	pinCode := strings.TrimSpace(req.PinCode)
@@ -425,10 +478,28 @@ func (em *EventManager) HandleCreateEvent(w http.ResponseWriter, r *http.Request
 			break
 		}
 	}
+
+	em.mu.Lock()
 	if !isSixDigits || pinCode == "000000" {
-		pinNum, _ := rand.Int(rand.Reader, big.NewInt(900000))
-		pinCode = fmt.Sprintf("%06d", pinNum.Int64()+100000)
+		for {
+			pinNum, _ := rand.Int(rand.Reader, big.NewInt(900000))
+			pinCode = fmt.Sprintf("%06d", pinNum.Int64()+100000)
+			if _, exists := em.eventsByPin[pinCode]; !exists {
+				break
+			}
+		}
+	} else {
+		if _, exists := em.eventsByPin[pinCode]; exists {
+			for {
+				pinNum, _ := rand.Int(rand.Reader, big.NewInt(900000))
+				pinCode = fmt.Sprintf("%06d", pinNum.Int64()+100000)
+				if _, existsNew := em.eventsByPin[pinCode]; !existsNew {
+					break
+				}
+			}
+		}
 	}
+
 	eventID := em.eventSeq.Add(1)
 	chMap, chList := createDefaultFiveChannels()
 
@@ -440,22 +511,44 @@ func (em *EventManager) HandleCreateEvent(w http.ResponseWriter, r *http.Request
 		CreatedAt:   time.Now(),
 		Channels:    chMap,
 		ChannelList: chList,
-		AdminCode:   strings.TrimSpace(req.AdminCode),
+		AdminCode:   adminCode,
 	}
 
-	em.mu.Lock()
 	em.eventsByPin[pinCode] = ev
 	em.eventsByID[eventID] = ev
 	em.mu.Unlock()
 
-	writeJSON(w, http.StatusCreated, ev)
+	displayName := strings.TrimSpace(req.DisplayName)
+	if displayName == "" {
+		displayName = "Tổng đạo diễn"
+	}
+	roleTitle := strings.TrimSpace(req.RoleTitle)
+	if roleTitle == "" {
+		roleTitle = "Tổng đạo diễn"
+	}
+
+	session := em.CreateSession(ev, displayName, roleTitle, 1, 3, 1, nil)
+
+	writeJSON(w, http.StatusCreated, map[string]interface{}{
+		"eventId":     ev.EventID,
+		"eventName":   ev.EventName,
+		"description": ev.Description,
+		"pinCode":     ev.PinCode,
+		"createdAt":   ev.CreatedAt,
+		"channels":    ev.Channels,
+		"channelList": ev.ChannelList,
+		"adminCode":   adminCode,
+		"session":     session,
+	})
 }
 
 // HandleJoinByPin xử lý POST /api/v1/auth/join-pin — Người dùng nhập PIN 6 số để tham gia sự kiện.
-// Trả về event, session, cùng userId, signalingUrl và signalingToken để app tự kết nối gọi được ngay.
 func (em *EventManager) HandleJoinByPin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
+			"error":   "METHOD_NOT_ALLOWED",
+			"message": "Method not allowed",
+		})
 		return
 	}
 
@@ -463,12 +556,15 @@ func (em *EventManager) HandleJoinByPin(w http.ResponseWriter, r *http.Request) 
 		PinCode          string `json:"pinCode"`
 		DisplayName      string `json:"displayName"`
 		RoleTitle        string `json:"roleTitle"`
-		UserLevel        uint8  `json:"userLevel"`        // Android: 1 (Đạo diễn), 2 (Trưởng ban), 3 (CTV)
-		RolePriority     uint8  `json:"rolePriority"`     // Server: 3 (Đạo diễn), 2 (Trưởng ban), 1 (CTV)
-		PreferredChannel uint8  `json:"preferredChannel"` // 1..5
+		UserLevel        uint8  `json:"userLevel"`
+		RolePriority     uint8  `json:"rolePriority"`
+		PreferredChannel uint8  `json:"preferredChannel"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "INVALID_JSON",
+			"message": "Invalid JSON body",
+		})
 		return
 	}
 
@@ -501,7 +597,7 @@ func (em *EventManager) HandleJoinByPin(w http.ResponseWriter, r *http.Request) 
 		req.RoleTitle = defaultTitle
 	}
 	if req.PreferredChannel < 1 || req.PreferredChannel > 5 {
-		req.PreferredChannel = 2 // Mặc định vào kênh 2 (Sân khấu - ch_02)
+		req.PreferredChannel = 2
 	}
 
 	listening := []uint8{1, req.PreferredChannel}
@@ -520,30 +616,29 @@ func (em *EventManager) HandleJoinByPin(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// HandleSwitchChannel xử lý POST /api/v1/users/switch-channel — Đổi kênh nói chính & danh sách kênh nghe (tối đa 3 kênh).
+// HandleSwitchChannel xử lý POST /api/v1/users/switch-channel
 func (em *EventManager) HandleSwitchChannel(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
+			"error":   "METHOD_NOT_ALLOWED",
+			"message": "Method not allowed",
+		})
 		return
 	}
 
 	var req struct {
-<<<<<<< HEAD
-		UserID            uint32  `json:"userId"`
-		PrimaryTxChannel  uint8   `json:"primaryTxChannel"`
-		ListeningChannels ChannelIDList `json:"listeningChannels"`
-=======
 		UserID            FlexibleUserID `json:"userId"`
 		PrimaryTxChannel  uint8          `json:"primaryTxChannel"`
 		ListeningChannels ChannelIDList  `json:"listeningChannels"`
->>>>>>> origin/main
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "INVALID_JSON",
+			"message": "Invalid JSON",
+		})
 		return
 	}
 
-	// Giới hạn tối đa 3 kênh nghe đồng thời theo NFR để tránh quá tải thính giác
 	if len(req.ListeningChannels) > 3 {
 		req.ListeningChannels = req.ListeningChannels[:3]
 	}
@@ -552,7 +647,10 @@ func (em *EventManager) HandleSwitchChannel(w http.ResponseWriter, r *http.Reque
 	session := em.findSessionLocked(req.UserID)
 	if session == nil {
 		em.mu.Unlock()
-		http.Error(w, "User session not found", http.StatusNotFound)
+		writeJSON(w, http.StatusNotFound, map[string]interface{}{
+			"error":   "USER_NOT_FOUND",
+			"message": "User session not found",
+		})
 		return
 	}
 	session.PrimaryTxChannel = req.PrimaryTxChannel
@@ -568,10 +666,13 @@ func (em *EventManager) HandleSwitchChannel(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, session)
 }
 
-// HandleLeaveChannel xử lý POST /api/v1/users/leave-channel — Tương ứng nút "Rời kênh" trong ChannelMenuSheet trên Android.
+// HandleLeaveChannel xử lý POST /api/v1/users/leave-channel
 func (em *EventManager) HandleLeaveChannel(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
+			"error":   "METHOD_NOT_ALLOWED",
+			"message": "Method not allowed",
+		})
 		return
 	}
 
@@ -580,7 +681,10 @@ func (em *EventManager) HandleLeaveChannel(w http.ResponseWriter, r *http.Reques
 		ChannelID uint8          `json:"channelId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "INVALID_JSON",
+			"message": "Invalid JSON",
+		})
 		return
 	}
 
