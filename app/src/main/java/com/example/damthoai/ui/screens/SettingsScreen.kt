@@ -23,6 +23,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import com.example.damthoai.data.qr.BackendConfig
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -266,6 +272,9 @@ private fun SettingsContent(
                     }
                 }
             }
+
+            SectionLabel("MÁY CHỦ BACKEND")
+            BackendUrlSettingsCard()
             SectionLabel("ỨNG DỤNG")
             SettingsActionRow(
                 iconRes = R.drawable.ic_wifi,
@@ -301,6 +310,92 @@ private fun SettingsContent(
             },
             onDismissRequest = { showLeaveEventDialog = false }
         )
+    }
+}
+
+
+@Composable
+private fun BackendUrlSettingsCard() {
+    val context = LocalContext.current
+    var urlText by remember {
+        mutableStateOf(BackendConfig.baseUrl ?: BackendConfig.DEFAULT_BASE_URL)
+    }
+    var statusMsg by remember { mutableStateOf<String?>(null) }
+    var statusOk by remember { mutableStateOf(false) }
+
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "Địa chỉ Backend API",
+                color = TextPrimary,
+                style = DamType.Heading
+            )
+            Text(
+                text = "Cloud Render hiện có thể tắt (404). Chạy backend local rồi nhập http://IP-máy:8080 (cùng Wi‑Fi).",
+                color = TextSecondary,
+                style = DamType.Small
+            )
+            OutlinedTextField(
+                value = urlText,
+                onValueChange = { urlText = it },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("http://192.168.1.10:8080", color = TextSecondary) },
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Done
+                ),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary,
+                    focusedBorderColor = AccentCyan,
+                    unfocusedBorderColor = GlassBorder,
+                    cursorColor = AccentCyan
+                )
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        val trimmed = urlText.trim().removeSuffix("/")
+                        if (trimmed.isEmpty()) {
+                            statusOk = false
+                            statusMsg = "URL không được để trống"
+                            return@Button
+                        }
+                        if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+                            statusOk = false
+                            statusMsg = "URL phải bắt đầu bằng http:// hoặc https://"
+                            return@Button
+                        }
+                        BackendConfig.setBaseUrl(context, trimmed)
+                        urlText = trimmed
+                        statusOk = true
+                        statusMsg = "Đã lưu: $trimmed"
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Lưu URL", style = DamType.Body.copy(fontWeight = FontWeight.Bold))
+                }
+                Button(
+                    onClick = {
+                        BackendConfig.setBaseUrl(context, null)
+                        urlText = BackendConfig.DEFAULT_BASE_URL
+                        statusOk = true
+                        statusMsg = "Đã về mặc định build"
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Mặc định", style = DamType.Body.copy(fontWeight = FontWeight.Bold))
+                }
+            }
+            statusMsg?.let { msg ->
+                Text(
+                    text = msg,
+                    color = if (statusOk) AccentMint else DangerText,
+                    style = DamType.Small
+                )
+            }
+        }
     }
 }
 

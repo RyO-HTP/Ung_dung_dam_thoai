@@ -87,8 +87,17 @@ object ApiClient {
             }
         } catch (e: ApiException) {
             Result.failure(e)
-        } catch (_: java.io.IOException) {
-            Result.failure(ApiException(0, "NETWORK_ERROR", "Lỗi kết nối mạng, vui lòng kiểm tra lại"))
+        } catch (e: java.io.IOException) {
+            val base = try { currentBaseUrl } catch (_: Exception) { "(chưa cấu hình)" }
+            val detail = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+            Result.failure(
+                ApiException(
+                    0,
+                    "NETWORK_ERROR",
+                    "Không kết nối được máy chủ backend ($base). " +
+                        "Kiểm tra máy chủ đang chạy, điện thoại cùng Wi‑Fi, hoặc đổi URL trong Cài đặt. Chi tiết: $detail"
+                )
+            )
         } catch (e: Exception) {
             Result.failure(ApiException(0, "UNKNOWN_ERROR", e.message ?: "Lỗi không xác định"))
         }

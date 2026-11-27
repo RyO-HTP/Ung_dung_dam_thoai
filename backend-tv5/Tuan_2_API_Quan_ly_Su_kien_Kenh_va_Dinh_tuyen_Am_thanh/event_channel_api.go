@@ -234,15 +234,17 @@ func NewEventManager(router *ChannelAudioRouter) *EventManager {
 	em.userSeq.Store(100)
 	em.eventSeq.Store(3)
 
+	// PIN mẫu để join nhanh + adminCode để test restore Cấp 1.
 	seedEvents := []struct {
-		id   int64
-		name string
-		desc string
-		pin  string
+		id        int64
+		name      string
+		desc      string
+		pin       string
+		adminCode string
 	}{
-		{1, "Đêm nhạc Chào Tân sinh viên", "Sự kiện âm nhạc thường niên tại Hội trường A", "240826"},
-		{2, "Đêm nhạc Chào Tân sinh viên", "Sự kiện âm nhạc thường niên tại Hội trường A (QR/PIN)", "889900"},
-		{3, "Đêm Nhạc Acoustic 2026", "Sự kiện biểu diễn Acoustic Hội trường lớn", "482910"},
+		{1, "Đêm nhạc Chào Tân sinh viên", "Sự kiện âm nhạc thường niên tại Hội trường A", "240826", "ADM-DEMO01"},
+		{2, "Đêm nhạc Chào Tân sinh viên", "Sự kiện âm nhạc thường niên tại Hội trường A (QR/PIN)", "889900", "ADM-DEMO02"},
+		{3, "Đêm Nhạc Acoustic 2026", "Sự kiện biểu diễn Acoustic Hội trường lớn", "482910", "ADM-DEMO03"},
 	}
 
 	for _, item := range seedEvents {
@@ -255,6 +257,7 @@ func NewEventManager(router *ChannelAudioRouter) *EventManager {
 			CreatedAt:   time.Now(),
 			Channels:    chMap,
 			ChannelList: chList,
+			AdminCode:   item.adminCode,
 		}
 		em.eventsByPin[item.pin] = ev
 		em.eventsByID[item.id] = ev

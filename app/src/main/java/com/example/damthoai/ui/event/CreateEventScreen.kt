@@ -107,13 +107,15 @@ fun CreateEventScreen(
     val scope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
     var eventName by rememberSaveable { mutableStateOf("Đêm nhạc Chào Tân sinh viên") }
+    var displayName by rememberSaveable { mutableStateOf("Lâm Phong") }
+    var roleTitle by rememberSaveable { mutableStateOf("Tổng đạo diễn") }
     var adminCode by rememberSaveable { mutableStateOf("") }
     var showSuccessSheet by rememberSaveable { mutableStateOf(false) }
     var isLoading by rememberSaveable { mutableStateOf(false) }
     val creator = remember {
         PreviewSamples.eventMembers.first { it.level == MemberLevel.LEVEL_1 }
     }
-    val isFormValid = eventName.isNotBlank()
+    val isFormValid = eventName.isNotBlank() && displayName.isNotBlank()
 
     DamThoaiBackground(modifier = modifier) {
         Column(
@@ -154,10 +156,16 @@ fun CreateEventScreen(
                 )
 
                 EventFieldLabel("Tên của bạn")
-                StaticEventField(creator.name)
+                EventNameInput(
+                    value = displayName,
+                    onValueChange = { displayName = it }
+                )
 
                 EventFieldLabel("Chức vụ")
-                StaticEventField(creator.roleTitle)
+                EventNameInput(
+                    value = roleTitle,
+                    onValueChange = { roleTitle = it }
+                )
 
                 Row(
                     modifier = Modifier
@@ -205,8 +213,8 @@ fun CreateEventScreen(
                             description = "Sự kiện điều phối bộ đàm đa kênh thời gian thực",
                             pinCode = "240826",
                             adminCode = finalAdminCode,
-                            displayName = "Tổng Đạo Diễn",
-                            roleTitle = "Tổng đạo diễn"
+                            displayName = displayName.trim().ifBlank { "Tổng Đạo Diễn" },
+                            roleTitle = roleTitle.trim().ifBlank { "Tổng đạo diễn" }
                         )
                         isLoading = false
                         if (createRes.isSuccess) {

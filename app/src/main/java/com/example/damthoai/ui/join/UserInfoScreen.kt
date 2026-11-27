@@ -157,9 +157,13 @@ fun UserInfoScreen(
             Spacer(Modifier.weight(1f))
             PrimaryButton(
                 text = "Vào kênh",
-                onClick = onEnterChannel,
+                onClick = {
+                    if (displayName.isBlank()) return@PrimaryButton
+                    onEnterChannel()
+                },
                 modifier = Modifier.fillMaxWidth(),
-                height = 54.dp
+                height = 54.dp,
+                enabled = displayName.isNotBlank()
             )
         }
     }

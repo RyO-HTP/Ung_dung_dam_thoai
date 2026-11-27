@@ -10,6 +10,7 @@ package com.example.damthoai.ui.channels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.damthoai.data.model.Channel
+import com.example.damthoai.data.remote.EventSession
 import com.example.damthoai.data.remote.RemoteEventRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,8 +37,10 @@ class ChannelViewModel : ViewModel() {
                     previousChannels[channel.id]?.copy(channel = channel)
                         ?: initialChannelState(channel)
                 }
+                val sessionPrimary = EventSession.getSession()?.primaryChannelId.orEmpty()
                 val activeMicChannelId = currentState.activeMicChannelId
-                    .takeIf { id -> channelStates.any { it.channel.id == id } }
+                    .takeIf { id -> id.isNotBlank() && channelStates.any { it.channel.id == id } }
+                    ?: sessionPrimary.takeIf { id -> channelStates.any { it.channel.id == id } }
                     ?: channelStates.firstOrNull()?.channel?.id.orEmpty()
                 val selectedMenuChannel = currentState.selectedMenuChannel?.let { selected ->
                     channelStates.firstOrNull { it.channel.id == selected.channel.id }
@@ -94,6 +97,8 @@ class ChannelViewModel : ViewModel() {
         _uiState.update { it.copy(activeMicChannelId = channelId) }
         val chNum = channelId.takeLast(1).toIntOrNull() ?: 1
         val listening = _uiState.value.channels.mapNotNull { it.channel.id.takeLast(1).toIntOrNull() }.take(3)
+        // Cập nhật session ngay để header ActiveCall đổi tên kênh tức thì
+        EventSession.updatePrimaryChannel(null, channelId, listening)
         viewModelScope.launch {
             RemoteEventRepository.switchChannel(chNum, listening)
         }

@@ -151,9 +151,11 @@ fun ChannelMenuSheetContent(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_vol),
-                    contentDescription = null,
-                    tint = AccentCyan,
+                    painter = painterResource(
+                        if (channelItem.isMuted) R.drawable.ic_mute else R.drawable.ic_vol
+                    ),
+                    contentDescription = if (channelItem.isMuted) "Đã tắt tiếng" else "Tắt tiếng",
+                    tint = if (channelItem.isMuted) DangerText else AccentCyan,
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -163,7 +165,7 @@ fun ChannelMenuSheetContent(
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = "Tắt nghe kênh này",
+                    text = if (channelItem.isMuted) "Đã tắt nghe kênh này" else "Tắt nghe kênh này",
                     color = TextPrimary,
                     style = DamType.Heading16.copy(fontSize = 17.sp, fontWeight = FontWeight.Bold),
                     maxLines = 1,

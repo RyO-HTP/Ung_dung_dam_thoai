@@ -176,13 +176,30 @@ private fun JoinChannelScreenContent(
     val isPermanentlyDenied = realCameraState == PermissionState.PERMANENTLY_DENIED
 
     val handleScanFrameClick: () -> Unit = {
-        if (isCameraGranted) {
-            onSuccessJoin()
-        } else if (isPermanentlyDenied) {
+        // Chỉ xin quyền / mở cài đặt — không nhảy join giả khi đã có camera.
+        if (isPermanentlyDenied) {
             PermissionManager.openAppSettings(context)
-        } else {
+        } else if (!isCameraGranted) {
             PermissionManager.markRequested(context, AppPermission.CAMERA)
             permissionLauncher.launch(qrScanPermissions)
+        }
+    }
+
+    val handleQrDetected: (String) -> Unit = { rawQr ->
+        scope.launch {
+            val token = rawQr.trim()
+            if (token.isBlank()) {
+                android.widget.Toast.makeText(context, "Mã QR không hợp lệ", android.widget.Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val res = RemoteEventRepository.joinByQr(context, token, "Thành viên")
+            if (res.isSuccess) {
+                onSuccessJoin()
+            } else {
+                val msg = res.exceptionOrNull()?.message ?: "Không vào được kênh từ QR"
+                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                onJoinError()
+            }
         }
     }
 
@@ -220,7 +237,7 @@ private fun JoinChannelScreenContent(
                         isPermanentlyDenied = isPermanentlyDenied,
                         onScanFrameClick = handleScanFrameClick,
                         onOpenSettings = { PermissionManager.openAppSettings(context) },
-                        onQrScanned = { onSuccessJoin() }
+                        onQrScanned = handleQrDetected
                     )
                 } else {
                     PinInputTab(
@@ -230,7 +247,7 @@ private fun JoinChannelScreenContent(
                                 onJoinError()
                             } else {
                                 scope.launch {
-                                    val res = RemoteEventRepository.joinByPin(context, pin, "Thành viên", "Cộng tác viên", 2)
+                                    val res = RemoteEventRepository.joinByPin(context, pin, "Thành viên", "Cộng tác viên", 1)
                                     if (res.isSuccess) {
                                         onSuccessJoin()
                                     } else {
@@ -376,7 +393,7 @@ private fun QrScanTab(
     isPermanentlyDenied: Boolean,
     onScanFrameClick: () -> Unit,
     onOpenSettings: () -> Unit,
-    onQrScanned: () -> Unit
+    onQrScanned: (String) -> Unit
 ) {
     if (isCameraGranted) {
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -386,17 +403,23 @@ private fun QrScanTab(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(30.dp))
                     .background(LcdBg)
-                    .border(1.dp, GlassBorder, RoundedCornerShape(30.dp))
-                    .clickable(onClick = onQrScanned),
+                    .border(1.dp, GlassBorder, RoundedCornerShape(30.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                QrScannerView(onQrScanned = { onQrScanned() }, modifier = Modifier.size(220.dp))
+                // Camera thật + ML Kit (QrCameraScanner). Không còn mock chạm khung.
+                QrCameraScanner(
+                    onQrDetected = onQrScanned,
+                    onError = { /* toast đã xử lý ở chỗ gọi nếu cần */ },
+                    torchEnabled = false,
+                    onTorchAvailable = {},
+                    modifier = Modifier.fillMaxSize()
+                )
                 ScannerCorners(Modifier.size(220.dp))
                 ScanLine(Modifier.width(186.dp))
             }
             Spacer(Modifier.height(14.dp))
             Text(
-                text = "Quét mã QR của bạn.\nTên, vai trò và kênh sẽ được gán tự động.",
+                text = "Hướng camera vào mã QR.\nTên, vai trò và kênh sẽ được gán tự động.",
                 color = TextSecondary,
                 style = DamType.Body13_5Line20,
                 textAlign = TextAlign.Center,

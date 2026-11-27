@@ -444,16 +444,18 @@ private fun ChannelCardItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_vol),
-                    contentDescription = null,
-                    tint = TextSecondary,
+                    painter = painterResource(
+                        if (item.isMuted) R.drawable.ic_mute else R.drawable.ic_vol
+                    ),
+                    contentDescription = if (item.isMuted) "Đã tắt tiếng" else "Âm lượng",
+                    tint = if (item.isMuted) AccentRed else TextSecondary,
                     modifier = Modifier.size(14.dp)
                 )
                 Spacer(Modifier.width(8.dp))
                 Slider(
                     value = item.volume,
                     onValueChange = onVolumeChange,
-                    enabled = !item.isDucked80,
+                    enabled = !item.isDucked80 && !item.isMuted,
                     modifier = Modifier.weight(1f),
                     thumb = {
                         Box(
@@ -511,6 +513,16 @@ private fun ChannelCardItem(
                             backgroundColor = TagAmberBg
                         )
                     }
+                } else if (item.isMuted) {
+                    Text(
+                        "TẮT",
+                        modifier = Modifier.width(38.dp),
+                        color = AccentRed,
+                        style = DamType.Small,
+                        textAlign = TextAlign.End,
+                        maxLines = 1,
+                        softWrap = false
+                    )
                 } else {
                     val isLowVolume = item.volume < 0.30f
                     Text(

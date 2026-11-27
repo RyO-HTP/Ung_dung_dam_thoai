@@ -119,6 +119,18 @@ fun ActiveCallScreen(
         baseState
     }
     val currentEvent by com.example.damthoai.data.remote.RemoteEventRepository.currentEvent.collectAsState()
+    // Theo dõi session reactive — đổi mic cập nhật primaryChannelId → header đổi tên
+    val session by com.example.damthoai.data.remote.EventSession.sessionFlow.collectAsState()
+    val primaryChannelName = run {
+        val channels = currentEvent?.channels.orEmpty()
+        val primaryId = session?.primaryChannelId
+        channels.firstOrNull { it.id == primaryId }?.name
+            ?: channels.firstOrNull { it.isDefault || it.id == "ch_01" }?.name
+            ?: channels.firstOrNull()?.name
+            ?: session?.roleTitle?.takeIf { it.isNotBlank() }
+            ?: currentEvent?.name?.takeIf { it.isNotBlank() }
+            ?: "Kênh hiện tại"
+    }
     val content = if (isInPreview) {
         PreviewSamples.contentFor(displayState)
     } else {
@@ -127,16 +139,25 @@ fun ActiveCallScreen(
             CallChannel(
                 iconRes = when {
                     ch.isDefault || ch.id == "ch_01" -> R.drawable.ic_crown
-                    ch.id == "ch_02" -> R.drawable.ic_stage
+                    ch.id == "ch_02" || ch.name.contains("Sân khấu", ignoreCase = true) -> R.drawable.ic_stage
+                    ch.name.contains("Hậu cần", ignoreCase = true) || ch.name.contains("An ninh", ignoreCase = true) -> R.drawable.ic_shield
                     else -> R.drawable.ic_mic
                 },
                 name = ch.name,
                 valueLabel = "100%",
-                volume = 0.8f,
+                volume = if (ch.isDefault || ch.id == "ch_01") 1.0f else 0.7f,
                 speaker = ch.currentSpeaker ?: "Không ai đang nói",
                 speakerColor = com.example.damthoai.ui.theme.CallStatusMint
             )
-        }.ifEmpty { PreviewSamples.contentFor(displayState).channels }
+        }.ifEmpty {
+            // Không còn silent fallback sang preview "Hậu cần" cứng.
+            // Chỉ dùng preview khi thật sự chưa có event (lần đầu mở).
+            if (currentEvent == null) {
+                PreviewSamples.contentFor(displayState).channels
+            } else {
+                emptyList()
+            }
+        }
 
         CallContent(
             statusTitle = when (displayState) {
@@ -147,7 +168,7 @@ fun ActiveCallScreen(
                 CallUiState.CallOffline -> "Mất kết nối"
                 else -> "Nghe kép đang bật"
             },
-            statusDescription = currentEvent?.name ?: "Sự kiện Đàm Thoại",
+            statusDescription = currentEvent?.name ?: session?.eventName ?: "Sự kiện Đàm Thoại",
             statusIconRes = R.drawable.ic_radio,
             statusColor = com.example.damthoai.ui.theme.CallStatusMint,
             statusBackground = com.example.damthoai.ui.theme.CallStatusMintBg,
@@ -191,7 +212,11 @@ fun ActiveCallScreen(
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        CallHeader(onBack = onBack, networkStatus = networkStatus)
+                        CallHeader(
+                            onBack = onBack,
+                            networkStatus = networkStatus,
+                            channelName = if (isInPreview) "Hậu cần – An ninh" else primaryChannelName
+                        )
                         com.example.damthoai.ui.components.AudioIncidentBanner(incident = activeIncident)
                         liveCue?.let { LiveCueCard(cue = it) }
                         CallStatusBanner(
@@ -301,7 +326,11 @@ fun ActiveCallScreen(
 }
 
 @Composable
-private fun CallHeader(onBack: () -> Unit, networkStatus: NetworkStatus) {
+private fun CallHeader(
+    onBack: () -> Unit,
+    networkStatus: NetworkStatus,
+    channelName: String = "Kênh hiện tại"
+) {
     Box(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center
@@ -313,7 +342,12 @@ private fun CallHeader(onBack: () -> Unit, networkStatus: NetworkStatus) {
                 .padding(horizontal = 52.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("Hậu cần – An ninh", color = TextPrimary, style = DamType.Heading)
+            Text(
+                text = channelName,
+                color = TextPrimary,
+                style = DamType.Heading,
+                maxLines = 1
+            )
             Text(
                 "Bạn đang nói ở kênh này",
                 color = TextSecondary,

@@ -86,7 +86,9 @@ object RemoteEventRepository : EventRepository {
     private fun checkApiError(result: Result<*>, context: Context?): Boolean {
         if (result.isFailure) {
             val err = result.exceptionOrNull()
-            if (err is ApiException && (err.httpCode == 403 || err.httpCode == 404)) {
+            // Chỉ coi là "bị xóa khỏi sự kiện" khi server trả đúng 403 USER_NOT_IN_EVENT.
+            // 404 chung (backend down / URL sai / chưa tạo event) KHÔNG được đẩy sang màn xóa.
+            if (err is ApiException && err.httpCode == 403 && err.errorCode == "USER_NOT_IN_EVENT") {
                 context?.let { logout(it) }
                 _removedFromEventFlow.tryEmit(Unit)
                 return true
@@ -320,6 +322,13 @@ object RemoteEventRepository : EventRepository {
             checkApiError(result, appContext)
             return@withContext Result.failure(result.exceptionOrNull() ?: Exception("Lỗi chuyển kênh"))
         }
+        // Cập nhật kênh primary local → header ActiveCall đổi đúng tên
+        val channelId = "ch_0$primaryTxChannel"
+        EventSession.updatePrimaryChannel(
+            context = appContext,
+            channelId = channelId,
+            listeningChannels = listeningChannels.take(3)
+        )
         Result.success(Unit)
     }
 

@@ -3,8 +3,11 @@ package com.example.damthoai.data.remote
 import android.content.Context
 import com.google.gson.Gson
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 object EventSession {
     private const val PREFS_NAME = "damthoai_event_session"
@@ -33,6 +36,10 @@ object EventSession {
     private val _sessionState = MutableSharedFlow<SessionData?>(extraBufferCapacity = 1)
     val sessionState: SharedFlow<SessionData?> = _sessionState.asSharedFlow()
 
+    // Reactive session for UI (header kênh, v.v.)
+    private val _sessionFlow = MutableStateFlow<SessionData?>(null)
+    val sessionFlow: StateFlow<SessionData?> = _sessionFlow.asStateFlow()
+
     fun init(context: Context) {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val json = prefs.getString(KEY_SESSION_JSON, null)
@@ -45,6 +52,7 @@ object EventSession {
         } else {
             null
         }
+        _sessionFlow.value = cachedSession
         _sessionState.tryEmit(cachedSession)
     }
 
@@ -56,13 +64,31 @@ object EventSession {
         cachedSession = session
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_SESSION_JSON, gson.toJson(session)).apply()
+        _sessionFlow.value = session
         _sessionState.tryEmit(session)
+    }
+
+    /** Cập nhật kênh primary (mic) sau khi user chọn mic / switch channel. */
+    fun updatePrimaryChannel(context: Context?, channelId: String, listeningChannels: List<Int>? = null) {
+        val current = cachedSession ?: return
+        val updated = current.copy(
+            primaryChannelId = channelId,
+            listeningChannels = listeningChannels ?: current.listeningChannels
+        )
+        cachedSession = updated
+        _sessionFlow.value = updated
+        _sessionState.tryEmit(updated)
+        context?.applicationContext?.let { ctx ->
+            val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putString(KEY_SESSION_JSON, gson.toJson(updated)).apply()
+        }
     }
 
     fun clearSession(context: Context) {
         cachedSession = null
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().remove(KEY_SESSION_JSON).apply()
+        _sessionFlow.value = null
         _sessionState.tryEmit(null)
     }
 }
