@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -176,8 +177,11 @@ func (s *QrRoleProvisioningService) VerifyAndDecodeQrToken(tokenOrURI string) (*
 		cleaned = strings.TrimPrefix(cleaned, "damthoai://join?token=")
 	}
 
-	switch cleaned {
-	case "MOCK_QR_EVENT_889900", "MOCK_QR_EVENT_240826", "889900", "240826":
+	if strings.HasPrefix(cleaned, "MOCK_QR_") || cleaned == "889900" || cleaned == "240826" {
+		demoMode := os.Getenv("DEMO_MODE")
+		if demoMode != "true" && demoMode != "1" {
+			return nil, errors.New("MOCK_QR_DISABLED")
+		}
 		pin := "889900"
 		eventID := int64(2)
 		if strings.Contains(cleaned, "240826") {
@@ -195,22 +199,6 @@ func (s *QrRoleProvisioningService) VerifyAndDecodeQrToken(tokenOrURI string) (*
 			AssignedPriority:   2,
 			PrimaryChannelID:   2,
 			PrimaryChannelCode: "ch_02",
-			AutoListenChannels: []int{1, 2, 3},
-			DefaultUiMode:      "PRO_MULTI_CHANNEL",
-			ExpiresAtUnix:      time.Now().Add(24 * time.Hour).Unix(),
-		}, nil
-	case "MOCK_QR_DIRECTOR_240826":
-		return &DepartmentQrTokenPayload{
-			EventID:            1,
-			EventName:          "Đêm nhạc Chào Tân sinh viên",
-			PinCode:            "240826",
-			DepartmentCode:     "ALL_EVENT",
-			DepartmentTitle:    "Toàn sự kiện",
-			RoleTitle:          "Tổng đạo diễn",
-			UserLevel:          1,
-			AssignedPriority:   3,
-			PrimaryChannelID:   1,
-			PrimaryChannelCode: "ch_01",
 			AutoListenChannels: []int{1, 2, 3},
 			DefaultUiMode:      "PRO_MULTI_CHANNEL",
 			ExpiresAtUnix:      time.Now().Add(24 * time.Hour).Unix(),
@@ -248,36 +236,57 @@ func (s *QrRoleProvisioningService) VerifyAndDecodeQrToken(tokenOrURI string) (*
 	return &payload, nil
 }
 
-// HandleGenerateDepartmentQrCodes xử lý GET /api/v1/events/qr-roles?eventId=...
-// Trả về danh sách 5 thẻ QR bộ phận tương thích trực tiếp với RemoteQrCardsRepository trên Android.
+// HandleGenerateDepartmentQrCodes xử lý GET /api/v1/events/qr-roles?eventId=...&actorUserId=...
 func (s *QrRoleProvisioningService) HandleGenerateDepartmentQrCodes(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != "" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	eventID := int64(1)
-	if rawID := strings.TrimSpace(r.URL.Query().Get("eventId")); rawID != "" {
-		if parsed, err := strconv.ParseInt(rawID, 10, 64); err == nil && parsed > 0 {
-			eventID = parsed
-		}
+	rawEventID := strings.TrimSpace(r.URL.Query().Get("eventId"))
+	actorUserId := strings.TrimSpace(r.URL.Query().Get("actorUserId"))
+	if actorUserId == "" {
+		actorUserId = r.Header.Get("X-Actor-User-Id")
 	}
-	eventName := "Đêm nhạc Chào Tân sinh viên"
-	pinCode := "240826"
 
-	if s.eventManager != nil {
-		if ev := s.eventManager.GetOrDefaultEvent(eventID, ""); ev != nil {
-			eventID = ev.EventID
-			eventName = ev.EventName
-			pinCode = ev.PinCode
-		}
+	eventID, err := strconv.ParseInt(rawEventID, 10, 64)
+	if err != nil || eventID <= 0 || actorUserId == "" || s.eventManager == nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "EVENT_NOT_FOUND", "message": "Event not found or missing actor"})
+		return
 	}
+
+	ev := s.eventManager.FindEventByID(eventID)
+	if ev == nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "EVENT_NOT_FOUND", "message": "Event not found"})
+		return
+	}
+
+	actor, err := s.eventManager.RequireMember(eventID, week2routing.FlexibleUserID(actorUserId))
+	if err != nil || actor.UserLevel > 2 {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "INSUFFICIENT_PERMISSIONS", "message": "Insufficient permissions or not in event"})
+		return
+	}
+
+	eventName := ev.EventName
+	pinCode := ev.PinCode
 
 	expiresAt := time.Now().Add(24 * time.Hour)
 	expiresUnix := expiresAt.Unix()
 
 	cards := make([]DepartmentQrCard, 0, len(StandardDepartmentProfiles))
 	for _, prof := range StandardDepartmentProfiles {
+		primaryChID := prof.PrimaryChannelID
+		primaryChCode := prof.PrimaryChannelCode
+		if chInfo, ok := ev.Channels[primaryChID]; ok {
+			primaryChCode = chInfo.ID
+		}
+
 		payload := DepartmentQrTokenPayload{
 			EventID:            eventID,
 			EventName:          eventName,
@@ -287,8 +296,8 @@ func (s *QrRoleProvisioningService) HandleGenerateDepartmentQrCodes(w http.Respo
 			RoleTitle:          prof.RoleTitle,
 			UserLevel:          prof.UserLevel,
 			AssignedPriority:   prof.AssignedPriority,
-			PrimaryChannelID:   prof.PrimaryChannelID,
-			PrimaryChannelCode: prof.PrimaryChannelCode,
+			PrimaryChannelID:   primaryChID,
+			PrimaryChannelCode: primaryChCode,
 			AutoListenChannels: prof.AutoListenChannels,
 			DefaultUiMode:      prof.DefaultUiMode,
 			ExpiresAtUnix:      expiresUnix,
@@ -307,8 +316,8 @@ func (s *QrRoleProvisioningService) HandleGenerateDepartmentQrCodes(w http.Respo
 			RoleTitle:          prof.RoleTitle,
 			UserLevel:          prof.UserLevel,
 			AssignedPriority:   prof.AssignedPriority,
-			PrimaryChannelID:   prof.PrimaryChannelID,
-			PrimaryChannelCode: prof.PrimaryChannelCode,
+			PrimaryChannelID:   primaryChID,
+			PrimaryChannelCode: primaryChCode,
 			AutoListenChannels: prof.AutoListenChannels,
 			DefaultUiMode:      prof.DefaultUiMode,
 			QrDeepLinkURI:      "damthoai://join?token=" + signedToken,
@@ -330,7 +339,6 @@ func (s *QrRoleProvisioningService) HandleGenerateDepartmentQrCodes(w http.Respo
 }
 
 // HandleJoinByDepartmentQr xử lý POST /api/v1/auth/join-by-qr.
-// Trả về đầy đủ userId (duy nhất, chỉ gồm chữ, số và . _ -), signalingUrl, signalingToken, event và session.
 func (s *QrRoleProvisioningService) HandleJoinByDepartmentQr(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -348,27 +356,45 @@ func (s *QrRoleProvisioningService) HandleJoinByDepartmentQr(w http.ResponseWrit
 
 	claims, err := s.VerifyAndDecodeQrToken(req.QrToken)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if err.Error() == "MOCK_QR_DISABLED" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "UNAUTHORIZED", "message": "Mock QR disabled"})
+			return
+		}
+		w.WriteHeader(http.StatusGone) // 410 QR_REVOKED
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "QR_REVOKED", "message": err.Error()})
 		return
-	}
-
-	if strings.TrimSpace(req.DisplayName) == "" {
-		req.DisplayName = "Minh Hậu"
 	}
 
 	primaryCh := claims.PrimaryChannelID
 	if primaryCh < 1 || primaryCh > 8 {
 		primaryCh = 2
 	}
-	listenUint8 := make([]uint8, 0, len(claims.AutoListenChannels))
-	for _, ch := range claims.AutoListenChannels {
-		if ch >= 1 && ch <= 8 {
-			listenUint8 = append(listenUint8, uint8(ch))
-		}
-	}
 
 	if s.eventManager != nil {
-		ev := s.eventManager.GetOrDefaultEvent(claims.EventID, claims.PinCode)
+		ev := s.eventManager.FindEventByID(claims.EventID)
+		if ev == nil || ev.PinCode != claims.PinCode || time.Now().Unix() > claims.ExpiresAtUnix {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusGone) // 410 QR_REVOKED
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "QR_REVOKED", "message": "QR revoked or expired or event mismatch"})
+			return
+		}
+
+		primaryCh := claims.PrimaryChannelID
+		if primaryCh < 1 || primaryCh > 8 || ev.Channels[primaryCh] == nil {
+			primaryCh = 2
+		}
+		listenUint8 := make([]uint8, 0, len(claims.AutoListenChannels))
+		for _, ch := range claims.AutoListenChannels {
+			if ch >= 1 && ch <= 8 && ev.Channels[uint8(ch)] != nil {
+				listenUint8 = append(listenUint8, uint8(ch))
+			}
+		}
+		if len(listenUint8) == 0 {
+			listenUint8 = []uint8{1, primaryCh}
+		}
+
 		session := s.eventManager.CreateSession(
 			ev,
 			req.DisplayName,
@@ -404,7 +430,7 @@ func (s *QrRoleProvisioningService) HandleJoinByDepartmentQr(w http.ResponseWrit
 		return
 	}
 
-	// Fallback độc lập nếu không gắn EventManager (ví dụ unit test riêng lẻ)
+	// Fallback độc lập nếu không gắn EventManager
 	seq := s.fallbackSeq.Add(1)
 	randBytes := make([]byte, 2)
 	_, _ = rand.Read(randBytes)

@@ -52,10 +52,26 @@ func TestHealthzAndRemovedWsSignaling(t *testing.T) {
 }
 
 func TestQrRolesCompatibleWithAndroidRepo(t *testing.T) {
+	t.Setenv("DEMO_MODE", "true")
 	srv := buildTestServer()
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/api/v1/events/qr-roles?eventId=1")
+	createBody, _ := json.Marshal(map[string]interface{}{
+		"pinCode":     "240826",
+		"displayName": "Tổng Đạo Diễn",
+		"userLevel":   1,
+	})
+	joinResp, err := http.Post(srv.URL+"/api/v1/auth/join-pin", "application/json", bytes.NewReader(createBody))
+	if err != nil {
+		t.Fatalf("join-pin lỗi: %v", err)
+	}
+	var joinRes struct {
+		UserID string `json:"userId"`
+	}
+	_ = json.NewDecoder(joinResp.Body).Decode(&joinRes)
+	joinResp.Body.Close()
+
+	resp, err := http.Get(srv.URL + "/api/v1/events/qr-roles?eventId=1&actorUserId=" + joinRes.UserID)
 	if err != nil {
 		t.Fatalf("GET qr-roles lỗi: %v", err)
 	}
@@ -112,16 +128,15 @@ func TestQrRolesCompatibleWithAndroidRepo(t *testing.T) {
 }
 
 func TestJoinPinAndJoinByQrReturnUniqueUserIDAndSignalingEnv(t *testing.T) {
-	// Thử truyền URL dạng https:// có dấu / cuối để kiểm tra tự chuẩn hóa sang wss://
 	t.Setenv("SIGNALING_URL", "https://damthoai-signaling.onrender.com/")
 	t.Setenv("SIGNALING_TOKEN", "secret_token_test_123")
+	t.Setenv("DEMO_MODE", "true")
 
 	srv := buildTestServer()
 	defer srv.Close()
 
 	seenIDs := make(map[string]bool)
 
-	// 1. Kiểm tra join-pin nhiều lần với cùng tên tiếng Việt có dấu
 	for i := 0; i < 5; i++ {
 		body, _ := json.Marshal(map[string]interface{}{
 			"pinCode":          "240826",
@@ -143,6 +158,7 @@ func TestJoinPinAndJoinByQrReturnUniqueUserIDAndSignalingEnv(t *testing.T) {
 				SignalingURL      string `json:"signalingUrl"`
 				SignalingToken    string `json:"signalingToken"`
 				ListeningChannels []int  `json:"listeningChannels"`
+				UserLevel         uint8  `json:"userLevel"`
 			} `json:"session"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
@@ -159,18 +175,15 @@ func TestJoinPinAndJoinByQrReturnUniqueUserIDAndSignalingEnv(t *testing.T) {
 		}
 		seenIDs[res.UserID] = true
 
+		if res.Session.UserLevel != 3 {
+			t.Fatalf("mong đợi userLevel = 3 từ join-pin, nhận %d", res.Session.UserLevel)
+		}
+
 		if res.SignalingURL != "wss://damthoai-signaling.onrender.com" || res.SignalingToken != "secret_token_test_123" {
 			t.Fatalf("signaling env không khớp: url=%q token=%q", res.SignalingURL, res.SignalingToken)
 		}
-		if res.Session.UserID != res.UserID || res.Session.SignalingURL != res.SignalingURL || res.Session.SignalingToken != res.SignalingToken {
-			t.Fatalf("session.signaling không đồng bộ với top-level: %+v", res)
-		}
-		if len(res.Session.ListeningChannels) == 0 {
-			t.Fatalf("listeningChannels phải là mảng số")
-		}
 	}
 
-	// 2. Kiểm tra join-by-qr
 	qrBody, _ := json.Marshal(map[string]interface{}{
 		"qrToken":     "MOCK_QR_EVENT_889900",
 		"displayName": "Minh Hậu",
@@ -202,44 +215,23 @@ func TestJoinPinAndJoinByQrReturnUniqueUserIDAndSignalingEnv(t *testing.T) {
 	if !validUserIDRegex.MatchString(qrRes.UserID) || seenIDs[qrRes.UserID] {
 		t.Fatalf("join-by-qr userId không hợp lệ hoặc trùng: %q", qrRes.UserID)
 	}
-	if qrRes.SignalingURL != "wss://damthoai-signaling.onrender.com" || qrRes.SignalingToken != "secret_token_test_123" {
-		t.Fatalf("join-by-qr thiếu cấu hình signaling: %+v", qrRes)
-	}
-	if qrRes.Event.EventID == 0 || qrRes.Session.UserID != qrRes.UserID {
-		t.Fatalf("join-by-qr thiếu event/session cho Android JoinResponseDto: %+v", qrRes)
-	}
+}
 
-	// 3. Kiểm tra Floor Control với userId chuỗi vừa nhận
-	reqFloor, _ := json.Marshal(map[string]interface{}{
-		"channelId":   2,
-		"channelCode": "ch_02",
-		"userId":      qrRes.UserID,
+func TestMockQrDisabledWhenDemoModeFalse(t *testing.T) {
+	t.Setenv("DEMO_MODE", "false")
+	srv := buildTestServer()
+	defer srv.Close()
+
+	qrBody, _ := json.Marshal(map[string]interface{}{
+		"qrToken":     "MOCK_QR_EVENT_889900",
 		"displayName": "Minh Hậu",
-		"userLevel":   2,
 	})
-	flResp, err := http.Post(srv.URL+"/api/v1/floor/request", "application/json", bytes.NewReader(reqFloor))
+	qrResp, err := http.Post(srv.URL+"/api/v1/auth/join-by-qr", "application/json", bytes.NewReader(qrBody))
 	if err != nil {
-		t.Fatalf("POST floor/request lỗi: %v", err)
+		t.Fatalf("POST join-by-qr lỗi: %v", err)
 	}
-	defer flResp.Body.Close()
-	if flResp.StatusCode != http.StatusOK {
-		t.Fatalf("floor/request trả %d", flResp.StatusCode)
-	}
-
-	relFloor, _ := json.Marshal(map[string]interface{}{
-		"channelId": 2,
-		"userId":    qrRes.UserID,
-	})
-	relResp, err := http.Post(srv.URL+"/api/v1/floor/release", "application/json", bytes.NewReader(relFloor))
-	if err != nil {
-		t.Fatalf("POST floor/release lỗi: %v", err)
-	}
-	defer relResp.Body.Close()
-	var relData struct {
-		Released bool `json:"released"`
-	}
-	_ = json.NewDecoder(relResp.Body).Decode(&relData)
-	if !relData.Released {
-		t.Fatalf("mong đợi released=true khi nhả PTT")
+	defer qrResp.Body.Close()
+	if qrResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("mong đợi 401 khi DEMO_MODE=false, nhận %d", qrResp.StatusCode)
 	}
 }

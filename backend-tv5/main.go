@@ -87,34 +87,57 @@ func newHTTPMux(
 	// Endpoints Tuần 2 (Sự kiện, PIN, Kênh & Admin)
 	mux.HandleFunc("/api/v1/events", eventManager.HandleCreateEvent)
 	mux.HandleFunc("/api/v1/events/restore", eventManager.HandleRestoreEvent)
+	mux.HandleFunc("/api/v1/events/qr-roles", qrService.HandleGenerateDepartmentQrCodes)
 	mux.HandleFunc("/api/v1/events/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
-		if strings.HasSuffix(path, "/channels") && r.Method == http.MethodPost {
-			eventManager.HandleAddChannel(w, r)
+		trimmed := strings.TrimPrefix(path, "/api/v1/events/")
+		parts := strings.Split(strings.Trim(trimmed, "/"), "/")
+
+		if trimmed == "restore" {
+			eventManager.HandleRestoreEvent(w, r)
 			return
 		}
-		if strings.Contains(path, "/channels/") {
-			if r.Method == http.MethodPatch || r.Method == http.MethodPut {
-				eventManager.HandleUpdateChannel(w, r)
-				return
-			}
-			if r.Method == http.MethodDelete {
-				eventManager.HandleDeleteChannel(w, r)
-				return
-			}
-		}
-		if strings.HasSuffix(path, "/members") && r.Method == http.MethodGet {
-			eventManager.HandleListMembers(w, r)
+		if trimmed == "qr-roles" {
+			qrService.HandleGenerateDepartmentQrCodes(w, r)
 			return
 		}
-		if strings.Contains(path, "/members/") {
-			if r.Method == http.MethodPatch || r.Method == http.MethodPut {
-				eventManager.HandleUpdateMember(w, r)
+
+		if len(parts) == 1 && parts[0] != "" {
+			if r.Method == http.MethodGet {
+				eventManager.HandleGetEvent(w, r)
 				return
 			}
-			if r.Method == http.MethodDelete {
-				eventManager.HandleDeleteMember(w, r)
-				return
+		}
+
+		if len(parts) >= 2 {
+			sub := parts[1]
+			if sub == "channels" {
+				if r.Method == http.MethodPost && len(parts) == 2 {
+					eventManager.HandleAddChannel(w, r)
+					return
+				}
+				if len(parts) >= 3 && (r.Method == http.MethodPatch || r.Method == http.MethodPut) {
+					eventManager.HandleUpdateChannel(w, r)
+					return
+				}
+				if len(parts) >= 3 && r.Method == http.MethodDelete {
+					eventManager.HandleDeleteChannel(w, r)
+					return
+				}
+			}
+			if sub == "members" {
+				if r.Method == http.MethodGet && len(parts) == 2 {
+					eventManager.HandleListMembers(w, r)
+					return
+				}
+				if len(parts) >= 3 && (r.Method == http.MethodPatch || r.Method == http.MethodPut) {
+					eventManager.HandleUpdateMember(w, r)
+					return
+				}
+				if len(parts) >= 3 && r.Method == http.MethodDelete {
+					eventManager.HandleDeleteMember(w, r)
+					return
+				}
 			}
 		}
 		http.NotFound(w, r)

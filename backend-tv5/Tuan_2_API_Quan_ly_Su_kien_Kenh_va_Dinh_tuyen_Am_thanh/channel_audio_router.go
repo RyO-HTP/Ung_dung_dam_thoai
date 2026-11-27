@@ -199,3 +199,22 @@ func verifyPacketHmac4(packet []byte, secret []byte) bool {
 	actual := packet[dataLen:]
 	return hmac.Equal(expected, actual)
 }
+
+func (r *ChannelAudioRouter) IsUserRegistered(userID uint32) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	_, exists := r.peers[userID]
+	return exists
+}
+
+func (r *ChannelAudioRouter) UnregisterUserSession(userID uint32) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.peers, userID)
+	for chID, subs := range r.channelSubscribers {
+		delete(subs, userID)
+		if len(subs) == 0 {
+			delete(r.channelSubscribers, chID)
+		}
+	}
+}

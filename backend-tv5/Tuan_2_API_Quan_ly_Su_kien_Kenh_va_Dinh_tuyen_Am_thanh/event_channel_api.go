@@ -161,6 +161,7 @@ type EventInfo struct {
 	Description string                 `json:"description"`
 	PinCode     string                 `json:"pinCode"`
 	CreatedAt   time.Time              `json:"createdAt"`
+	MemberCount int                    `json:"memberCount"`
 	Channels    map[uint8]*ChannelInfo `json:"channels"`
 	ChannelList []*ChannelInfo         `json:"channelList"` // Mảng kênh tuần tự phục vụ LazyColumn trên Android
 	AdminCode   string                 `json:"-"`
@@ -211,14 +212,15 @@ func ConvertUserLevelToPriority(userLevel uint8, rolePriority uint8) (level uint
 }
 
 type EventManager struct {
-	mu          sync.RWMutex
-	eventsByPin map[string]*EventInfo
-	eventsByID  map[int64]*EventInfo
-	usersByID   map[uint32]*UserSession
-	usersByCode map[string]*UserSession
-	userSeq     atomic.Uint32
-	eventSeq    atomic.Int64
-	audioRouter *ChannelAudioRouter
+	mu              sync.RWMutex
+	eventsByPin     map[string]*EventInfo
+	eventsByID      map[int64]*EventInfo
+	usersByID       map[uint32]*UserSession
+	usersByCode     map[string]*UserSession
+	userSeq         atomic.Uint32
+	eventSeq        atomic.Int64
+	audioRouter     *ChannelAudioRouter
+	OnMemberRemoved func(UserSession)
 }
 
 func NewEventManager(router *ChannelAudioRouter) *EventManager {
@@ -288,6 +290,10 @@ func (em *EventManager) requireMember(eventID int64, ref FlexibleUserID) (*UserS
 		return nil, fmt.Errorf("USER_NOT_IN_EVENT")
 	}
 	return s, nil
+}
+
+func (em *EventManager) RequireMember(eventID int64, ref FlexibleUserID) (*UserSession, error) {
+	return em.requireMember(eventID, ref)
 }
 
 func (em *EventManager) FindEventByID(id int64) *EventInfo {
@@ -589,23 +595,30 @@ func (em *EventManager) HandleJoinByPin(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	userLevel, rolePriority, defaultTitle := ConvertUserLevelToPriority(req.UserLevel, req.RolePriority)
+	// A5: do not trust client userLevel/rolePriority (always Level 3, priority 1)
+	userLevel := uint8(3)
+	rolePriority := uint8(1)
+	roleTitle := "Cộng tác viên"
+
 	if strings.TrimSpace(req.DisplayName) == "" {
 		req.DisplayName = "Minh Hậu"
 	}
-	if strings.TrimSpace(req.RoleTitle) == "" {
-		req.RoleTitle = defaultTitle
+	if strings.TrimSpace(req.RoleTitle) != "" {
+		roleTitle = req.RoleTitle
 	}
-	if req.PreferredChannel < 1 || req.PreferredChannel > 5 {
-		req.PreferredChannel = 2
+
+	// preferredChannel must exist in event or default to 1
+	if req.PreferredChannel == 0 || ev.Channels[req.PreferredChannel] == nil {
+		req.PreferredChannel = 1
 	}
 
 	listening := []uint8{1, req.PreferredChannel}
 	if req.PreferredChannel == 1 {
 		listening = []uint8{1, 2}
 	}
+	listening = ensureValidListeningChannels(req.PreferredChannel, listening)
 
-	session := em.CreateSession(ev, req.DisplayName, req.RoleTitle, userLevel, rolePriority, req.PreferredChannel, listening)
+	session := em.CreateSession(ev, req.DisplayName, roleTitle, userLevel, rolePriority, req.PreferredChannel, listening)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"userId":         session.UserID,
@@ -639,10 +652,6 @@ func (em *EventManager) HandleSwitchChannel(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if len(req.ListeningChannels) > 3 {
-		req.ListeningChannels = req.ListeningChannels[:3]
-	}
-
 	em.mu.Lock()
 	session := em.findSessionLocked(req.UserID)
 	if session == nil {
@@ -653,14 +662,20 @@ func (em *EventManager) HandleSwitchChannel(w http.ResponseWriter, r *http.Reque
 		})
 		return
 	}
-	session.PrimaryTxChannel = req.PrimaryTxChannel
-	session.PrimaryChannelID = fmt.Sprintf("ch_0%d", req.PrimaryTxChannel)
-	session.ListeningChannels = req.ListeningChannels
+
+	ev := em.eventsByID[session.EventID]
+	if ev != nil && req.PrimaryTxChannel > 0 && ev.Channels[req.PrimaryTxChannel] != nil {
+		session.PrimaryTxChannel = req.PrimaryTxChannel
+		session.PrimaryChannelID = fmt.Sprintf("ch_0%d", req.PrimaryTxChannel)
+	}
+
+	listening := ensureValidListeningChannels(session.PrimaryTxChannel, req.ListeningChannels)
+	session.ListeningChannels = listening
 	numericID := session.NumericID
 	em.mu.Unlock()
 
 	if em.audioRouter != nil {
-		em.audioRouter.UpdateUserSubscribedChannels(numericID, req.ListeningChannels)
+		em.audioRouter.UpdateUserSubscribedChannels(numericID, listening)
 	}
 
 	writeJSON(w, http.StatusOK, session)
@@ -699,7 +714,7 @@ func (em *EventManager) HandleLeaveChannel(w http.ResponseWriter, r *http.Reques
 				filtered = append(filtered, ch)
 			}
 		}
-		session.ListeningChannels = filtered
+		session.ListeningChannels = ensureValidListeningChannels(session.PrimaryTxChannel, filtered)
 	}
 	em.mu.Unlock()
 
@@ -712,6 +727,33 @@ func (em *EventManager) HandleLeaveChannel(w http.ResponseWriter, r *http.Reques
 		"userId":    req.UserID,
 		"channelId": req.ChannelID,
 	})
+}
+
+func ensureValidListeningChannels(primaryCh uint8, channels []uint8) []uint8 {
+	exists := false
+	var res []uint8
+	for _, ch := range channels {
+		if ch == primaryCh {
+			exists = true
+		}
+		found := false
+		for _, r := range res {
+			if r == ch {
+				found = true
+				break
+			}
+		}
+		if !found {
+			res = append(res, ch)
+		}
+	}
+	if !exists {
+		res = append([]uint8{primaryCh}, res...)
+	}
+	if len(res) > 3 {
+		res = res[:3]
+	}
+	return res
 }
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
