@@ -35,6 +35,8 @@ func main() {
 		log.Printf("[FloorControl] Kênh %s (%d) -> %s (Reason: %s)",
 			decision.ChannelCode, decision.ChannelID, decision.Status, decision.Reason)
 	})
+	floorEngine.SetIdentityResolver(eventManager)
+	floorHub := week4floor.NewFloorHub(floorEngine)
 	stopWatchdog := make(chan struct{})
 	defer close(stopWatchdog)
 	go floorEngine.RunWatchdogLoop(stopWatchdog)
@@ -49,7 +51,7 @@ func main() {
 		}
 	}()
 
-	mux := newHTTPMux(eventManager, qrService, floorEngine, liveCueHub)
+	mux := newHTTPMux(eventManager, qrService, floorEngine, floorHub, liveCueHub)
 
 	log.Printf("[DamThoai Server - Người 5] Đang chạy HTTP/WS tại %s và UDP Audio tại %s", httpAddr, udpAddr)
 	log.Fatal(http.ListenAndServe(httpAddr, mux))
@@ -59,6 +61,7 @@ func newHTTPMux(
 	eventManager *week2routing.EventManager,
 	qrService *week3qr.QrRoleProvisioningService,
 	floorEngine *week4floor.FloorControlEngine,
+	floorHub *week4floor.FloorHub,
 	liveCueHub *week5livecue.LiveCueBannerHub,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
@@ -154,6 +157,7 @@ func newHTTPMux(
 	mux.HandleFunc("/api/v1/floor/request", floorEngine.HandleFloorRequestHTTP)
 	mux.HandleFunc("/api/v1/floor/release", floorEngine.HandleFloorReleaseHTTP)
 	mux.HandleFunc("/api/v1/floor/emergency-override", floorEngine.HandleEmergencyOverrideHTTP)
+	mux.HandleFunc("/ws/floor", floorHub.ServeFloorWS)
 
 	// Endpoints Tuần 5 (Live Cue Banner WebSocket & REST)
 	mux.HandleFunc("/ws/live-cue", liveCueHub.ServeLiveCueWS)

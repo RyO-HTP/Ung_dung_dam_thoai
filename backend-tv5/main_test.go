@@ -14,6 +14,7 @@ import (
 	week3qr "damthoai/nguoi5server/Tuan_3_API_Sinh_QR_Phan_Vai_Tu_Dong_Role_Provisioning"
 	week4floor "damthoai/nguoi5server/Tuan_4_Floor_Control_CAS_va_Priority_Override"
 	week5livecue "damthoai/nguoi5server/Tuan_5_Dong_bo_Thanh_Kich_ban_Live_Cue_Banner_WebSocket"
+	"github.com/gorilla/websocket"
 )
 
 var validUserIDRegex = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
@@ -23,8 +24,10 @@ func buildTestServer() *httptest.Server {
 	eventManager := week2routing.NewEventManager(audioRouter)
 	qrService := week3qr.NewQrRoleProvisioningService("0123456789abcdef0123456789abcdef", eventManager)
 	floorEngine := week4floor.NewFloorControlEngine(nil)
+	floorEngine.SetIdentityResolver(eventManager)
+	floorHub := week4floor.NewFloorHub(floorEngine)
 	liveCueHub := week5livecue.NewLiveCueBannerHub(1)
-	mux := newHTTPMux(eventManager, qrService, floorEngine, liveCueHub)
+	mux := newHTTPMux(eventManager, qrService, floorEngine, floorHub, liveCueHub)
 	return httptest.NewServer(mux)
 }
 
@@ -233,5 +236,139 @@ func TestMockQrDisabledWhenDemoModeFalse(t *testing.T) {
 	defer qrResp.Body.Close()
 	if qrResp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("mong đợi 401 khi DEMO_MODE=false, nhận %d", qrResp.StatusCode)
+	}
+}
+
+func TestFloorControlResolverAndErrors(t *testing.T) {
+	t.Setenv("DEMO_MODE", "true")
+	srv := buildTestServer()
+	defer srv.Close()
+
+	// 1. Request floor with unknown user -> 403 USER_NOT_IN_EVENT
+	reqBody, _ := json.Marshal(map[string]interface{}{
+		"channelId": 1,
+		"userId":    "nonexistent_user",
+	})
+	resp, err := http.Post(srv.URL+"/api/v1/floor/request", "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("POST /api/v1/floor/request lỗi: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("mong đợi 403 cho user không tồn tại, nhận %d", resp.StatusCode)
+	}
+	var errRes map[string]string
+	_ = json.NewDecoder(resp.Body).Decode(&errRes)
+	if errRes["error"] != "USER_NOT_IN_EVENT" {
+		t.Fatalf("mong đợi lỗi USER_NOT_IN_EVENT, nhận %+v", errRes)
+	}
+
+	// 2. Join pin as volunteer (Level 3)
+	joinBody, _ := json.Marshal(map[string]interface{}{
+		"pinCode":     "240826",
+		"displayName": "Cộng tác viên A",
+		"userLevel":   3,
+	})
+	joinResp, err := http.Post(srv.URL+"/api/v1/auth/join-pin", "application/json", bytes.NewReader(joinBody))
+	if err != nil {
+		t.Fatalf("join-pin lỗi: %v", err)
+	}
+	var joinRes struct {
+		UserID string `json:"userId"`
+	}
+	_ = json.NewDecoder(joinResp.Body).Decode(&joinRes)
+	joinResp.Body.Close()
+
+	// 3. Try emergency override as volunteer (Level 3) -> 403 FORBIDDEN_NOT_ADMIN
+	overrideBody, _ := json.Marshal(map[string]interface{}{
+		"userId": joinRes.UserID,
+	})
+	overrideResp, err := http.Post(srv.URL+"/api/v1/floor/emergency-override", "application/json", bytes.NewReader(overrideBody))
+	if err != nil {
+		t.Fatalf("POST emergency-override lỗi: %v", err)
+	}
+	defer overrideResp.Body.Close()
+	if overrideResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("mong đợi 403 khi Level 3 gọi emergency override, nhận %d", overrideResp.StatusCode)
+	}
+	var overrideErrRes map[string]string
+	_ = json.NewDecoder(overrideResp.Body).Decode(&overrideErrRes)
+	if overrideErrRes["error"] != "FORBIDDEN_NOT_ADMIN" {
+		t.Fatalf("mong đợi lỗi FORBIDDEN_NOT_ADMIN, nhận %+v", overrideErrRes)
+	}
+}
+
+func TestFloorHubWebSocketAndSnapshot(t *testing.T) {
+	t.Setenv("DEMO_MODE", "true")
+	srv := buildTestServer()
+	defer srv.Close()
+
+	// 1. Join pin to get valid user
+	joinBody, _ := json.Marshal(map[string]interface{}{
+		"pinCode":     "240826",
+		"displayName": "Nguyễn Minh Hậu",
+		"userLevel":   2,
+	})
+	joinResp, err := http.Post(srv.URL+"/api/v1/auth/join-pin", "application/json", bytes.NewReader(joinBody))
+	if err != nil {
+		t.Fatalf("join-pin lỗi: %v", err)
+	}
+	var joinRes struct {
+		UserID string `json:"userId"`
+	}
+	_ = json.NewDecoder(joinResp.Body).Decode(&joinRes)
+	joinResp.Body.Close()
+
+	// 2. Connect to /ws/floor via WebSocket
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/floor?userId=" + joinRes.UserID + "&eventId=1"
+	ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial /ws/floor lỗi: %v", err)
+	}
+	defer ws.Close()
+
+	// 3. Read initial FLOOR_SNAPSHOT message
+	_, msg, err := ws.ReadMessage()
+	if err != nil {
+		t.Fatalf("đọc websocket message lỗi: %v", err)
+	}
+	var snap struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(msg, &snap); err != nil {
+		t.Fatalf("unmarshal snapshot lỗi: %v", err)
+	}
+	if snap.Type != "FLOOR_SNAPSHOT" {
+		t.Fatalf("mong đợi type FLOOR_SNAPSHOT, nhận %q (msg=%s)", snap.Type, string(msg))
+	}
+
+	// 4. Request floor via REST API
+	reqBody, _ := json.Marshal(map[string]interface{}{
+		"channelId":   2,
+		"channelCode": "ch_02",
+		"userId":      joinRes.UserID,
+		"displayName": "Nguyễn Minh Hậu",
+		"userLevel":   2,
+	})
+	postResp, err := http.Post(srv.URL+"/api/v1/floor/request", "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("POST /api/v1/floor/request lỗi: %v", err)
+	}
+	postResp.Body.Close()
+
+	// 5. Read broadcast FLOOR_DECISION over WebSocket
+	_, decMsg, err := ws.ReadMessage()
+	if err != nil {
+		t.Fatalf("đọc websocket broadcast lỗi: %v", err)
+	}
+	var dec struct {
+		Type   string `json:"type"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(decMsg, &dec); err != nil {
+		t.Fatalf("unmarshal decision lỗi: %v", err)
+	}
+	if dec.Type != "FLOOR_DECISION" || dec.Status != "FLOOR_GRANTED" {
+		t.Fatalf("mong đợi FLOOR_DECISION / FLOOR_GRANTED, nhận type=%q status=%q (msg=%s)", dec.Type, dec.Status, string(decMsg))
 	}
 }

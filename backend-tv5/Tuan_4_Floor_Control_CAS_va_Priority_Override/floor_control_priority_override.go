@@ -6,8 +6,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
+
+	"damthoai/nguoi5server/identity"
 )
 
 // =============================================================================
@@ -122,6 +125,8 @@ type ChannelFloorSlot struct {
 }
 
 type FloorControlEngine struct {
+	mu                sync.RWMutex
+	identityResolver  identity.Resolver
 	slots             [33]ChannelFloorSlot
 	onFloorEvent      func(decision FloorDecision) // Callback đẩy thông báo tức thì cho các máy
 	TotalGrants       atomic.Uint64
@@ -134,6 +139,28 @@ func NewFloorControlEngine(onFloorEvent func(decision FloorDecision)) *FloorCont
 	return &FloorControlEngine{
 		onFloorEvent: onFloorEvent,
 	}
+}
+
+func (fc *FloorControlEngine) SetIdentityResolver(resolver identity.Resolver) {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	fc.identityResolver = resolver
+}
+
+func (fc *FloorControlEngine) Snapshot() []FloorHolder {
+	nowMs := time.Now().UnixMilli()
+	var holders []FloorHolder
+	for chID := uint8(1); chID <= 32; chID++ {
+		slot := &fc.slots[chID]
+		current := slot.holder.Load()
+		if current != nil && !fc.isHolderExpired(current, nowMs) {
+			holders = append(holders, *current)
+		}
+	}
+	if holders == nil {
+		holders = []FloorHolder{}
+	}
+	return holders
 }
 
 // RequestFloor xử lý tranh chấp quyền nói bằng thuật toán Lock-Free Compare-And-Swap (CAS).
@@ -466,6 +493,29 @@ func (fc *FloorControlEngine) HandleFloorRequestHTTP(w http.ResponseWriter, r *h
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
+
+	fc.mu.RLock()
+	resolver := fc.identityResolver
+	fc.mu.RUnlock()
+
+	if resolver != nil {
+		id, ok := resolver.Resolve(string(req.UserID))
+		if !ok {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":   "USER_NOT_IN_EVENT",
+				"message": "User not found in event",
+			})
+			return
+		}
+		req.UserID = FlexibleUserID(id.UserID)
+		req.DisplayName = id.DisplayName
+		req.RoleTitle = id.RoleTitle
+		req.UserLevel = id.UserLevel
+		req.RolePriority = id.RolePriority
+	}
+
 	decision := fc.RequestFloor(req)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(decision)
@@ -485,7 +535,28 @@ func (fc *FloorControlEngine) HandleFloorReleaseHTTP(w http.ResponseWriter, r *h
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	released := fc.ReleaseFloor(req.ChannelID, string(req.UserID))
+
+	fc.mu.RLock()
+	resolver := fc.identityResolver
+	fc.mu.RUnlock()
+
+	resolvedUserID := string(req.UserID)
+	if resolver != nil {
+		id, ok := resolver.Resolve(resolvedUserID)
+		if !ok {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":   "USER_NOT_IN_EVENT",
+				"message": "User not found in event",
+			})
+			return
+		}
+		resolvedUserID = id.UserID
+		req.UserID = FlexibleUserID(id.UserID)
+	}
+
+	released := fc.ReleaseFloor(req.ChannelID, resolvedUserID)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"released":  released,
@@ -503,16 +574,50 @@ func (fc *FloorControlEngine) HandleEmergencyOverrideHTTP(w http.ResponseWriter,
 	var req struct {
 		UserID      FlexibleUserID `json:"userId"`
 		DisplayName string         `json:"displayName"`
+		UserLevel   uint8          `json:"userLevel"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	uid := strings.TrimSpace(string(req.UserID))
 	if uid == "" {
 		uid = "director_999"
 	}
-	if strings.TrimSpace(req.DisplayName) == "" {
-		req.DisplayName = "Tổng đạo diễn A"
+	displayName := strings.TrimSpace(req.DisplayName)
+	if displayName == "" {
+		displayName = "Tổng đạo diễn A"
 	}
-	decisions := fc.TriggerDirectorEmergencyOverrideAllChannels(uid, req.DisplayName)
+	userLevel := req.UserLevel
+
+	fc.mu.RLock()
+	resolver := fc.identityResolver
+	fc.mu.RUnlock()
+
+	if resolver != nil {
+		id, ok := resolver.Resolve(uid)
+		if !ok {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":   "USER_NOT_IN_EVENT",
+				"message": "User not found in event",
+			})
+			return
+		}
+		uid = id.UserID
+		displayName = id.DisplayName
+		userLevel = id.UserLevel
+	}
+
+	if userLevel != 1 {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":   "FORBIDDEN_NOT_ADMIN",
+			"message": "Only Director (Level 1) can trigger emergency override",
+		})
+		return
+	}
+
+	decisions := fc.TriggerDirectorEmergencyOverrideAllChannels(uid, displayName)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":    "EMERGENCY_OVERRIDE_ACTIVE",
