@@ -59,22 +59,23 @@ func TestQrRolesCompatibleWithAndroidRepo(t *testing.T) {
 	srv := buildTestServer()
 	defer srv.Close()
 
-	createBody, _ := json.Marshal(map[string]interface{}{
-		"pinCode":     "240826",
+	restoreBody, _ := json.Marshal(map[string]interface{}{
+		"adminCode":   "240826",
 		"displayName": "Tổng Đạo Diễn",
-		"userLevel":   1,
 	})
-	joinResp, err := http.Post(srv.URL+"/api/v1/auth/join-pin", "application/json", bytes.NewReader(createBody))
+	restoreResp, err := http.Post(srv.URL+"/api/v1/events/restore", "application/json", bytes.NewReader(restoreBody))
 	if err != nil {
-		t.Fatalf("join-pin lỗi: %v", err)
+		t.Fatalf("restore lỗi: %v", err)
 	}
-	var joinRes struct {
-		UserID string `json:"userId"`
+	var restoreRes struct {
+		Session struct {
+			UserID string `json:"userId"`
+		} `json:"session"`
 	}
-	_ = json.NewDecoder(joinResp.Body).Decode(&joinRes)
-	joinResp.Body.Close()
+	_ = json.NewDecoder(restoreResp.Body).Decode(&restoreRes)
+	restoreResp.Body.Close()
 
-	resp, err := http.Get(srv.URL + "/api/v1/events/qr-roles?eventId=1&actorUserId=" + joinRes.UserID)
+	resp, err := http.Get(srv.URL + "/api/v1/events/qr-roles?eventId=1&actorUserId=" + restoreRes.Session.UserID)
 	if err != nil {
 		t.Fatalf("GET qr-roles lỗi: %v", err)
 	}
@@ -394,21 +395,23 @@ func TestLiveCueRegistryAndGroupA7(t *testing.T) {
 	_ = json.NewDecoder(resp3.Body).Decode(&res3)
 	resp3.Body.Close()
 
-	// 2. Join pin as Level 1 (Director)
-	joinBody1, _ := json.Marshal(map[string]interface{}{
-		"pinCode":     "240826",
+	// 2. Restore event to get Level 1 session (Director)
+	restoreBody1, _ := json.Marshal(map[string]interface{}{
+		"adminCode":   "240826",
 		"displayName": "Tổng Đạo Diễn A",
-		"userLevel":   1,
 	})
-	resp1, err := http.Post(srv.URL+"/api/v1/auth/join-pin", "application/json", bytes.NewReader(joinBody1))
+	resp1, err := http.Post(srv.URL+"/api/v1/events/restore", "application/json", bytes.NewReader(restoreBody1))
 	if err != nil {
-		t.Fatalf("join-pin lỗi: %v", err)
+		t.Fatalf("restore lỗi: %v", err)
 	}
 	var res1 struct {
-		UserID string `json:"userId"`
+		Session struct {
+			UserID string `json:"userId"`
+		} `json:"session"`
 	}
 	_ = json.NewDecoder(resp1.Body).Decode(&res1)
 	resp1.Body.Close()
+	adminUserID1 := res1.Session.UserID
 
 	// 3. Level 3 tries to fire cue via HTTP -> 403 FORBIDDEN_NOT_ADMIN
 	fireBody3, _ := json.Marshal(map[string]interface{}{
@@ -428,7 +431,7 @@ func TestLiveCueRegistryAndGroupA7(t *testing.T) {
 
 	// 4. Level 1 fires cue (empty cueId -> creates new cue) via HTTP -> 200 OK
 	fireBody1, _ := json.Marshal(map[string]interface{}{
-		"userId":  res1.UserID,
+		"userId":  adminUserID1,
 		"eventId": 1,
 		"title":   "Tiết mục đặc biệt A7",
 		"message": "Kỹ thuật: kiểm tra âm thanh",

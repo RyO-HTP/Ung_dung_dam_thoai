@@ -150,7 +150,6 @@ func newHTTPMux(
 	mux.HandleFunc("/api/v1/users/leave-channel", eventManager.HandleLeaveChannel)
 
 	// Endpoints Tuần 3 (QR Role Provisioning)
-	mux.HandleFunc("/api/v1/events/qr-roles", qrService.HandleGenerateDepartmentQrCodes)
 	mux.HandleFunc("/api/v1/auth/join-by-qr", qrService.HandleJoinByDepartmentQr)
 
 	// Endpoints Tuần 4 (Floor Control CAS & Priority Override)

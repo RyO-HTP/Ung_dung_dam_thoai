@@ -35,3 +35,5 @@ services:
         sync: false
       - key: SIGNALING_TOKEN
         sync: false
+      - key: DEMO_MODE
+        value: "false"

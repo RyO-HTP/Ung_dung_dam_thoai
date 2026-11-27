@@ -374,10 +374,16 @@ func (s *QrRoleProvisioningService) HandleJoinByDepartmentQr(w http.ResponseWrit
 
 	if s.eventManager != nil {
 		ev := s.eventManager.FindEventByID(claims.EventID)
-		if ev == nil || ev.PinCode != claims.PinCode || time.Now().Unix() > claims.ExpiresAtUnix {
+		if ev == nil {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "EVENT_NOT_FOUND", "message": "Event not found"})
+			return
+		}
+		if ev.PinCode != claims.PinCode || time.Now().Unix() > claims.ExpiresAtUnix {
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			w.WriteHeader(http.StatusGone) // 410 QR_REVOKED
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "QR_REVOKED", "message": "QR revoked or expired or event mismatch"})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "QR_REVOKED", "message": "QR revoked or expired"})
 			return
 		}
 
