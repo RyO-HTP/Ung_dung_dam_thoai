@@ -33,7 +33,7 @@ Chưa cấu hình TURN thì máy chủ dùng TURN công cộng OpenRelay. Cách 
 
 Cần **Android Studio** (đã kèm JDK 17) và điện thoại Android 7.0 trở lên đã bật *Gỡ lỗi USB*.
 
-1. Kiểm tra `BACKEND_BASE_URL` trong `gradle.properties` (mặc định trỏ tới dịch vụ cloud `https://damthoai-backend.onrender.com`; khi chạy thử nội bộ có thể đổi sang `http://<IP-máy-tính>:8080`).
+1. Kiểm tra `BACKEND_BASE_URL` trong `gradle.properties` (mặc định trỏ tới dịch vụ cloud `https://damthoai-backend-i0hm.onrender.com`; khi chạy thử nội bộ có thể đổi sang `http://<IP-máy-tính>:8080`).
 2. Android Studio → **File › Open** → chọn thư mục repo, chờ Gradle sync xong.
 3. Cắm điện thoại, chọn cấu hình **app**, bấm **Run ▶**.
 
@@ -67,9 +67,9 @@ python signaling_server.py
 
 ### Đưa máy chủ lên cloud (Render, miễn phí)
 
-1. Đăng nhập https://render.com, chọn **New → Blueprint**, chọn repo này (`render.yaml` khai báo sẵn 2 dịch vụ: `damthoai-signaling` và `damthoai-backend`).
-2. Với `damthoai-signaling`: điền `TURN_USERNAME` / `TURN_CREDENTIAL`; xem `SIGNALING_TOKEN` được tự sinh ở tab **Environment**.
-3. Với `damthoai-backend`: điền `SIGNALING_URL` (`wss://<tên-signaling>.onrender.com`) và `SIGNALING_TOKEN` giống bên `damthoai-signaling`.
+1. Đăng nhập https://render.com, chọn **New → Blueprint**, chọn repo này (`render.yaml` khai báo sẵn 2 dịch vụ: `damthoai-signaling` và `damthoai-backend`; bản đang chạy chung của nhóm: `https://damthoai-backend-i0hm.onrender.com` và `https://damthoai-signaling-i0hm.onrender.com`).
+2. Với `damthoai-signaling`: có thể điền `TURN_USERNAME` / `TURN_CREDENTIAL` ở tab **Environment** (để trống vẫn chạy qua TURN dự phòng OpenRelay); `SIGNALING_TOKEN` được Render tự sinh.
+3. Với `damthoai-backend`: `SIGNALING_URL` và `SIGNALING_TOKEN` đã được tự động nối sang từ `damthoai-signaling` qua `fromService` trong `render.yaml`.
 4. Kiểm tra cả hai dịch vụ bằng đường dẫn `/healthz` (trả về `OK`), rồi cập nhật `BACKEND_BASE_URL=https://<tên-backend>.onrender.com` trong `gradle.properties`.
 5. Gói miễn phí sẽ ngủ sau 15 phút không dùng, lần kết nối đầu sau đó mất khoảng 1 phút.
 

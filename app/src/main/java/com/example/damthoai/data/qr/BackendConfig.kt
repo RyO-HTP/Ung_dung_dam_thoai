@@ -12,6 +12,7 @@ import com.example.damthoai.BuildConfig
 object BackendConfig {
     private const val PREFS_NAME = "damthoai_backend_config"
     private const val KEY_BASE_URL = "base_url"
+    private const val LEGACY_DEAD_URL = "https://damthoai-backend.onrender.com"
 
     val DEFAULT_BASE_URL: String = BuildConfig.BACKEND_BASE_URL.trim().removeSuffix("/")
 
@@ -21,7 +22,13 @@ object BackendConfig {
 
     fun init(context: Context) {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val saved = prefs.getString(KEY_BASE_URL, null)?.trim()?.removeSuffix("/")?.takeIf { it.isNotEmpty() }
+        val rawSaved = prefs.getString(KEY_BASE_URL, null)?.trim()?.removeSuffix("/")
+        val saved = if (rawSaved.equals(LEGACY_DEAD_URL, ignoreCase = true)) {
+            prefs.edit().remove(KEY_BASE_URL).apply()
+            null
+        } else {
+            rawSaved?.takeIf { it.isNotEmpty() }
+        }
         baseUrl = saved ?: DEFAULT_BASE_URL.takeIf { it.isNotBlank() }
     }
 

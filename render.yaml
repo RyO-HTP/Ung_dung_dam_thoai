@@ -1,9 +1,8 @@
 # Đưa cả máy chủ Signaling Python (TV1) và Backend Go (TV5) lên Render để gọi được qua 4G / khác mạng.
-# Render > New > Blueprint > chọn repo này.
-# - Điền TURN_USERNAME / TURN_CREDENTIAL cho damthoai-signaling.
-# - Xem SIGNALING_TOKEN được sinh ở damthoai-signaling, rồi điền SIGNALING_URL (wss://<tên-signaling>.onrender.com)
-#   và SIGNALING_TOKEN tương ứng vào tab Environment của damthoai-backend.
-# KHÔNG ghi khóa bí mật vào file này.
+# Cách deploy 1-click:
+#   Mở https://dashboard.render.com/blueprint/new?repo=https://github.com/RyO-HTP/Ung_dung_dam_thoai
+#   -> Bấm Apply (có thể điền TURN_USERNAME / TURN_CREDENTIAL nếu có, hoặc để trống dùng TURN dự phòng OpenRelay).
+#   -> SIGNALING_URL và SIGNALING_TOKEN của damthoai-backend được tự động lấy sang từ damthoai-signaling!
 services:
   - type: web
     name: damthoai-signaling
@@ -18,9 +17,9 @@ services:
       - key: SIGNALING_TOKEN
         generateValue: true
       - key: TURN_USERNAME
-        sync: false
+        value: ""
       - key: TURN_CREDENTIAL
-        sync: false
+        value: ""
 
   - type: web
     name: damthoai-backend
@@ -32,8 +31,14 @@ services:
     healthCheckPath: /healthz
     envVars:
       - key: SIGNALING_URL
-        sync: false
+        fromService:
+          type: web
+          name: damthoai-signaling
+          property: host
       - key: SIGNALING_TOKEN
-        sync: false
+        fromService:
+          type: web
+          name: damthoai-signaling
+          envVarKey: SIGNALING_TOKEN
       - key: DEMO_MODE
         value: "false"

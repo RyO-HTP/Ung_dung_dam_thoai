@@ -18,7 +18,7 @@ android {
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
             ?: System.getenv("BACKEND_BASE_URL")?.trim()?.takeIf { it.isNotEmpty() }
-            ?: "https://damthoai-backend.onrender.com"
+            ?: "https://damthoai-backend-i0hm.onrender.com"
         buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
