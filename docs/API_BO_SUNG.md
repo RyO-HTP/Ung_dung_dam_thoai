@@ -58,7 +58,7 @@ Hệ thống quy đổi tương đương giữa Cấp độ hiển thị trên �
 ```
 - **cURL Example**:
 ```bash
-curl -X POST https://damthoai-backend.onrender.com/api/v1/events \
+curl -X POST https://damthoai-backend-i0hm.onrender.com/api/v1/events \
   -H "Content-Type: application/json" \
   -d '{"eventName":"Demo","adminCode":"admin-secret-999","displayName":"Đạo diễn"}'
 ```
@@ -126,7 +126,7 @@ curl -X POST https://damthoai-backend.onrender.com/api/v1/events \
 ```json
 {
   "userId": "Nguyen_Van_A_102_c3d4",
-  "signalingUrl": "wss://damthoai-signaling.onrender.com",
+  "signalingUrl": "wss://damthoai-signaling-i0hm.onrender.com",
   "signalingToken": "secret_token_123",
   "session": {
     "numericUserId": 102,
@@ -308,7 +308,7 @@ curl -X POST https://damthoai-backend.onrender.com/api/v1/events \
 ```
 
 #### 18. WebSocket Floor Control Broadcast
-- **URL**: `wss://damthoai-backend.onrender.com/ws/floor?userId={userId}&eventId={eventId}`
+- **URL**: `wss://damthoai-backend-i0hm.onrender.com/ws/floor?userId={userId}&eventId={eventId}`
 - **Khởi tạo**: Ngay khi kết nối thành công, Server tự động đẩy gói snapshot trạng thái mic hiện tại:
 ```json
 {
@@ -350,7 +350,7 @@ curl -X POST https://damthoai-backend.onrender.com/api/v1/events \
 - **Response (200 OK)**: Dữ liệu snapshot `LiveCueBannerPayload` mới nhất.
 
 #### 20. WebSocket Thanh Kịch bản
-- **URL**: `wss://damthoai-backend.onrender.com/ws/live-cue?userId={userId}&eventId={eventId}&dept={dept}`
+- **URL**: `wss://damthoai-backend-i0hm.onrender.com/ws/live-cue?userId={userId}&eventId={eventId}&dept={dept}`
 - **Khởi tạo**: Đẩy snapshot `LIVE_CUE_BANNER_SYNC` chứa tiết mục đang diễn (`activeCue`), tiết mục chuẩn bị (`nextCue`) và danh sách kịch bản (`allCues`).
 - **Lệnh qua WS từ client Cấp 1**: Gửi JSON `{"action": "FIRE_CUE", "cueId": "C05"}` để chuyển tiết mục. Gửi `{"action": "ACK_CUE", "cueId": "C04"}` để xác nhận đã nhận lệnh từ ban chuyên môn.
 
