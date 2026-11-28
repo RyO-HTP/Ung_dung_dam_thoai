@@ -83,11 +83,54 @@ data class UserSessionDto(
     val online: Boolean?
 ) {
     val resolvedUserId: String
-        get() = when {
-            userId == null -> userCode ?: "user_0"
-            userId.isJsonPrimitive -> userId.asString
-            else -> userId.toString()
+        get() {
+            // Ưu tiên userCode (luôn là string sạch từ server)
+            if (!userCode.isNullOrBlank()) return userCode
+            val element = userId ?: return "user_0"
+            return try {
+                when {
+                    element.isJsonPrimitive && element.asJsonPrimitive.isString ->
+                        element.asString
+                    element.isJsonPrimitive && element.asJsonPrimitive.isNumber ->
+                        element.asJsonPrimitive.asNumber.toString()
+                    else -> element.toString().trim('"')
+                }
+            } catch (_: Exception) {
+                "user_0"
+            }
         }
+
+    /** Parse listeningChannels từ server (mảng số [1,2] hoặc fallback). */
+    fun parsedListeningChannels(fallbackPrimary: Int = primaryTxChannel): List<Int> {
+        val element = listeningChannels
+        if (element == null || element.isJsonNull) {
+            return defaultListening(fallbackPrimary)
+        }
+        return try {
+            when {
+                element.isJsonArray -> {
+                    val list = element.asJsonArray.mapNotNull { item ->
+                        if (item.isJsonPrimitive && item.asJsonPrimitive.isNumber) {
+                            item.asInt
+                        } else null
+                    }.filter { it in 1..8 }.distinct()
+                    if (list.isEmpty()) defaultListening(fallbackPrimary) else list.take(3)
+                }
+                // Tương thích ngược nếu server còn trả chuỗi base64 cũ
+                element.isJsonPrimitive && element.asJsonPrimitive.isString -> {
+                    defaultListening(fallbackPrimary)
+                }
+                else -> defaultListening(fallbackPrimary)
+            }
+        } catch (_: Exception) {
+            defaultListening(fallbackPrimary)
+        }
+    }
+
+    private fun defaultListening(primary: Int): List<Int> {
+        val p = if (primary in 1..8) primary else 1
+        return if (p == 1) listOf(1, 2) else listOf(1, p)
+    }
 
     fun toMember(): Member = Member(
         id = resolvedUserId,
@@ -97,7 +140,14 @@ data class UserSessionDto(
         level = when (userLevel) {
             1 -> MemberLevel.LEVEL_1
             2 -> MemberLevel.LEVEL_2
-            else -> MemberLevel.LEVEL_3
+            3 -> MemberLevel.LEVEL_3
+            // 0 / thiếu field: suy luận theo roleTitle (tránh creator bị thành Cấp 3)
+            else -> when {
+                roleTitle?.contains("Tổng đạo diễn", ignoreCase = true) == true ||
+                    roleTitle?.contains("admin", ignoreCase = true) == true -> MemberLevel.LEVEL_1
+                roleTitle?.contains("Trưởng", ignoreCase = true) == true -> MemberLevel.LEVEL_2
+                else -> MemberLevel.LEVEL_3
+            }
         },
         isOnline = online ?: true
     )

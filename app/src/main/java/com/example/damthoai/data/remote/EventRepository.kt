@@ -34,6 +34,8 @@ interface EventRepository {
     suspend fun updateMember(memberId: String, userLevel: Int, roleTitle: String): Result<Unit>
     suspend fun removeMember(memberId: String): Result<Unit>
     fun logout(context: Context)
+    /** Cập nhật tên/chức vụ local (hồ sơ). */
+    fun updateLocalProfile(displayName: String, roleTitle: String)
 }
 
 object RemoteEventRepository : EventRepository {
@@ -121,7 +123,12 @@ object RemoteEventRepository : EventRepository {
         val dto = result.getOrNull() ?: return@withContext Result.failure(Exception("Phản hồi rỗng từ máy chủ"))
         val sessionDto = dto.session ?: return@withContext Result.failure(Exception("Phản hồi tạo sự kiện thiếu session"))
 
-        val member = sessionDto.toMember()
+        val member = sessionDto.toMember().let { m ->
+            // Đảm bảo creator luôn LEVEL_1
+            if (m.level != com.example.damthoai.data.model.MemberLevel.LEVEL_1) {
+                m.copy(level = com.example.damthoai.data.model.MemberLevel.LEVEL_1)
+            } else m
+        }
         val sessionData = EventSession.SessionData(
             eventId = dto.eventId,
             eventName = dto.eventName,
@@ -130,10 +137,11 @@ object RemoteEventRepository : EventRepository {
             userCode = sessionDto.userCode ?: sessionDto.resolvedUserId,
             displayName = member.name,
             roleTitle = member.roleTitle,
-            level = member.level.code,
-            priority = sessionDto.rolePriority,
+            // Người tạo sự kiện luôn là Cấp 1 (server có thể thiếu/0 userLevel khi parse)
+            level = 1,
+            priority = sessionDto.rolePriority.coerceAtLeast(1),
             primaryChannelId = sessionDto.primaryChannelId ?: "ch_01",
-            listeningChannels = listOf(1),
+            listeningChannels = sessionDto.parsedListeningChannels(),
             signalingUrl = sessionDto.signalingUrl,
             signalingToken = sessionDto.signalingToken,
             adminCode = dto.adminCode
@@ -163,13 +171,27 @@ object RemoteEventRepository : EventRepository {
         val result = ApiClient.post<JoinResponseDto>("/api/v1/events/restore", body)
         if (result.isFailure) {
             checkApiError(result, appContext)
-            return@withContext Result.failure(result.exceptionOrNull() ?: Exception("Lỗi khôi phục sự kiện"))
+            val err = result.exceptionOrNull()
+            val message = when {
+                err is ApiException && err.httpCode == 429 ->
+                    "Quá giới hạn thử lại, vui lòng đợi khoảng 1 phút rồi thử lại."
+                err is ApiException && (err.httpCode == 404 || err.errorCode == "ADMIN_CODE_NOT_FOUND") ->
+                    "Mã quản trị không đúng hoặc không tồn tại."
+                err is ApiException && err.httpCode == 400 ->
+                    err.message?.ifBlank { "Mã quản trị không hợp lệ." } ?: "Mã quản trị không hợp lệ."
+                else -> err?.message?.takeIf { it.isNotBlank() } ?: "Lỗi khôi phục sự kiện"
+            }
+            return@withContext Result.failure(Exception(message))
         }
-        val dto = result.getOrNull() ?: return@withContext Result.failure(Exception("Phản hồi rỗng"))
+        val dto = result.getOrNull() ?: return@withContext Result.failure(Exception("Phản hồi rỗng từ máy chủ"))
         val eventInfo = dto.event ?: return@withContext Result.failure(Exception("Thiếu thông tin sự kiện"))
-        val sessionDto = dto.session ?: return@withContext Result.failure(Exception("Thiếu session"))
+        val sessionDto = dto.session ?: return@withContext Result.failure(Exception("Thiếu session sau khi khôi phục"))
 
-        val member = sessionDto.toMember()
+        val member = sessionDto.toMember().let { m ->
+            if (m.level != com.example.damthoai.data.model.MemberLevel.LEVEL_1) {
+                m.copy(level = com.example.damthoai.data.model.MemberLevel.LEVEL_1)
+            } else m
+        }
         val sessionData = EventSession.SessionData(
             eventId = eventInfo.eventId,
             eventName = eventInfo.eventName,
@@ -178,10 +200,10 @@ object RemoteEventRepository : EventRepository {
             userCode = sessionDto.userCode ?: sessionDto.resolvedUserId,
             displayName = member.name,
             roleTitle = member.roleTitle,
-            level = member.level.code,
+            level = 1,
             priority = sessionDto.rolePriority,
             primaryChannelId = sessionDto.primaryChannelId ?: "ch_01",
-            listeningChannels = listOf(1),
+            listeningChannels = sessionDto.parsedListeningChannels(),
             signalingUrl = sessionDto.signalingUrl,
             signalingToken = sessionDto.signalingToken,
             adminCode = adminCode
@@ -228,7 +250,7 @@ object RemoteEventRepository : EventRepository {
             level = member.level.code,
             priority = sessionDto.rolePriority,
             primaryChannelId = sessionDto.primaryChannelId ?: "ch_0$preferredChannel",
-            listeningChannels = listOf(1, preferredChannel),
+            listeningChannels = sessionDto.parsedListeningChannels(preferredChannel),
             signalingUrl = sessionDto.signalingUrl ?: dto.signalingUrl,
             signalingToken = sessionDto.signalingToken ?: dto.signalingToken
         )
@@ -267,7 +289,7 @@ object RemoteEventRepository : EventRepository {
             level = member.level.code,
             priority = sessionDto.rolePriority,
             primaryChannelId = sessionDto.primaryChannelId ?: "ch_01",
-            listeningChannels = listOf(1),
+            listeningChannels = sessionDto.parsedListeningChannels(),
             signalingUrl = sessionDto.signalingUrl ?: dto.signalingUrl,
             signalingToken = sessionDto.signalingToken ?: dto.signalingToken
         )
@@ -283,9 +305,12 @@ object RemoteEventRepository : EventRepository {
     override suspend fun refreshEvent(): Result<Event> = withContext(Dispatchers.IO) {
         val session = EventSession.getSession() ?: return@withContext Result.failure(Exception("Chưa đăng nhập sự kiện"))
         val eventId = _currentEvent.value?.id ?: session.eventId.toString()
-        val result = ApiClient.get<EventInfo>("/api/v1/events/$eventId?actorUserId=${session.userId}")
+        val actor = java.net.URLEncoder.encode(session.userId, Charsets.UTF_8.name())
+        val result = ApiClient.get<EventInfo>("/api/v1/events/$eventId?actorUserId=$actor")
         if (result.isFailure) {
-            checkApiError(result, appContext)
+            // Không logout khi poll định kỳ thất bại (mạng / Render sleep / 403 tạm).
+            // Chỉ log — session vẫn giữ để user không bị đá ra ActiveCall / ChannelList.
+            android.util.Log.w("EventRepository", "refreshEvent failed: ${result.exceptionOrNull()?.message}")
             return@withContext Result.failure(result.exceptionOrNull() ?: Exception("Lỗi làm mới sự kiện"))
         }
         val eventInfo = result.getOrNull() ?: return@withContext Result.failure(Exception("Phản hồi rỗng"))
@@ -319,7 +344,7 @@ object RemoteEventRepository : EventRepository {
         )
         val result = ApiClient.post<Any>("/api/v1/users/switch-channel", body)
         if (result.isFailure) {
-            checkApiError(result, appContext)
+            android.util.Log.w("EventRepository", "switchChannel failed: ${result.exceptionOrNull()?.message}")
             return@withContext Result.failure(result.exceptionOrNull() ?: Exception("Lỗi chuyển kênh"))
         }
         // Cập nhật kênh primary local → header ActiveCall đổi đúng tên
@@ -340,7 +365,7 @@ object RemoteEventRepository : EventRepository {
         )
         val result = ApiClient.post<Any>("/api/v1/users/leave-channel", body)
         if (result.isFailure) {
-            checkApiError(result, appContext)
+            android.util.Log.w("EventRepository", "leaveChannel failed: ${result.exceptionOrNull()?.message}")
             return@withContext Result.failure(result.exceptionOrNull() ?: Exception("Lỗi rời kênh"))
         }
         Result.success(Unit)
@@ -389,13 +414,25 @@ object RemoteEventRepository : EventRepository {
     override suspend fun listMembers(): Result<List<Member>> = withContext(Dispatchers.IO) {
         val session = EventSession.getSession() ?: return@withContext Result.success(emptyList())
         val event = _currentEvent.value ?: return@withContext Result.success(emptyList())
-        val result = ApiClient.get<List<UserSessionDto>>("/api/v1/events/${event.id}/members?actorUserId=${session.userId}")
+        // Encode userId để tránh ký tự đặc biệt làm hỏng query
+        val actor = java.net.URLEncoder.encode(session.userId, Charsets.UTF_8.name())
+        val result = ApiClient.get<List<UserSessionDto>>("/api/v1/events/${event.id}/members?actorUserId=$actor")
         if (result.isFailure) {
-            checkApiError(result, appContext)
-            return@withContext Result.success(emptyList())
+            // KHÔNG gọi checkApiError ở đây — tránh logout oan / "mất sự kiện"
+            // khi lỗi mạng, parse, hoặc backend free-tier restart. Chỉ trả list rỗng + giữ session.
+            val err = result.exceptionOrNull()
+            android.util.Log.w("EventRepository", "listMembers failed: ${err?.message}")
+            return@withContext Result.failure(
+                err ?: Exception("Không tải được danh sách thành viên")
+            )
         }
-        val list = result.getOrNull().orEmpty()
-        Result.success(list.map { it.toMember() })
+        val members = result.getOrNull().orEmpty().map { it.toMember() }
+        // Đồng bộ danh sách thành viên vào currentEvent để Emergency / UI khác dùng được
+        _currentEvent.value = event.copy(members = members)
+        val me = members.firstOrNull { it.id == session.userId || it.id == session.userCode }
+            ?: _currentMember.value
+        if (me != null) _currentMember.value = me
+        Result.success(members)
     }
 
     override suspend fun updateMember(memberId: String, userLevel: Int, roleTitle: String): Result<Unit> = withContext(Dispatchers.IO) {
@@ -423,9 +460,55 @@ object RemoteEventRepository : EventRepository {
         Result.success(Unit)
     }
 
+
+    override fun updateLocalProfile(displayName: String, roleTitle: String) {
+        val name = displayName.trim()
+        if (name.isBlank()) return
+        val role = roleTitle.trim().ifBlank { "Thành viên" }
+        val session = EventSession.getSession() ?: return
+        val updated = session.copy(displayName = name, roleTitle = role)
+        appContext?.let { EventSession.saveSession(it, updated) }
+
+        val initials = name.take(2).uppercase()
+        val level = when (session.level) {
+            1 -> MemberLevel.LEVEL_1
+            2 -> MemberLevel.LEVEL_2
+            else -> MemberLevel.LEVEL_3
+        }
+        val me = _currentMember.value
+        _currentMember.value = if (me != null) {
+            me.copy(name = name, roleTitle = role, initials = initials)
+        } else {
+            Member(
+                id = session.userId,
+                name = name,
+                roleTitle = role,
+                initials = initials,
+                level = level,
+                isOnline = true
+            )
+        }
+        val ev = _currentEvent.value ?: return
+        val uid = session.userId
+        val ucode = session.userCode
+        val hasMe = ev.members.any { it.id == uid || it.id == ucode }
+        _currentEvent.value = ev.copy(
+            members = if (hasMe) {
+                ev.members.map { m ->
+                    if (m.id == uid || m.id == ucode) m.copy(name = name, roleTitle = role, initials = initials)
+                    else m
+                }
+            } else {
+                ev.members + listOf(
+                    Member(id = uid, name = name, roleTitle = role, initials = initials, level = level, isOnline = true)
+                )
+            }
+        )
+    }
+
     override fun logout(context: Context) {
         EventSession.clearSession(context)
-        appContext = null
+        // Giữ appContext để init lại / gọi API sau này vẫn được
         _currentEvent.value = null
         _currentMember.value = null
     }

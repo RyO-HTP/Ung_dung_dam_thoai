@@ -18,6 +18,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.example.damthoai.data.remote.RemoteEventRepository
+import com.example.damthoai.data.remote.EventSession
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.collectAsState
+import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -131,8 +136,43 @@ fun UserProfileScreen(
     onSave: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var displayName by remember { mutableStateOf(com.example.damthoai.data.remote.EventSession.getSession()?.displayName.orEmpty()) }
-    var role by remember { mutableStateOf(com.example.damthoai.data.remote.EventSession.getSession()?.roleTitle.orEmpty()) }
+    val context = LocalContext.current
+    val session = EventSession.getSession()
+    val currentMember by RemoteEventRepository.currentMember.collectAsState()
+
+    // Ưu tiên session → currentMember (không hardcode "Thành viên" / "Cộng tác viên")
+    val initialName = listOfNotNull(
+        session?.displayName?.takeIf { it.isNotBlank() && it != "Thành viên" },
+        currentMember?.name?.takeIf { it.isNotBlank() && it != "Thành viên" },
+        session?.displayName?.takeIf { it.isNotBlank() },
+        currentMember?.name?.takeIf { it.isNotBlank() }
+    ).firstOrNull().orEmpty()
+
+    val initialRole = listOfNotNull(
+        session?.roleTitle?.takeIf { it.isNotBlank() && it != "Cộng tác viên" },
+        currentMember?.roleTitle?.takeIf { it.isNotBlank() && it != "Cộng tác viên" },
+        session?.roleTitle?.takeIf { it.isNotBlank() },
+        currentMember?.roleTitle?.takeIf { it.isNotBlank() }
+    ).firstOrNull().orEmpty()
+
+    val userLevel = session?.level?.takeIf { it in 1..3 }
+        ?: currentMember?.level?.code
+        ?: 3
+
+    var displayName by remember { mutableStateOf(initialName) }
+    var role by remember { mutableStateOf(initialRole) }
+
+    val levelTitle = when (userLevel) {
+        1 -> "Cấp 1 · Người tạo sự kiện"
+        2 -> "Cấp 2 · Trưởng ban"
+        else -> "Cấp 3 · Cộng tác viên"
+    }
+    val levelHint = when (userLevel) {
+        1 -> "Cấp cao nhất, không thể tự đổi. Thành viên khác tự chọn cấp của mình, bạn có thể sửa lại cho họ trong mục Thành viên."
+        2 -> "Quản lý kênh phụ / ban của bạn. Cấp do Cấp 1 cấp phát."
+        else -> "Cấp thành viên. Cấp 1 có thể điều chỉnh trong mục Thành viên."
+    }
+    val avatarLabel = displayName.trim().ifBlank { "TV" }.take(2).uppercase()
 
     DamThoaiBackground(modifier = modifier) {
         Column(
@@ -169,7 +209,7 @@ fun UserProfileScreen(
                         .padding(vertical = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    AvatarCircle("LP", size = 72.dp)
+                    AvatarCircle(avatarLabel, size = 72.dp)
                 }
                 GlassTextField(
                     value = displayName,
@@ -210,12 +250,12 @@ fun UserProfileScreen(
                                 style = DamType.Muted.copy(fontWeight = FontWeight.SemiBold)
                             )
                             Text(
-                                text = "Cấp 1 · Người tạo sự kiện",
+                                text = levelTitle,
                                 color = TextPrimary,
                                 style = DamType.Heading
                             )
                             Text(
-                                text = "Cấp cao nhất, không thể tự đổi. Thành viên khác tự chọn cấp của mình, bạn có thể sửa lại cho họ trong mục Thành viên.",
+                                text = levelHint,
                                 color = TextSecondary,
                                 style = DamType.SmallLine17
                             )
@@ -225,7 +265,26 @@ fun UserProfileScreen(
             }
             PrimaryButton(
                 text = "Lưu",
-                onClick = onSave,
+                onClick = {
+                    val name = displayName.trim()
+                    val roleTitle = role.trim()
+                    if (name.isBlank()) {
+                        Toast.makeText(context, "Vui lòng nhập tên hiển thị", Toast.LENGTH_SHORT).show()
+                        return@PrimaryButton
+                    }
+                    RemoteEventRepository.updateLocalProfile(name, roleTitle.ifBlank { "Thành viên" })
+                    EventSession.getSession()?.let { s ->
+                        EventSession.saveSession(
+                            context,
+                            s.copy(
+                                displayName = name,
+                                roleTitle = roleTitle.ifBlank { s.roleTitle }
+                            )
+                        )
+                    }
+                    Toast.makeText(context, "Đã lưu hồ sơ", Toast.LENGTH_SHORT).show()
+                    onSave()
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 12.dp)
@@ -234,13 +293,6 @@ fun UserProfileScreen(
     }
 }
 
-@Preview(widthDp = 390, heightDp = 844)
-@Composable
-private fun LiveCueDraftScreenPreview() {
-    DamThoaiTheme {
-        LiveCueDraftScreen({}, {})
-    }
-}
 
 @Preview(widthDp = 390, heightDp = 844)
 @Composable

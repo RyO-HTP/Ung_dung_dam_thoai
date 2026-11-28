@@ -110,6 +110,7 @@ fun CreateEventScreen(
     var displayName by rememberSaveable { mutableStateOf("Lâm Phong") }
     var roleTitle by rememberSaveable { mutableStateOf("Tổng đạo diễn") }
     var adminCode by rememberSaveable { mutableStateOf("") }
+    var createdPin by rememberSaveable { mutableStateOf("") }
     var showSuccessSheet by rememberSaveable { mutableStateOf(false) }
     var isLoading by rememberSaveable { mutableStateOf(false) }
     val creator = remember {
@@ -211,13 +212,14 @@ fun CreateEventScreen(
                         val createRes = RemoteEventRepository.createEvent(
                             eventName = eventName.trim(),
                             description = "Sự kiện điều phối bộ đàm đa kênh thời gian thực",
-                            pinCode = "240826",
+                            pinCode = "", // server tự sinh PIN 6 số
                             adminCode = finalAdminCode,
                             displayName = displayName.trim().ifBlank { "Tổng Đạo Diễn" },
                             roleTitle = roleTitle.trim().ifBlank { "Tổng đạo diễn" }
                         )
                         isLoading = false
                         if (createRes.isSuccess) {
+                            createdPin = createRes.getOrNull()?.pinCode.orEmpty()
                             showSuccessSheet = true
                         } else {
                             android.widget.Toast.makeText(context, "Lỗi tạo sự kiện: ${createRes.exceptionOrNull()?.message}", android.widget.Toast.LENGTH_LONG).show()
@@ -257,9 +259,18 @@ fun CreateEventScreen(
                     style = DamType.Title24,
                     textAlign = TextAlign.Center
                 )
+                if (createdPin.isNotBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Mã PIN tham gia: $createdPin",
+                        color = AccentCyan,
+                        style = DamType.Heading16,
+                        textAlign = TextAlign.Center
+                    )
+                }
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Mã quản trị của bạn:",
+                    text = "Mã quản trị của bạn (lưu để khôi phục):",
                     color = TextSecondary.copy(alpha = 0.7f),
                     style = DamType.Body13,
                     textAlign = TextAlign.Center

@@ -41,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -132,6 +133,7 @@ private fun JoinChannelScreenContent(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val activity = context as? Activity
+    var displayName by rememberSaveable { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf(initialTab) }
     var realCameraState by remember {
         mutableStateOf(PermissionManager.checkPermissionState(context, AppPermission.CAMERA, activity))
@@ -192,7 +194,7 @@ private fun JoinChannelScreenContent(
                 android.widget.Toast.makeText(context, "Mã QR không hợp lệ", android.widget.Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            val res = RemoteEventRepository.joinByQr(context, token, "Thành viên")
+            val res = RemoteEventRepository.joinByQr(context, token, displayName.trim().ifBlank { "Thành viên" })
             if (res.isSuccess) {
                 onSuccessJoin()
             } else {
@@ -242,12 +244,14 @@ private fun JoinChannelScreenContent(
                 } else {
                     PinInputTab(
                         initialPin = initialPin,
+                        displayName = displayName,
+                        onDisplayNameChange = { displayName = it },
                         onPinSubmit = { pin ->
                             if (pin == "000000") {
                                 onJoinError()
                             } else {
                                 scope.launch {
-                                    val res = RemoteEventRepository.joinByPin(context, pin, "Thành viên", "Cộng tác viên", 1)
+                                    val res = RemoteEventRepository.joinByPin(context, pin, displayName.trim().ifBlank { "Thành viên" }, "Cộng tác viên", 1)
                                     if (res.isSuccess) {
                                         onSuccessJoin()
                                     } else {
@@ -586,9 +590,39 @@ fun QrScannerView(onQrScanned: (String) -> Unit, modifier: Modifier = Modifier) 
 }
 
 @Composable
-private fun PinInputTab(initialPin: String, onPinSubmit: (String) -> Unit) {
+private fun PinInputTab(
+    initialPin: String,
+    displayName: String,
+    onDisplayNameChange: (String) -> Unit,
+    onPinSubmit: (String) -> Unit
+) {
     var pinDigits by remember { mutableStateOf(initialPin.take(6)) }
     Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+        // Tên hiển thị khi vào kênh
+        Column(Modifier.fillMaxWidth()) {
+            Text("Tên của bạn", color = TextSecondary, style = DamType.Small)
+            Spacer(Modifier.height(6.dp))
+            androidx.compose.foundation.text.BasicTextField(
+                value = displayName,
+                onValueChange = onDisplayNameChange,
+                singleLine = true,
+                textStyle = DamType.Input.copy(color = TextPrimary),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(AccentCyan),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(GlassBg)
+                    .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                decorationBox = { inner ->
+                    if (displayName.isBlank()) {
+                        Text("VD: Minh Hậu", color = TextSecondary.copy(alpha = 0.6f), style = DamType.Input)
+                    }
+                    inner()
+                }
+            )
+        }
+        Spacer(Modifier.height(12.dp))
         Column(
             Modifier.fillMaxWidth()
                 .clip(RoundedCornerShape(22.dp))

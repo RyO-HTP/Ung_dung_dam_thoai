@@ -65,7 +65,9 @@ fun RestoreEventScreen(
     val clipboardManager = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     var adminCode by rememberSaveable { mutableStateOf("") }
+    var displayName by rememberSaveable { mutableStateOf("") }
     var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
 
     DamThoaiBackground(modifier = modifier) {
         Column(
@@ -128,6 +130,49 @@ fun RestoreEventScreen(
 
             Spacer(Modifier.height(26.dp))
             Text(
+                "Tên của bạn",
+                modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
+                color = TextSecondary,
+                style = DamType.Body.copy(fontWeight = FontWeight.SemiBold)
+            )
+            val nameShape = RoundedCornerShape(18.dp)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .outerGlow(AccentCyan, corner = 18.dp, spread = 14.dp, maxAlpha = 0.12f)
+                    .clip(nameShape)
+                    .background(GlassBg)
+                    .border(1.5.dp, AccentCyan.copy(alpha = 0.5f), nameShape)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                BasicTextField(
+                    value = displayName,
+                    onValueChange = {
+                        displayName = it
+                        errorMessage = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    textStyle = DamType.Body.copy(color = TextPrimary),
+                    cursorBrush = SolidColor(AccentCyan),
+                    decorationBox = { innerTextField ->
+                        Box {
+                            if (displayName.isEmpty()) {
+                                Text(
+                                    text = "VD: Lâm Phong",
+                                    color = TextPlaceholder,
+                                    style = DamType.Body
+                                )
+                            }
+                            innerTextField()
+                        }
+                    }
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Text(
                 "Mã quản trị",
                 modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
                 color = TextSecondary,
@@ -185,7 +230,7 @@ fun RestoreEventScreen(
                         .size(44.dp)
                         .align(Alignment.CenterEnd)
                         .clip(CircleShape)
-                        .clickable {
+                        .clickable(enabled = !isLoading) {
                             val clipText = clipboardManager.getText()?.text
                             if (!clipText.isNullOrBlank()) {
                                 adminCode = clipText.toString().trim().uppercase()
@@ -213,20 +258,29 @@ fun RestoreEventScreen(
 
             Spacer(Modifier.weight(1f))
             PrimaryButton(
-                text = "Khôi phục",
+                text = if (isLoading) "Đang khôi phục..." else "Khôi phục",
                 onClick = {
+                    if (isLoading) return@PrimaryButton
                     scope.launch {
-                        val res = RemoteEventRepository.restoreEvent(adminCode.trim().uppercase(), "Tổng đạo diễn (Khôi phục)")
+                        isLoading = true
+                        errorMessage = null
+                        val name = displayName.trim().ifBlank { "Tổng đạo diễn" }
+                        val res = RemoteEventRepository.restoreEvent(
+                            adminCode = adminCode.trim().uppercase(),
+                            displayName = name,
+                            roleTitle = "Tổng đạo diễn"
+                        )
+                        isLoading = false
                         if (res.isSuccess) {
-                            errorMessage = null
                             onRestore()
                         } else {
-                            errorMessage = "Mã quản trị không đúng hoặc không tồn tại."
+                            errorMessage = res.exceptionOrNull()?.message
+                                ?: "Mã quản trị không đúng hoặc không tồn tại."
                         }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = adminCode.isNotBlank(),
+                enabled = adminCode.isNotBlank() && !isLoading,
                 height = 54.dp
             )
         }

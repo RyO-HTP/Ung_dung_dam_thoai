@@ -52,7 +52,10 @@ fun ChannelMenuSheet(
     onDismiss: () -> Unit,
     onToggleMute: (Boolean) -> Unit,
     onLeaveChannel: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    userLevel: Int = 3,
+    canMute: Boolean = true,
+    canLeave: Boolean = true
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -72,7 +75,10 @@ fun ChannelMenuSheet(
         ChannelMenuSheetContent(
             channelItem = channelItem,
             onToggleMute = onToggleMute,
-            onLeaveChannel = onLeaveChannel
+            onLeaveChannel = onLeaveChannel,
+            userLevel = userLevel,
+            canMute = canMute,
+            canLeave = canLeave
         )
     }
 }
@@ -82,7 +88,10 @@ fun ChannelMenuSheetContent(
     channelItem: ChannelItemUiState,
     onToggleMute: (Boolean) -> Unit,
     onLeaveChannel: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    userLevel: Int = 3,
+    canMute: Boolean = true,
+    canLeave: Boolean = true
 ) {
     val channelIcon = getChannelIcon(channelItem.channel)
     val channelIconTint = if (channelIcon == R.drawable.ic_crown) AccentAmber else TextPrimary
@@ -166,14 +175,15 @@ fun ChannelMenuSheetContent(
             ) {
                 Text(
                     text = if (channelItem.isMuted) "Đã tắt nghe kênh này" else "Tắt nghe kênh này",
-                    color = TextPrimary,
+                    color = if (canMute) TextPrimary else TextSecondary,
                     style = DamType.Heading16.copy(fontSize = 17.sp, fontWeight = FontWeight.Bold),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "Vẫn ở trong kênh nhưng không nghe âm\u00A0thanh",
+                    text = "Chỉ máy bạn không nghe — người khác vẫn nghe bình thường",
+
                     color = TextSecondary,
                     style = DamType.Body.copy(fontSize = 14.sp),
                     maxLines = 2,
@@ -183,52 +193,62 @@ fun ChannelMenuSheetContent(
             Spacer(Modifier.width(16.dp))
             KitSwitch(
                 checked = channelItem.isMuted,
-                onCheckedChange = onToggleMute
+                onCheckedChange = { if (canMute) onToggleMute(it) },
+                enabled = canMute
             )
         }
 
         Spacer(Modifier.height(20.dp))
 
-        // Hàng 2: Rời kênh
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 56.dp)
-                .clickable(onClick = onLeaveChannel),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier.width(40.dp),
-                contentAlignment = Alignment.Center
+        // Hàng 2: Rời kênh — chỉ Cấp 1 (và Cấp 2 với kênh không ưu tiên)
+        if (canLeave) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp)
+                    .clickable(onClick = onLeaveChannel),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_x),
-                    contentDescription = null,
-                    tint = DangerText,
-                    modifier = Modifier.size(24.dp)
-                )
+                Box(
+                    modifier = Modifier.width(40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_x),
+                        contentDescription = null,
+                        tint = DangerText,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "Rời kênh",
+                        color = DangerText,
+                        style = DamType.Heading16.copy(fontSize = 17.sp, fontWeight = FontWeight.Bold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "Muốn vào lại phải quét QR hoặc nhập PIN",
+                        color = TextSecondary,
+                        style = DamType.Body.copy(fontSize = 14.sp),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
-            Spacer(Modifier.width(12.dp))
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "Rời kênh",
-                    color = DangerText,
-                    style = DamType.Heading16.copy(fontSize = 17.sp, fontWeight = FontWeight.Bold),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = "Muốn vào lại phải quét QR hoặc nhập PIN",
-                    color = TextSecondary,
-                    style = DamType.Body.copy(fontSize = 14.sp),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+        } else {
+            Text(
+                text = if (userLevel >= 3) "Rời kênh: chỉ Cấp 1–2 được phép (bạn đang Cấp $userLevel)" else "Rời kênh: không đủ quyền trên kênh này",
+                color = TextSecondary,
+                style = DamType.Body.copy(fontSize = 13.sp),
+                modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+            )
         }
     }
 }

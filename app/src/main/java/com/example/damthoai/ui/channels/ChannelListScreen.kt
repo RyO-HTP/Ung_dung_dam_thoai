@@ -232,6 +232,20 @@ fun ChannelListScreen(
             )
 
             uiState.selectedMenuChannel?.let { selected ->
+                val session = com.example.damthoai.data.remote.EventSession.getSession()
+                val memberLevel = com.example.damthoai.data.remote.RemoteEventRepository.currentMember.value?.level?.code
+                // Ưu tiên session.level; fallback currentMember; mặc định 3
+                val userLevel = when {
+                    session?.level in 1..3 -> session!!.level
+                    memberLevel != null && memberLevel in 1..3 -> memberLevel
+                    else -> 3
+                }
+                val isPriorityOrDefault = selected.channel.isDefault || selected.channel.isPriority
+                // Tắt nghe = mute cá nhân (local): mọi cấp đều được (chỉ ảnh hưởng máy mình).
+                // Rời kênh = bỏ listening trên server:
+                //   Cấp 1: mọi kênh | Cấp 2: kênh phụ | Cấp 3: không được rời
+                val canMute = true
+                val canLeave = userLevel == 1 || (userLevel == 2 && !isPriorityOrDefault)
                 ChannelMenuSheet(
                     channelItem = selected,
                     onDismiss = viewModel::closeChannelMenu,
@@ -239,7 +253,15 @@ fun ChannelListScreen(
                         viewModel.toggleMuteChannel(selected.channel.id, isMuted)
                         viewModel.closeChannelMenu()
                     },
-                    onLeaveChannel = { viewModel.leaveChannel(selected.channel.id) }
+                    onLeaveChannel = {
+                        if (canLeave) {
+                            viewModel.leaveChannel(selected.channel.id)
+                        }
+                        viewModel.closeChannelMenu()
+                    },
+                    userLevel = userLevel,
+                    canMute = canMute,
+                    canLeave = canLeave
                 )
             }
         }

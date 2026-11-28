@@ -134,14 +134,33 @@ fun EmergencyCallSelectScreen(
 ) {
     val context = LocalContext.current
     val currentEvent by com.example.damthoai.data.remote.RemoteEventRepository.currentEvent.collectAsStateWithLifecycle()
-    val recipients = currentEvent?.members.orEmpty()
+    val currentUserId = remember {
+        com.example.damthoai.data.remote.EventSession.getSession()?.userId
+    }
+    // Tải danh sách thành viên từ API (currentEvent.members thường chỉ có chính mình sau join/create)
+    var loadedMembers by remember { mutableStateOf(currentEvent?.members.orEmpty()) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(currentEvent?.id) {
+        scope.launch {
+            val res = com.example.damthoai.data.remote.RemoteEventRepository.listMembers()
+            if (res.isSuccess) {
+                loadedMembers = res.getOrNull().orEmpty()
+            }
+        }
+    }
+    // Không cho gọi chính mình — loại current user khỏi danh sách chọn
+    val recipients = loadedMembers.filter { it.id != currentUserId }
     var selectedIds by rememberSaveable(
         stateSaver = listSaver<Set<String>, String>(
             save = { it.toList() },
             restore = { it.toSet() }
         )
     ) {
-        mutableStateOf(recipients.firstOrNull()?.id?.let { setOf(it) } ?: emptySet())
+        mutableStateOf(emptySet())
+    }
+    // Khi recipients cập nhật, bỏ id của chính mình khỏi selection nếu còn sót
+    LaunchedEffect(recipients) {
+        selectedIds = selectedIds.filter { id -> recipients.any { it.id == id } }.toSet()
     }
 
     EmergencyCallSelectContent(
@@ -679,6 +698,9 @@ fun EmergencyActiveCallScreen(
             }
     } ?: eventMembers.map { EmergencyCallParticipant(it, status = "Đã vào cuộc gọi") }
 
+    val currentUserId = remember {
+        com.example.damthoai.data.remote.EventSession.getSession()?.userId
+    }
     val displayParticipants = caller?.let { alert ->
         val callerMember = Member(
             id = alert.id,
@@ -692,10 +714,13 @@ fun EmergencyActiveCallScreen(
             status = "${alert.fromRole} · đang nói",
             isSpeaking = true
         )
-        listOf(callerParticipant) + participants.filterNot {
-            it.member.name == alert.fromName
+        // Không lặp tên người gọi; cũng không hiển thị bản thân hai lần nếu chính mình là caller
+        listOf(callerParticipant) + participants.filterNot { p ->
+            p.member.name == alert.fromName ||
+                p.member.id == alert.id ||
+                (currentUserId != null && p.member.id == currentUserId && alert.id == currentUserId)
         }
-    } ?: participants
+    } ?: participants.filterNot { currentUserId != null && it.member.id == currentUserId && selectedMemberIds != null }
     val isTalking by PttController.isPttActive.collectAsState()
     val view = LocalView.current
     val latestOnEndCall by rememberUpdatedState(onEndCall)
