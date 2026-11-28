@@ -34,6 +34,17 @@ func buildTestServer() *httptest.Server {
 }
 
 func TestHealthzAndRemovedWsSignaling(t *testing.T) {
+	t.Setenv("SIGNALING_URL", "damthoai-signaling-a1b2")
+	sigURL, _ := week2routing.SignalingConfigFromEnv()
+	if sigURL != "wss://damthoai-signaling-a1b2.onrender.com" {
+		t.Fatalf("mong đợi chuẩn hóa Render host sang wss://damthoai-signaling-a1b2.onrender.com, nhận %q", sigURL)
+	}
+	t.Setenv("SIGNALING_URL", "damthoai-signaling.onrender.com")
+	sigURL2, _ := week2routing.SignalingConfigFromEnv()
+	if sigURL2 != "wss://damthoai-signaling.onrender.com" {
+		t.Fatalf("mong đợi chuẩn hóa domain sang wss://damthoai-signaling.onrender.com, nhận %q", sigURL2)
+	}
+
 	srv := buildTestServer()
 	defer srv.Close()
 

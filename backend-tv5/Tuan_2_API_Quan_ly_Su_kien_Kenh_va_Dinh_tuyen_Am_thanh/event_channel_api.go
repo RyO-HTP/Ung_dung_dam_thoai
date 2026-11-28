@@ -74,14 +74,30 @@ func (u *FlexibleUserID) UnmarshalJSON(data []byte) error {
 }
 
 // SignalingConfigFromEnv đọc cấu hình máy chủ Signaling Python từ biến môi trường,
-// tự động chuẩn hóa https:// -> wss:// và http:// -> ws:// nếu người dùng dán URL HTTP từ Render/Railway.
+// tự động chuẩn hóa https:// -> wss://, http:// -> ws://, hoặc hostname nội bộ Render
+// (từ fromService property: host trong render.yaml) sang wss://<host>.onrender.com.
 func SignalingConfigFromEnv() (signalingURL string, signalingToken string) {
 	rawURL := strings.TrimRight(strings.TrimSpace(os.Getenv("SIGNALING_URL")), "/")
+	if rawURL == "" {
+		rawURL = strings.TrimRight(strings.TrimSpace(os.Getenv("SIGNALING_HOST")), "/")
+	}
 	switch {
+	case rawURL == "":
+		// để trống nếu chưa cấu hình
+	case strings.HasPrefix(rawURL, "wss://") || strings.HasPrefix(rawURL, "ws://"):
+		// giữ nguyên
 	case strings.HasPrefix(rawURL, "https://"):
 		rawURL = "wss://" + strings.TrimPrefix(rawURL, "https://")
 	case strings.HasPrefix(rawURL, "http://"):
 		rawURL = "ws://" + strings.TrimPrefix(rawURL, "http://")
+	case !strings.Contains(rawURL, ".") && !strings.Contains(rawURL, ":") && rawURL != "localhost":
+		// Render Blueprint property: host của web service trả về tên dịch vụ (vd: "damthoai-signaling-xxxx")
+		rawURL = "wss://" + rawURL + ".onrender.com"
+	case strings.Contains(rawURL, ".") && !strings.Contains(rawURL, ":"):
+		// Trường hợp trả về đầy đủ domain "damthoai-signaling.onrender.com"
+		rawURL = "wss://" + rawURL
+	default:
+		rawURL = "ws://" + rawURL
 	}
 	return rawURL, strings.TrimSpace(os.Getenv("SIGNALING_TOKEN"))
 }
