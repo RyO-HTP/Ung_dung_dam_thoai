@@ -33,7 +33,7 @@ Chưa cấu hình TURN thì máy chủ dùng TURN công cộng OpenRelay. Cách 
 
 Cần **Android Studio** (đã kèm JDK 17) và điện thoại Android 7.0 trở lên đã bật *Gỡ lỗi USB*.
 
-1. Kiểm tra `BACKEND_BASE_URL` trong `gradle.properties` (mặc định trỏ tới dịch vụ cloud `https://damthoai-backend.onrender.com`; khi chạy thử nội bộ có thể đổi sang `http://<IP-máy-tính>:8080`).
+1. Kiểm tra `BACKEND_BASE_URL` trong `gradle.properties` (mặc định trỏ tới dịch vụ cloud `https://damthoai-backend-i0hm.onrender.com`; khi chạy thử nội bộ có thể đổi sang `http://<IP-máy-tính>:8080`).
 2. Android Studio → **File › Open** → chọn thư mục repo, chờ Gradle sync xong.
 3. Cắm điện thoại, chọn cấu hình **app**, bấm **Run ▶**.
 

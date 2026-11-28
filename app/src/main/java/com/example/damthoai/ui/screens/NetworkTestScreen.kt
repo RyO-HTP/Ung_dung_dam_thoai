@@ -78,7 +78,7 @@ fun NetworkTestScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val stats by manager.callStats.collectAsState()
 
     val initialSession = remember { com.example.damthoai.data.remote.EventSession.getSession() }
-    var serverUrl by rememberSaveable { mutableStateOf(initialSession?.signalingUrl ?: "wss://damthoai-signaling.onrender.com") }
+    var serverUrl by rememberSaveable { mutableStateOf(initialSession?.signalingUrl ?: "wss://damthoai-signaling-i0hm.onrender.com") }
     var accessToken by rememberSaveable { mutableStateOf(initialSession?.signalingToken.orEmpty()) }
     var userId by rememberSaveable {
         mutableStateOf(initialSession?.userId ?: "${Build.MODEL.filter { it.isLetterOrDigit() }.take(10)}_${Random.nextInt(100, 999)}")
